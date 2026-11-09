@@ -13,6 +13,9 @@ import {
   sanitizeBulkReconcilePayload,
   filterAuditLogsByActionOrTarget,
   buildCommandPaletteItems,
+  formatCentralizedLogsCsv,
+  formatObservabilityBundleJson,
+  resolveGlobalKeyboardShortcut,
   type AuditLogRow,
   type EntryRow,
   type JournalRow,
@@ -23,6 +26,12 @@ import {
   getSystemMetricsSnapshot,
   simulateProductionIncident,
 } from '../../src/server/platform/observability.ts';
+import {
+  SimpleLruCache,
+  queryAllImportAuditLogsWithLruCache,
+  invalidateLedgerAuditSqlLruCache,
+} from '../../src/server/app.ts';
+import type { DbPort } from '../../src/server/ports/db.ts';
 
 const MOCK_BATCHES: ReadonlyArray<PayoutBatchRow> = [
   {
@@ -420,4 +429,122 @@ test('getSystemMetricsSnapshot and simulateProductionIncident expose 3.24M+ user
   assert.equal(resetSnap.dbProtection.statementTimeoutMs, 5000);
 });
 
+test('SimpleLruCache and queryAllImportAuditLogsWithLruCache cache All import view SQL queries and evict LRU entries', async () => {
+  const lru = new SimpleLruCache<string, number>({ maxEntries: 2, ttlMs: 10_000 });
+  lru.set('k1', 100);
+  lru.set('k2', 200);
+  // Access k1 so k2 becomes Least Recently Used
+  assert.equal(lru.get('k1')?.value, 100);
+  // Adding k3 should evict k2
+  lru.set('k3', 300);
+  assert.equal(lru.get('k2'), undefined);
+  assert.equal(lru.get('k1')?.value, 100);
+  assert.equal(lru.get('k3')?.value, 300);
+  assert.equal(lru.stats().evictions, 1);
 
+  let sqlCalls = 0;
+  const mockDb: DbPort = {
+    async query<T = Record<string, unknown>>() {
+      sqlCalls += 1;
+      return { rows: [{ id: `row-${sqlCalls}` } as unknown as T] };
+    },
+    async exec() {
+      // no-op
+    },
+    async transaction<T>(fn: (tx: DbPort) => Promise<T>): Promise<T> {
+      return fn(mockDb);
+    },
+  };
+
+  invalidateLedgerAuditSqlLruCache('tenant-lru-test');
+
+  // First 'ALL' view query -> cache MISS (executes 2 SQL queries: payout_batches + audit_logs)
+  const firstRes = await queryAllImportAuditLogsWithLruCache(mockDb, 'tenant-lru-test', 'ALL');
+  assert.equal(firstRes.cacheStatus, 'MISS');
+  assert.equal(sqlCalls, 2);
+
+  // Second 'ALL' view query -> cache HIT (0 new SQL queries executed!)
+  const secondRes = await queryAllImportAuditLogsWithLruCache(mockDb, 'tenant-lru-test', 'ALL');
+  assert.equal(secondRes.cacheStatus, 'HIT');
+  assert.equal(sqlCalls, 2);
+  assert.deepEqual(secondRes.auditLogs, firstRes.auditLogs);
+
+  // Non-'ALL' view query -> BYPASS
+  const bypassRes = await queryAllImportAuditLogsWithLruCache(mockDb, 'tenant-lru-test', 'INVALID');
+  assert.equal(bypassRes.cacheStatus, 'BYPASS');
+  assert.equal(sqlCalls, 4);
+
+  // Invalidate tenant cache -> next 'ALL' view query is a MISS again
+  invalidateLedgerAuditSqlLruCache('tenant-lru-test');
+  const afterInvalidate = await queryAllImportAuditLogsWithLruCache(
+    mockDb,
+    'tenant-lru-test',
+    'ALL'
+  );
+  assert.equal(afterInvalidate.cacheStatus, 'MISS');
+  assert.equal(sqlCalls, 6);
+});
+
+test('formatCentralizedLogsCsv, formatObservabilityBundleJson, and resolveGlobalKeyboardShortcut work deterministically', () => {
+  const csv = formatCentralizedLogsCsv([
+    {
+      id: 'LOG-01',
+      timestampIso: '2026-11-09T09:00:00.000Z',
+      level: 'info',
+      service: 'db-pg-pool',
+      actionCode: 'SQL_STATEMENT_TIMEOUT_SET',
+      durationMs: 1.8,
+      traceId: 'trc-001',
+      message: 'Configured statement_timeout=5000ms, pool=20',
+    },
+  ]);
+  assert.ok(csv.includes('log_id,timestamp_iso,level,service,action_code,duration_ms,trace_id,message'));
+  assert.ok(csv.includes('LOG-01,2026-11-09T09:00:00.000Z,info,db-pg-pool,SQL_STATEMENT_TIMEOUT_SET,1.8,trc-001,"Configured statement_timeout=5000ms, pool=20"'));
+
+  const bundleJson = formatObservabilityBundleJson(
+    { registeredUsers: 3_248_500 },
+    '2026-11-09T09:30:00.000Z'
+  );
+  const parsed = JSON.parse(bundleJson) as {
+    bundleVersion: string;
+    exportedAtIso: string;
+    registeredUsers: number;
+  };
+  assert.equal(parsed.bundleVersion, 'harbouros-observability-v1');
+  assert.equal(parsed.exportedAtIso, '2026-11-09T09:30:00.000Z');
+  assert.equal(parsed.registeredUsers, 3_248_500);
+
+  // Global keyboard shortcuts
+  assert.deepEqual(
+    resolveGlobalKeyboardShortcut({
+      key: 'l',
+      isEditableTarget: false,
+      ledgerDrawerOpen: false,
+    }),
+    { type: 'TOGGLE_LEDGER_DRAWER' }
+  );
+  assert.deepEqual(
+    resolveGlobalKeyboardShortcut({
+      key: 'l',
+      isEditableTarget: true,
+      ledgerDrawerOpen: false,
+    }),
+    { type: 'NONE' }
+  );
+  assert.deepEqual(
+    resolveGlobalKeyboardShortcut({
+      key: '/',
+      isEditableTarget: false,
+      ledgerDrawerOpen: true,
+    }),
+    { type: 'FOCUS_AUDIT_FILTER' }
+  );
+  assert.deepEqual(
+    resolveGlobalKeyboardShortcut({
+      key: '2',
+      isEditableTarget: false,
+      ledgerDrawerOpen: false,
+    }),
+    { type: 'SWITCH_WORKSPACE', workspaceIndex: 1 }
+  );
+});

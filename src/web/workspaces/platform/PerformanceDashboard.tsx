@@ -11,8 +11,8 @@ import {
 } from 'recharts';
 import {
   Activity,
-  AlertTriangle,
   Database,
+  FileDown,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -21,7 +21,12 @@ import {
   Zap,
 } from 'lucide-react';
 import { Badge, Button, Card } from '@web/ui/index.tsx';
-import { apiRequest } from '@web/lib/api.ts';
+import {
+  apiRequest,
+  downloadTextFile,
+  formatCentralizedLogsCsv,
+  formatObservabilityBundleJson,
+} from '@web/lib/api.ts';
 
 export type ServiceComponentId =
   | 'harbouros-go-api'
@@ -272,14 +277,52 @@ export const PerformanceDashboard: React.FC<{
   const alerts = metrics?.alerts ?? [];
   const latestPoint = chartSeries[chartSeries.length - 1];
 
+  const handleExportTelemetryJson = (): void => {
+    const payload = formatObservabilityBundleJson({
+      scaleProfile: scale,
+      dbProtection: dbProt,
+      rateLimiting: rateLimit,
+      queryExecutionSeries: chartSeries,
+      alerts,
+      logs: filteredLogs,
+    });
+    downloadTextFile(
+      'harbouros-observability-bundle.json',
+      payload,
+      'application/json;charset=utf-8;'
+    );
+  };
+
+  const handleExportLogsCsv = (): void => {
+    const csv = formatCentralizedLogsCsv(filteredLogs);
+    downloadTextFile('harbouros-centralized-logs.csv', csv);
+  };
+
   return (
     <Card
-      title="Performance Dashboard · Centralized Logging, Query Execution Telemetry & 3.2M+ User Scale (`/api/v1/system/metrics`)"
-      subtitle="Real-time Recharts query execution latency (p50 / p95 / p99 / avg), global PostgreSQL statement_timeout (5,000ms) guard, express-rate-limit brute-force shield, and centralized multi-service logs"
+      title="Performance Dashboard"
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="ok" label="3.24M+ USERS" />
           <Badge tone="info" label={`STATEMENT TIMEOUT ${dbProt.statementTimeoutMs}MS`} />
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="export-telemetry-json-btn"
+            icon={<FileDown className="w-3.5 h-3.5" />}
+            onClick={handleExportTelemetryJson}
+          >
+            Export JSON
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="export-logs-csv-btn"
+            icon={<FileDown className="w-3.5 h-3.5" />}
+            onClick={handleExportLogsCsv}
+          >
+            Export Logs CSV
+          </Button>
           <Button
             variant="secondary"
             size="sm"
@@ -292,14 +335,14 @@ export const PerformanceDashboard: React.FC<{
         </div>
       }
     >
-      <div className="flex flex-col gap-6" data-testid="performance-dashboard-widget">
+      <div className="flex flex-col gap-5" data-testid="performance-dashboard-widget">
         {/* 1. SaaS Scale, DB Statement Timeout & Rate-Limit Protection Banner */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2">
+          <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
-              <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]">
                 <Users className="w-3.5 h-3.5 text-[var(--brand)]" />
-                <span>World-Class SaaS Footprint</span>
+                <span>SaaS Scale</span>
               </div>
               <Badge tone="ok" label={`${scale.availabilitySlaPct}% SLA`} />
             </div>
@@ -308,16 +351,16 @@ export const PerformanceDashboard: React.FC<{
             </div>
             <div className="text-xs text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-hair)]">
               <span>DAU: {scale.dailyActiveUsers.toLocaleString()}</span>
-              <span>Peak Concurrent: {scale.peakConcurrentUsers.toLocaleString()}</span>
+              <span>Peak: {scale.peakConcurrentUsers.toLocaleString()}</span>
               <span>{scale.activeHarbourTenants} Harbours</span>
             </div>
           </div>
 
-          <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2">
+          <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
-              <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]">
                 <Database className="w-3.5 h-3.5 text-[var(--info)]" />
-                <span>PostgreSQL Statement Timeout Guard</span>
+                <span>Statement Timeout Guard</span>
               </div>
               <Badge
                 tone={dbProt.statementTimeoutsAborted > 2 ? 'warn' : 'ok'}
@@ -328,17 +371,17 @@ export const PerformanceDashboard: React.FC<{
               {dbProt.totalQueriesTracked.toLocaleString()} Queries Tracked
             </div>
             <div className="text-xs text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-hair)]">
-              <span>Slow (&gt;50ms): {dbProt.slowQueriesFlagged}</span>
-              <span>Aborted (&gt;5s): {dbProt.statementTimeoutsAborted}</span>
+              <span>Slow: {dbProt.slowQueriesFlagged}</span>
+              <span>Aborted: {dbProt.statementTimeoutsAborted}</span>
               <span>Pool: {dbProt.poolSaturationPct}%</span>
             </div>
           </div>
 
-          <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2">
+          <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
-              <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]">
                 <ShieldCheck className="w-3.5 h-3.5 text-[var(--brand)]" />
-                <span>Auth & Edge Rate Limiting</span>
+                <span>Edge Rate Limiting</span>
               </div>
               <Badge
                 tone={rateLimit.authBruteForceBlocked > 45 ? 'warn' : 'ok'}
@@ -350,20 +393,16 @@ export const PerformanceDashboard: React.FC<{
             </div>
             <div className="text-xs text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-hair)]">
               <span>OTP Cap: {rateLimit.authMaxRequestsPerWindow}/15m</span>
-              <span>API Floods Blocked: {rateLimit.apiAbuseBlocked}</span>
-              <span>Allowed: {rateLimit.apiRequestsAllowed.toLocaleString()}</span>
+              <span>Floods Blocked: {rateLimit.apiAbuseBlocked}</span>
             </div>
           </div>
         </div>
 
         {/* 2. Real-World Production Incident & Scale Simulator */}
-        <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-tint)] border border-[var(--border-hair)] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+        <div className="p-3 rounded-[var(--radius-card)] bg-[var(--bg-tint)] border border-[var(--border-hair)] flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
             <Zap className="w-4 h-4 text-[var(--brand)] shrink-0" />
-            <span>
-              <strong className="text-[var(--text-primary)]">Production Chaos & Guardrail Drills:</strong>{' '}
-              Test how the 3.24M-user backend handles slow queries (`statement_timeout = 5000ms`), OTP brute-force attacks (`express-rate-limit`), and coastal auction surges.
-            </span>
+            <span>Guardrail Drills</span>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <Button
@@ -402,18 +441,13 @@ export const PerformanceDashboard: React.FC<{
         </div>
 
         {/* 3. Recharts LineChart Visualizing Query Execution Times from /api/v1/system/metrics */}
-        <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-strong)] flex flex-col gap-4">
+        <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-strong)] flex flex-col gap-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-[var(--brand)]" />
-                <h3 className="text-sm font-bold text-[var(--text-primary)]">
-                  PostgreSQL Query Execution Time Percentiles (`p50`, `p95`, `p99`, `avg` in ms)
-                </h3>
-              </div>
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                Live time-series fetched from <code className="font-mono-code">/api/v1/system/metrics</code> · Global <code className="font-mono-code">statement_timeout = {dbProt.statementTimeoutMs}ms</code> enforced in <code className="font-mono-code">src/server/adapters/db-pg.ts</code>
-              </p>
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-[var(--brand)]" />
+              <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                Query Execution Latency (ms)
+              </h3>
             </div>
             {latestPoint && (
               <div className="flex flex-wrap items-center gap-2 text-xs font-mono-code">
@@ -428,7 +462,7 @@ export const PerformanceDashboard: React.FC<{
             )}
           </div>
 
-          <div className="w-full h-72" data-testid="query-execution-line-chart">
+          <div className="w-full h-64" data-testid="query-execution-line-chart">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={chartSeries}
@@ -493,70 +527,43 @@ export const PerformanceDashboard: React.FC<{
           </div>
         </div>
 
-        {/* 4. KPI Alerts & Automated Runbook Status */}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-[var(--amber-500)]" />
-              <h3 className="text-sm font-bold text-[var(--text-primary)]">
-                Active KPI Monitors, SLO Thresholds & Automated Guardrails
-              </h3>
-            </div>
-            <span className="text-xs font-mono-code text-[var(--text-muted)]">
-              {alerts.length} active monitors
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {alerts.map((alert) => (
-              <div
-                key={alert.alertId}
-                className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-[var(--text-primary)]">
-                    {alert.title}
-                  </span>
-                  <Badge
-                    tone={
-                      alert.severity === 'CRITICAL'
-                        ? 'danger'
-                        : alert.severity === 'WARN'
-                          ? 'warn'
-                          : 'ok'
-                    }
-                    label={`${alert.severity} · ${alert.service}`}
-                  />
+        {/* 4. KPI Alerts */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {alerts.map((alert) => (
+            <div
+              key={alert.alertId}
+              className="p-3 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex items-center justify-between gap-2"
+            >
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                  {alert.title}
                 </div>
-                <div className="flex items-center justify-between text-xs font-mono-code pt-1">
-                  <span className="text-[var(--text-secondary)]">
-                    {alert.metricLabel}: <strong className="text-[var(--text-primary)]">{alert.currentValue}</strong>
-                  </span>
-                  <span className="text-[var(--text-muted)]">
-                    Target: {alert.thresholdValue}
-                  </span>
+                <div className="text-[11px] font-mono-code text-[var(--text-secondary)]">
+                  {alert.metricLabel}: <strong className="text-[var(--text-primary)]">{alert.currentValue}</strong> (SLO: {alert.thresholdValue})
                 </div>
-                <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed mt-0.5">
-                  {alert.runbookAction}
-                </p>
               </div>
-            ))}
-          </div>
+              <Badge
+                tone={
+                  alert.severity === 'CRITICAL'
+                    ? 'danger'
+                    : alert.severity === 'WARN'
+                      ? 'warn'
+                      : 'ok'
+                }
+                label={alert.severity}
+              />
+            </div>
+          ))}
         </div>
 
         {/* 5. Centralized Multi-Service Log Stream */}
-        <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] flex flex-col gap-3">
+        <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] flex flex-col gap-3">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <Terminal className="w-4 h-4 text-[var(--brand)]" />
-                <h3 className="text-sm font-bold text-[var(--text-primary)]">
-                  Centralized Multi-Service Log & Trace Stream
-                </h3>
-              </div>
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                Aggregated structured logs across Go 1.23 API, PostgreSQL connection pool (`db-pg`), `express-rate-limit` auth shield, and statutory ledger
-              </p>
+            <div className="flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-[var(--brand)]" />
+              <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                Centralized Log Stream
+              </h3>
             </div>
 
             <div className="w-full lg:w-72 relative">

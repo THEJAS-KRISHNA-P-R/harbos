@@ -28,6 +28,7 @@ import {
   apiRequest,
   formatOperatorInitials,
   getRoleDisplayMeta,
+  resolveGlobalKeyboardShortcut,
   type BootstrapData,
   type CommandPaletteItem,
   type OperatorProfileResponse,
@@ -234,17 +235,53 @@ export const App: React.FC = () => {
     void handlePersonaSwitch('HARBOUR_ADMIN');
   }, [handlePersonaSwitch]);
 
-  // Global keyboard shortcut: ⌘K / Ctrl+K opens Universal Command Palette
+  // Global keyboard shortcuts: ⌘K (Command Palette), L (Ledger Drawer), / or F (Focus Audit Filter), 1-7 (Switch Workspace)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase() ?? '';
+      const isEditableTarget =
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        Boolean(target?.isContentEditable);
+
+      const intent = resolveGlobalKeyboardShortcut({
+        key: e.key,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        isEditableTarget,
+        ledgerDrawerOpen,
+      });
+
+      if (intent.type === 'TOGGLE_COMMAND_PALETTE') {
         e.preventDefault();
         setCommandPaletteOpen((prev) => !prev);
+      } else if (intent.type === 'TOGGLE_LEDGER_DRAWER') {
+        e.preventDefault();
+        setLedgerDrawerOpen((prev) => !prev);
+      } else if (intent.type === 'FOCUS_AUDIT_FILTER') {
+        e.preventDefault();
+        const filterEl = document.querySelector<HTMLInputElement>(
+          '[aria-label="Filter audit logs by action_code or target_id"]'
+        );
+        filterEl?.focus();
+      } else if (intent.type === 'SWITCH_WORKSPACE' && !ledgerDrawerOpen && !commandPaletteOpen && !profileDrawerOpen) {
+        const ws = WORKSPACES[intent.workspaceIndex];
+        if (ws) {
+          e.preventDefault();
+          setActiveWorkspace(ws.id);
+          setScreenMode('workspace');
+          if (typeof window !== 'undefined') {
+            window.history.replaceState({}, '', `/w/${ws.id}`);
+          }
+        }
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [ledgerDrawerOpen, commandPaletteOpen, profileDrawerOpen]);
 
   const handleRequestOtp = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
@@ -471,42 +508,14 @@ export const App: React.FC = () => {
         />
       </div>
 
-      <span className="hidden lg:inline-flex shrink-0">
-        <Button
-          variant={activeWorkspace === 'platform' && screenMode === 'workspace' ? 'primary' : 'secondary'}
-          size="sm"
-          icon={<Code2 className="w-3.5 h-3.5" />}
-          onClick={() => handleSelectWorkspace('platform')}
-        >
-          Go & SQL
-        </Button>
-      </span>
-
       <Button
-        variant="secondary"
+        variant="primary"
         size="sm"
         icon={<BookOpen className="w-3.5 h-3.5" />}
         onClick={() => setLedgerDrawerOpen(true)}
       >
         Ledger
       </Button>
-
-      <span className="hidden md:inline-flex shrink-0">
-        <Button
-          variant={screenMode === 'gallery' ? 'primary' : 'outline'}
-          size="sm"
-          icon={<Layers className="w-3.5 h-3.5" />}
-          onClick={() => {
-            const next = screenMode === 'gallery' ? 'workspace' : 'gallery';
-            setScreenMode(next);
-            if (typeof window !== 'undefined') {
-              window.history.replaceState({}, '', next === 'gallery' ? '/ui' : `/w/${activeWorkspace}`);
-            }
-          }}
-        >
-          UI Kit
-        </Button>
-      </span>
 
       <span className="hidden sm:inline-flex shrink-0">
         <Button
@@ -515,7 +524,7 @@ export const App: React.FC = () => {
           icon={<Globe className="w-3.5 h-3.5" />}
           onClick={() => setLang((prev) => (prev === 'en' ? 'ml' : 'en'))}
         >
-          {lang === 'en' ? 'മലയാളം' : 'English'}
+          {lang === 'en' ? 'മലയാളം' : 'EN'}
         </Button>
       </span>
 
@@ -537,23 +546,6 @@ export const App: React.FC = () => {
           {activeRoleMeta.shortBadge}
         </span>
       </button>
-
-      <span className="hidden md:inline-flex shrink-0">
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<LogOut className="w-3.5 h-3.5" />}
-          onClick={() => {
-            void loadOperatorsDirectory();
-            setScreenMode('login');
-            if (typeof window !== 'undefined') {
-              window.history.replaceState({}, '', '/login');
-            }
-          }}
-        >
-          Portal
-        </Button>
-      </span>
     </>
   );
 

@@ -93,6 +93,185 @@ export function createEdgeRateLimiters() {
   return { authLimiter, apiLimiter };
 }
 
+export interface LruCacheStats {
+  size: number;
+  maxEntries: number;
+  ttlMs: number;
+  hits: number;
+  misses: number;
+  evictions: number;
+  hitRatioPct: number;
+}
+
+/**
+ * Simple O(1) Least-Recently-Used (LRU) in-memory SQL query cache with TTL expiration.
+ * Used to cache tenant audit log & bulk UTR import queries for the LedgerInspectorDrawer 'All' view.
+ */
+export class SimpleLruCache<K, V> {
+  private readonly store = new Map<
+    K,
+    { value: V; expiresAt: number; cachedAtIso: string }
+  >();
+  public readonly maxEntries: number;
+  public readonly ttlMs: number;
+  private hits = 0;
+  private misses = 0;
+  private evictions = 0;
+
+  constructor(options?: { maxEntries?: number; ttlMs?: number }) {
+    this.maxEntries = Math.max(1, options?.maxEntries ?? 64);
+    this.ttlMs = Math.max(100, options?.ttlMs ?? 30_000);
+  }
+
+  public get(key: K): { value: V; cachedAtIso: string } | undefined {
+    const entry = this.store.get(key);
+    if (!entry) {
+      this.misses += 1;
+      return undefined;
+    }
+    if (Date.now() > entry.expiresAt) {
+      this.store.delete(key);
+      this.misses += 1;
+      return undefined;
+    }
+    // Promote accessed key to most-recently-used position at end of Map
+    this.store.delete(key);
+    this.store.set(key, entry);
+    this.hits += 1;
+    return { value: entry.value, cachedAtIso: entry.cachedAtIso };
+  }
+
+  public set(key: K, value: V): string {
+    const nowMs = Date.now();
+    const cachedAtIso = new Date(nowMs).toISOString();
+    if (this.store.has(key)) {
+      this.store.delete(key);
+    } else if (this.store.size >= this.maxEntries) {
+      const oldestKey = this.store.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.store.delete(oldestKey);
+        this.evictions += 1;
+      }
+    }
+    this.store.set(key, {
+      value,
+      expiresAt: nowMs + this.ttlMs,
+      cachedAtIso,
+    });
+    return cachedAtIso;
+  }
+
+  public invalidate(key: K): boolean {
+    return this.store.delete(key);
+  }
+
+  public clear(): void {
+    this.store.clear();
+  }
+
+  public stats(): LruCacheStats {
+    const total = this.hits + this.misses;
+    const hitRatioPct =
+      total > 0 ? Math.round((this.hits / total) * 1000) / 10 : 0;
+    return {
+      size: this.store.size,
+      maxEntries: this.maxEntries,
+      ttlMs: this.ttlMs,
+      hits: this.hits,
+      misses: this.misses,
+      evictions: this.evictions,
+      hitRatioPct,
+    };
+  }
+}
+
+export interface CachedLedgerAuditPayload {
+  auditLogs: ReadonlyArray<Record<string, unknown>>;
+  payoutBatches: ReadonlyArray<Record<string, unknown>>;
+}
+
+export const ledgerAuditSqlLruCache = new SimpleLruCache<
+  string,
+  CachedLedgerAuditPayload
+>({
+  maxEntries: 64,
+  ttlMs: 30_000,
+});
+
+export function invalidateLedgerAuditSqlLruCache(tenantId?: string): void {
+  if (tenantId) {
+    ledgerAuditSqlLruCache.invalidate(`${tenantId}:ALL`);
+  } else {
+    ledgerAuditSqlLruCache.clear();
+  }
+}
+
+export async function queryAllImportAuditLogsWithLruCache(
+  db: DbPort,
+  tenantId: string,
+  viewFilter = 'ALL'
+): Promise<{
+  view: string;
+  cacheStatus: 'HIT' | 'MISS' | 'BYPASS';
+  cachedAtIso: string;
+  stats: LruCacheStats;
+  auditLogs: ReadonlyArray<Record<string, unknown>>;
+  payoutBatches: ReadonlyArray<Record<string, unknown>>;
+}> {
+  const normalizedView = viewFilter.trim().toUpperCase() || 'ALL';
+  const cacheKey = `${tenantId}:ALL`;
+
+  if (normalizedView === 'ALL') {
+    const hit = ledgerAuditSqlLruCache.get(cacheKey);
+    if (hit) {
+      return {
+        view: normalizedView,
+        cacheStatus: 'HIT',
+        cachedAtIso: hit.cachedAtIso,
+        stats: ledgerAuditSqlLruCache.stats(),
+        auditLogs: hit.value.auditLogs,
+        payoutBatches: hit.value.payoutBatches,
+      };
+    }
+  }
+
+  const [batchesRes, auditLogsRes] = await Promise.all([
+    db.query<Record<string, unknown>>(
+      `SELECT * FROM ledger.payout_batches WHERE tenant_id = $1 ORDER BY created_at DESC`,
+      [tenantId]
+    ),
+    db.query<Record<string, unknown>>(
+      `SELECT a.audit_id, a.tenant_id, a.actor_user_id, COALESCE(u.full_name, a.actor_user_id) AS actor_name,
+              a.actor_role, a.action_code, a.target_type, a.target_id, a.details_json, a.created_at
+       FROM core.audit_logs a
+       LEFT JOIN core.users u ON u.user_id = a.actor_user_id
+       WHERE a.tenant_id = $1
+       ORDER BY a.created_at DESC
+       LIMIT 100`,
+      [tenantId]
+    ),
+  ]);
+
+  let cachedAtIso = new Date().toISOString();
+  let cacheStatus: 'HIT' | 'MISS' | 'BYPASS' = 'BYPASS';
+  if (normalizedView === 'ALL') {
+    cachedAtIso = ledgerAuditSqlLruCache.set(cacheKey, {
+      auditLogs: auditLogsRes.rows,
+      payoutBatches: batchesRes.rows,
+    });
+    cacheStatus = 'MISS';
+  }
+
+  return {
+    view: normalizedView,
+    cacheStatus,
+    cachedAtIso,
+    stats: ledgerAuditSqlLruCache.stats(),
+    auditLogs: auditLogsRes.rows,
+    payoutBatches: batchesRes.rows,
+  };
+}
+
 export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Express {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
@@ -553,9 +732,8 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         journalsRes,
         entriesRes,
         reversalsRes,
-        batchesRes,
         outboxRes,
-        auditLogsRes,
+        cachedAuditAndBatches,
         chainVerification,
       ] = await Promise.all([
         db.query(`SELECT * FROM core.tenants WHERE tenant_id = $1`, [tenantId]),
@@ -575,21 +753,12 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         db.query(`SELECT * FROM ledger.journals WHERE tenant_id = $1 ORDER BY created_at DESC`, [tenantId]),
         db.query(`SELECT * FROM ledger.entries WHERE tenant_id = $1 ORDER BY entry_seq DESC LIMIT 80`, [tenantId]),
         db.query(`SELECT * FROM ledger.reversal_requests WHERE tenant_id = $1 ORDER BY created_at DESC`, [tenantId]),
-        db.query(`SELECT * FROM ledger.payout_batches WHERE tenant_id = $1 ORDER BY created_at DESC`, [tenantId]),
         db.query(`SELECT * FROM sync.outbox_events WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 30`, [tenantId]),
-        db.query(
-          `SELECT a.audit_id, a.tenant_id, a.actor_user_id, COALESCE(u.full_name, a.actor_user_id) AS actor_name,
-                  a.actor_role, a.action_code, a.target_type, a.target_id, a.details_json, a.created_at
-           FROM core.audit_logs a
-           LEFT JOIN core.users u ON u.user_id = a.actor_user_id
-           WHERE a.tenant_id = $1
-           ORDER BY a.created_at DESC
-           LIMIT 100`,
-          [tenantId]
-        ),
+        queryAllImportAuditLogsWithLruCache(db, tenantId, 'ALL'),
         verifyTenantLedgerChain(db, tenantId),
       ]);
 
+      res.setHeader('X-SQL-LRU-Cache', cachedAuditAndBatches.cacheStatus);
       res.status(200).json({
         tenant: tenantRes.rows[0] ?? null,
         allTenants: allTenantsRes.rows,
@@ -608,15 +777,45 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         journals: journalsRes.rows,
         entries: entriesRes.rows,
         reversals: reversalsRes.rows,
-        payoutBatches: batchesRes.rows,
+        payoutBatches: cachedAuditAndBatches.payoutBatches,
         outboxEvents: outboxRes.rows,
-        auditLogs: auditLogsRes.rows,
+        auditLogs: cachedAuditAndBatches.auditLogs,
         ledgerVerification: chainVerification,
+        auditSqlLruCache: {
+          cacheStatus: cachedAuditAndBatches.cacheStatus,
+          cachedAtIso: cachedAuditAndBatches.cachedAtIso,
+          stats: cachedAuditAndBatches.stats,
+        },
       });
     } catch (err) {
       next(err);
     }
   });
+
+  // Dedicated SQL LRU Cached Endpoint for LedgerInspectorDrawer 'All' Import View & Bulk Audit Log Audits
+  app.get(
+    '/api/v1/ledger/audit-imports',
+    requireAuth(),
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+      try {
+        const tenantId = req.auth!.tenantId;
+        const view = String(req.query.view ?? 'ALL').toUpperCase();
+        const result = await queryAllImportAuditLogsWithLruCache(db, tenantId, view);
+        res.setHeader('X-SQL-LRU-Cache', result.cacheStatus);
+        res.status(200).json({
+          tenantId,
+          view: result.view,
+          cacheStatus: result.cacheStatus,
+          cachedAtIso: result.cachedAtIso,
+          stats: result.stats,
+          auditLogs: result.auditLogs,
+          payoutBatches: result.payoutBatches,
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
 
   // Weighing Workspace: Create & Tag Lot (with HMAC-SHA256 QR Signature & Manual Override PIN Check)
   app.post(
@@ -972,6 +1171,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           ]
         );
 
+        invalidateLedgerAuditSqlLruCache(tenantId);
         res.status(201).json({ batchId, batchCode });
       } catch (err) {
         next(err);
@@ -992,6 +1192,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           batchId: String(req.params.batchId ?? ''),
           rawBankUtr: req.body?.bankUtr,
         });
+        invalidateLedgerAuditSqlLruCache(req.auth!.tenantId);
         res.status(200).json(result);
       } catch (err) {
         next(err);
@@ -1016,6 +1217,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           rawBody: req.body as Record<string, unknown>,
           headerIdempotencyKey: headerIdem,
         });
+        invalidateLedgerAuditSqlLruCache(req.auth!.tenantId);
         res.status(200).json(result);
       } catch (err) {
         next(err);

@@ -14,6 +14,14 @@ function formatUtcTimestampCompact(iso: string): string {
   return cleaned.length >= 19 ? cleaned.slice(0, 19) : cleaned;
 }
 
+export interface SqlLruCacheBadgeInfo {
+  cacheStatus: 'HIT' | 'MISS' | 'BYPASS';
+  hits: number;
+  misses: number;
+  hitRatioPct: number;
+  cachedAtIso: string;
+}
+
 export interface UtrBulkHistoryTableProps {
   auditLogs?: ReadonlyArray<AuditLogRow>;
   importHistoryEntries: ReadonlyArray<UtrImportHistoryEntry>;
@@ -23,6 +31,7 @@ export interface UtrBulkHistoryTableProps {
   onFilterChange: (filter: UtrImportHistoryFilter) => void;
   expandedHistoryId: string | null;
   onToggleExpand: (importId: string) => void;
+  lruCacheInfo?: SqlLruCacheBadgeInfo | null;
 }
 
 export const UtrBulkHistoryTable: React.FC<UtrBulkHistoryTableProps> = ({
@@ -34,6 +43,7 @@ export const UtrBulkHistoryTable: React.FC<UtrBulkHistoryTableProps> = ({
   onFilterChange,
   expandedHistoryId,
   onToggleExpand,
+  lruCacheInfo = null,
 }) => {
   const [auditFilterText, setAuditFilterText] = useState('');
   const counts = countUtrImportHistoryByFilter(importHistoryEntries);
@@ -59,19 +69,21 @@ export const UtrBulkHistoryTable: React.FC<UtrBulkHistoryTableProps> = ({
     <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-3.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--brand)] flex items-center gap-1.5">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--brand)] flex flex-wrap items-center gap-1.5">
             <History className="w-3.5 h-3.5" />
-            <span>Historical Reconciliation Activity (`core.audit_logs`)</span>
+            <span>Reconciliation History</span>
+            {historyFilter === 'ALL' && lruCacheInfo && (
+              <span data-testid="all-imports-lru-cache-badge" className="inline-flex">
+                <Badge
+                  tone={lruCacheInfo.cacheStatus === 'HIT' ? 'ok' : 'info'}
+                  label={`SQL LRU ${lruCacheInfo.cacheStatus} · ${lruCacheInfo.hits} HITS`}
+                />
+              </span>
+            )}
           </div>
           <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-            Recent CSV Bulk Import History
+            Recent CSV Bulk Import History ({totalHistoricalBatchesReconciled} batches)
           </h4>
-          <p className="text-xs text-[var(--text-secondary)]">
-            {importHistoryEntries.length} recorded import run
-            {importHistoryEntries.length === 1 ? '' : 's'} ·{' '}
-            {totalHistoricalBatchesReconciled} total payout batch
-            {totalHistoricalBatchesReconciled === 1 ? '' : 'es'} reconciled
-          </p>
         </div>
 
         <div

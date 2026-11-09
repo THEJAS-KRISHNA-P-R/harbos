@@ -234,21 +234,16 @@ export const BuyerWorkspace: React.FC<{
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="p-5 sm:p-6 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-4 min-w-0">
-          <StatutoryLedgerWaterfallSvgDecor size={52} />
+    <div className="flex flex-col gap-5">
+      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <StatutoryLedgerWaterfallSvgDecor size={40} />
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--brand)] mb-1">
-              <BuyerCrateEscrowIcon size={15} />
-              <span>Wholesale Buyer Clearing · Pre-Funded Escrow & Credit Line</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-              Wholesale Buyer Clearing Desk
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+              Buyer Clearing Desk
             </h1>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">
-              {buyer?.buyer_name} (Paddle #{buyer?.paddle_no}) · GSTIN: {buyer?.gstin} · MPEDA:{' '}
-              {buyer?.export_reg_no ?? 'Domestic'}
+            <p className="text-xs text-[var(--text-secondary)] truncate">
+              {buyer?.buyer_name} · Paddle #{buyer?.paddle_no} · GSTIN: {buyer?.gstin}
             </p>
           </div>
         </div>
@@ -266,40 +261,30 @@ export const BuyerWorkspace: React.FC<{
         />
       )}
 
-      {/* Buyer Credit Bar (§7 Check 6) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Buyer Credit Bar */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
         <Metric
           featured
-          icon={<BuyerCrateEscrowIcon size={16} />}
           label="Available Trading Limit"
           value={formatInrFromPaise(availablePaise)}
-          sublabel="Escrow + Approved Credit − Unsettled Payables − Holds"
-          formulaCue="PostgreSQL SELECT ... FOR UPDATE row lock enforced"
-          status={{ tone: 'ok', label: 'FOR UPDATE LOCKED' }}
+          status={{ tone: 'ok', label: 'LOCKED' }}
         />
         <Metric
-          label="Escrow + Approved Credit"
+          label="Escrow + Credit"
           value={formatInrFromPaise(escrowPaise + creditPaise)}
           sublabel={`Escrow: ${formatInrFromPaise(escrowPaise)}`}
-          formulaCue="Pre-funded nodal bank clearing guarantee"
-          status={{ tone: 'info', label: 'CLEARING LIMIT' }}
+          status={{ tone: 'info', label: 'LIMIT' }}
         />
         <Metric
-          label="Unsettled Clearing Payables"
+          label="Unsettled Payables"
           value={formatInrFromPaise(payablesPaise)}
-          sublabel="Settled via daily nodal bank batch"
-          formulaCue="Reconciled against bank UTR at harbour close"
           status={{ tone: 'neutral', label: 'DUE TODAY' }}
         />
       </div>
 
       {/* Live Watchlist & Remote Bidding */}
       <Card
-        stepBadge="REMOTE BIDDING"
-        kicker="Section 23 Credit Guardrail"
-        title="Live Harbour Lot Watchlist & Remote Bidding"
-        subtitle="Bids exceeding available credit limit are atomically rejected by PostgreSQL transaction"
-        icon={<BuyerCrateEscrowIcon size={20} />}
+        title="Live Lot Watchlist & 1-Click Remote Bidding"
         actions={
           <div className="flex items-center gap-3">
             <Input
@@ -328,18 +313,7 @@ export const BuyerWorkspace: React.FC<{
       </Card>
 
       {/* Purchases & Export Dossiers */}
-      <Card
-        title="Confirmed Purchases, Clearing Invoices & Export Traceability Dossiers"
-        subtitle="Dossiers carry vessel registration, HMAC QR signature, and s.21 inspection grade (marked draft until MPEDA template sign-off OPEN-05)"
-        sunkenFooter={
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-[var(--brand)]" />
-            <span>
-              Every purchase row corresponds to a balanced double-entry journal in ledger.journals.
-            </span>
-          </div>
-        }
-      >
+      <Card title="Confirmed Purchases & Export Dossiers">
         <DataTable
           caption="Buyer Purchases and Export Dossiers"
           columns={purchaseColumns}

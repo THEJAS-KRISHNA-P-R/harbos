@@ -170,26 +170,22 @@ export const InspectorWorkspace: React.FC<{
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="p-5 sm:p-6 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-4 min-w-0">
-          <ColdChainInspectorSvgDecor size={52} />
+    <div className="flex flex-col gap-5">
+      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <ColdChainInspectorSvgDecor size={40} />
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--brand)] mb-1">
-              <ThermometerFishGradeIcon size={15} />
-              <span>Kerala Act 16 s.21 · Organoleptic & Cold-Chain Hygiene Gate</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-              Section 21 Quality Inspection & Hygiene Certification
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+              Quality Inspection (s.21)
             </h1>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">
-              Authorized Inspector terminal — Lots graded REJECTED_UNFIT are hard-blocked from pit auction allocation.
+            <p className="text-xs text-[var(--text-secondary)] truncate">
+              Cold-Chain &amp; Organoleptic Certification
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <Badge tone="ok" label="ACT 16 s.21 AUTHORITY" />
-          <Badge tone="info" label="COLD-CHAIN <= 2.5°C" />
+          <Badge tone="ok" label="ACT 16 s.21" />
+          <Badge tone="info" label="<= 2.5°C" />
         </div>
       </div>
 
@@ -202,18 +198,17 @@ export const InspectorWorkspace: React.FC<{
         />
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
         <Metric
-          label="Export Grade Lots (A_EXPORT)"
+          label="Export Grade (A_EXPORT)"
           value={String(
             data.lots.filter((l) => l.inspection_grade === 'A_EXPORT').length
           )}
           unit="LOTS"
-          sublabel="EU / MPEDA cold-chain compliant"
           status={{ tone: 'ok', label: 'CERTIFIED' }}
         />
         <Metric
-          label="Domestic / Processing Lots"
+          label="Domestic / Processing"
           value={String(
             data.lots.filter(
               (l) =>
@@ -222,23 +217,20 @@ export const InspectorWorkspace: React.FC<{
             ).length
           )}
           unit="LOTS"
-          sublabel="Cleared for domestic wholesale"
           status={{ tone: 'info', label: 'CLEARED' }}
         />
         <Metric
-          label="Rejected Unfit (s.21 Block)"
+          label="Rejected Unfit (s.21)"
           value={String(
             data.lots.filter((l) => l.inspection_grade === 'REJECTED_UNFIT').length
           )}
           unit="BLOCKED"
-          sublabel="Cannot be allocated in Pit or Remote Bid"
           status={{ tone: 'danger', label: 'QUARANTINED' }}
         />
       </div>
 
       <Card
-        title="Inspect & Certify Landed Lot (Section 21)"
-        subtitle="Human-confirmed grading with optional advisory AI assist (ADR-009)"
+        title="Inspect & Certify Lot"
         actions={
           <Button
             variant="secondary"

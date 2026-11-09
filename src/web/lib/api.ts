@@ -381,3 +381,99 @@ export function downloadTextFile(
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+export interface ExportableLogEntry {
+  id: string;
+  timestampIso: string;
+  level: string;
+  service: string;
+  actionCode: string;
+  message: string;
+  durationMs?: number;
+  traceId: string;
+}
+
+function escapeCsvCell(val: string): string {
+  if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+    return `"${val.replace(/"/g, '""')}"`;
+  }
+  return val;
+}
+
+export function formatCentralizedLogsCsv(
+  logs: ReadonlyArray<ExportableLogEntry>
+): string {
+  const headers = [
+    'log_id',
+    'timestamp_iso',
+    'level',
+    'service',
+    'action_code',
+    'duration_ms',
+    'trace_id',
+    'message',
+  ];
+  const rows = logs.map((entry) =>
+    [
+      escapeCsvCell(entry.id),
+      escapeCsvCell(entry.timestampIso),
+      escapeCsvCell(entry.level),
+      escapeCsvCell(entry.service),
+      escapeCsvCell(entry.actionCode),
+      entry.durationMs !== undefined ? String(entry.durationMs) : '',
+      escapeCsvCell(entry.traceId),
+      escapeCsvCell(entry.message),
+    ].join(',')
+  );
+  return [headers.join(','), ...rows].join('\n');
+}
+
+export function formatObservabilityBundleJson(
+  snapshot: Record<string, unknown>,
+  exportedAtIso = new Date().toISOString()
+): string {
+  return JSON.stringify(
+    {
+      bundleVersion: 'harbouros-observability-v1',
+      exportedAtIso,
+      ...snapshot,
+    },
+    null,
+    2
+  );
+}
+
+export type GlobalShortcutIntent =
+  | { type: 'NONE' }
+  | { type: 'TOGGLE_COMMAND_PALETTE' }
+  | { type: 'TOGGLE_LEDGER_DRAWER' }
+  | { type: 'FOCUS_AUDIT_FILTER' }
+  | { type: 'SWITCH_WORKSPACE'; workspaceIndex: number };
+
+export function resolveGlobalKeyboardShortcut(input: {
+  key: string;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  altKey?: boolean;
+  isEditableTarget: boolean;
+  ledgerDrawerOpen: boolean;
+}): GlobalShortcutIntent {
+  const lower = input.key.toLowerCase();
+  if ((input.metaKey || input.ctrlKey) && lower === 'k') {
+    return { type: 'TOGGLE_COMMAND_PALETTE' };
+  }
+  if (input.isEditableTarget) {
+    return { type: 'NONE' };
+  }
+  if (!input.metaKey && !input.ctrlKey && lower === 'l') {
+    return { type: 'TOGGLE_LEDGER_DRAWER' };
+  }
+  if (!input.metaKey && !input.ctrlKey && (input.key === '/' || lower === 'f') && input.ledgerDrawerOpen) {
+    return { type: 'FOCUS_AUDIT_FILTER' };
+  }
+  if (!input.metaKey && !input.ctrlKey && !input.altKey && /^[1-7]$/.test(input.key)) {
+    return { type: 'SWITCH_WORKSPACE', workspaceIndex: Number(input.key) - 1 };
+  }
+  return { type: 'NONE' };
+}
+

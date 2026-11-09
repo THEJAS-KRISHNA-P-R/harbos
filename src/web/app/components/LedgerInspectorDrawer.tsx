@@ -30,9 +30,14 @@ import {
   type UtrImportHistoryEntry,
   type UtrImportHistoryFilter,
   type BootstrapData,
+  type AuditLogRow,
+  type PayoutBatchRow,
 } from '@web/lib/api.ts';
 
-import { UtrBulkHistoryTable } from '@web/app/components/ledger-inspector/UtrBulkHistoryTable.tsx';
+import {
+  UtrBulkHistoryTable,
+  type SqlLruCacheBadgeInfo,
+} from '@web/app/components/ledger-inspector/UtrBulkHistoryTable.tsx';
 import { LedgerChartsAndJournals } from '@web/app/components/ledger-inspector/LedgerChartsAndJournals.tsx';
 
 export interface GoldenVectorRow {
@@ -65,7 +70,7 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
   onRefresh,
   autoOpenUtrMapperSignal = 0,
 }) => {
-  const [utrImportPanelOpen, setUtrImportPanelOpen] = useState(false);
+  const [utrImportPanelOpen, setUtrImportPanelOpen] = useState(true);
   const [utrCsvText, setUtrCsvText] = useState('');
   const [utrSourceLabel, setUtrSourceLabel] = useState('Inline Bank UTR CSV');
   const [utrReconciling, setUtrReconciling] = useState(false);
@@ -84,23 +89,78 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
   >([]);
   const [historyFilter, setHistoryFilter] = useState<UtrImportHistoryFilter>('ALL');
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [cachedAllAuditLogs, setCachedAllAuditLogs] = useState<
+    ReadonlyArray<AuditLogRow> | null
+  >(null);
+  const [cachedAllPayoutBatches, setCachedAllPayoutBatches] = useState<
+    ReadonlyArray<PayoutBatchRow> | null
+  >(null);
+  const [lruCacheInfo, setLruCacheInfo] = useState<SqlLruCacheBadgeInfo | null>(null);
 
   const utrCsvInputRef = useRef<HTMLInputElement | null>(null);
   const prevRowsRef = useRef<ReadonlyArray<BankUtrCsvMappedRow>>([]);
+
+  useEffect(() => {
+    if (!open || !token || historyFilter !== 'ALL') {
+      return;
+    }
+    let cancelled = false;
+    void apiRequest<{
+      cacheStatus: 'HIT' | 'MISS' | 'BYPASS';
+      cachedAtIso: string;
+      stats: {
+        hits: number;
+        misses: number;
+        hitRatioPct: number;
+      };
+      auditLogs: ReadonlyArray<AuditLogRow>;
+      payoutBatches: ReadonlyArray<PayoutBatchRow>;
+    }>('/api/v1/ledger/audit-imports?view=ALL', {
+      method: 'GET',
+      token,
+    })
+      .then((res) => {
+        if (cancelled) return;
+        setCachedAllAuditLogs(res.auditLogs);
+        setCachedAllPayoutBatches(res.payoutBatches);
+        setLruCacheInfo({
+          cacheStatus: res.cacheStatus,
+          hits: res.stats.hits,
+          misses: res.stats.misses,
+          hitRatioPct: res.stats.hitRatioPct,
+          cachedAtIso: res.cachedAtIso,
+        });
+      })
+      .catch(() => {
+        // Fallback to bootstrap snapshot if offline
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, token, historyFilter, bootstrap?.auditLogs]);
 
   const parsedUtrCsv = parseAndMapBankUtrCsv(
     utrCsvText,
     bootstrap?.payoutBatches ?? []
   );
 
+  const effectiveAuditLogs =
+    historyFilter === 'ALL' && cachedAllAuditLogs
+      ? cachedAllAuditLogs
+      : bootstrap?.auditLogs ?? [];
+  const effectivePayoutBatches =
+    historyFilter === 'ALL' && cachedAllPayoutBatches
+      ? cachedAllPayoutBatches
+      : bootstrap?.payoutBatches ?? [];
+
   const importHistoryEntries = useMemo(
     () =>
       buildUtrImportHistory({
-        auditLogs: bootstrap?.auditLogs ?? [],
-        payoutBatches: bootstrap?.payoutBatches ?? [],
+        auditLogs: effectiveAuditLogs,
+        payoutBatches: effectivePayoutBatches,
         sessionImports: sessionImportHistory,
       }),
-    [bootstrap?.auditLogs, bootstrap?.payoutBatches, sessionImportHistory]
+    [effectiveAuditLogs, effectivePayoutBatches, sessionImportHistory]
   );
 
   const filteredHistoryEntries = useMemo(
@@ -128,14 +188,23 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
   }, [utrCsvText, bootstrap?.payoutBatches]);
 
   useEffect(() => {
-    if (autoOpenUtrMapperSignal > 0 && bootstrap) {
+    if ((open || autoOpenUtrMapperSignal > 0) && bootstrap) {
       setUtrImportPanelOpen(true);
-      setCsvExportScope('RECONCILIATION_STATUS');
+      if (autoOpenUtrMapperSignal > 0) {
+        setCsvExportScope('RECONCILIATION_STATUS');
+      }
       if (!utrCsvText.trim() && bootstrap.payoutBatches.length > 0) {
         setUtrCsvText(generateSampleBankUtrCsv(bootstrap.payoutBatches));
       }
     }
-  }, [autoOpenUtrMapperSignal, bootstrap]);
+  }, [open, autoOpenUtrMapperSignal, bootstrap]);
+
+  useEffect(() => {
+    const firstEntry = importHistoryEntries[0];
+    if (expandedHistoryId === null && firstEntry) {
+      setExpandedHistoryId(firstEntry.importId);
+    }
+  }, [expandedHistoryId, importHistoryEntries]);
 
   const handleOpenUtrCsvImport = (triggerFileDialog = true): void => {
     setUtrImportPanelOpen(true);
@@ -758,7 +827,7 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
 
             {/* Recent CSV Bulk Import History Table */}
             <UtrBulkHistoryTable
-              auditLogs={bootstrap.auditLogs ?? []}
+              auditLogs={effectiveAuditLogs}
               importHistoryEntries={importHistoryEntries}
               filteredHistoryEntries={filteredHistoryEntries}
               totalHistoricalBatchesReconciled={totalHistoricalBatchesReconciled}
@@ -768,6 +837,7 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
               onToggleExpand={(importId) =>
                 setExpandedHistoryId((prev) => (prev === importId ? null : importId))
               }
+              lruCacheInfo={lruCacheInfo}
             />
 
             {/* Charts, Double-Entry Journals, and §2 Golden Vectors */}

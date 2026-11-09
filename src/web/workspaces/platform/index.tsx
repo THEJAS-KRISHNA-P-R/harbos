@@ -487,20 +487,16 @@ export const PlatformWorkspace: React.FC<{
     bundle?.sqlMigrations[0];
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="p-5 sm:p-6 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-4 min-w-0">
-          <MaritimeCrestSvgEmblem size={52} />
+    <div className="flex flex-col gap-5">
+      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <MaritimeCrestSvgEmblem size={40} />
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--brand)] mb-1">
-              <StatutorySealIcon size={15} />
-              <span>Go 1.23.4 High-Concurrency Engine · PostgreSQL 16 · Act 16 of 2021</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-              Platform Governance, High-Traffic Scalability & PostgreSQL Engine
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+              Platform &amp; Scale
             </h1>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">
-              Inspect live Go 1.23 singleflight request coalescing, 32-shard write-through cache, batched SQL execution (`001`–`006`), and run stress benchmarks.
+            <p className="text-xs text-[var(--text-secondary)] truncate">
+              Go 1.23.4 · PostgreSQL 16 · 3.24M+ Users
             </p>
           </div>
         </div>
@@ -509,22 +505,21 @@ export const PlatformWorkspace: React.FC<{
             items={[
               {
                 id: 'scalability',
-                label: 'High-Traffic & Scale',
-                badge: 'GO 1.23',
+                label: 'Scale & Metrics',
               },
               {
                 id: 'backend-code',
-                label: 'Golang Backend',
+                label: 'Go Backend',
                 badge: bundle?.golangFiles.length ?? 11,
               },
               {
                 id: 'sql-migrations',
-                label: 'SQL Migrations',
+                label: 'Migrations',
                 badge: bundle?.sqlMigrations.length ?? 6,
               },
               {
                 id: 'sql-console',
-                label: 'PostgreSQL Console',
+                label: 'SQL Console',
                 badge: bundle?.tableCatalog.length ?? 23,
               },
               {
@@ -557,45 +552,40 @@ export const PlatformWorkspace: React.FC<{
         />
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
         <Metric
-          label="Active Backend Runtime"
+          label="Backend Runtime"
           value="Go 1.23.4"
-          unit="LINUX/AMD64"
-          sublabel="Singleflight + 32-Shard Cache + Bulkhead"
-          status={{ tone: 'ok', label: 'HIGH-SCALE GO' }}
+          unit="AMD64"
+          status={{ tone: 'ok', label: 'ACTIVE' }}
         />
         <Metric
-          label="PostgreSQL Migrations"
+          label="SQL Migrations"
           value={`${bundle?.sqlMigrations.length ?? 6} / 6`}
           unit="APPLIED"
-          sublabel="Includes 006 Covering Indexes"
-          status={{ tone: 'ok', label: 'DDL + RLS + IDX' }}
+          status={{ tone: 'ok', label: 'RLS' }}
         />
         <Metric
-          label="p95 Response Latency"
+          label="p95 Latency"
           value={String(scaleMetrics?.p95LatencyMs ?? 0.48)}
           unit="MS"
-          sublabel={`p50: ${scaleMetrics?.p50LatencyMs ?? 0.18} ms · p99: ${scaleMetrics?.p99LatencyMs ?? 1.42} ms`}
-          status={{ tone: 'ok', label: 'SUB-2MS P95' }}
+          sublabel={`p50: ${scaleMetrics?.p50LatencyMs ?? 0.18} ms`}
+          status={{ tone: 'ok', label: 'SUB-2MS' }}
         />
         <Metric
-          label="Cache & Coalescing"
+          label="Cache Hit Ratio"
           value={`${scaleMetrics?.cacheHitRatioPct ?? 92.4}%`}
-          unit="HIT RATIO"
-          sublabel={`${scaleMetrics?.singleflightCoalesced ?? 0} coalesced · ${scaleMetrics?.batchedSqlQueriesSaved ?? 0} SQL saved`}
           status={{ tone: 'info', label: '32 SHARDS' }}
         />
       </div>
 
       {/* TAB 0: HIGH-TRAFFIC & SCALABILITY ENGINE */}
       {activeTab === 'scalability' && (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5">
           <PerformanceDashboard token={token} />
 
           <Card
-            title="Live Go 1.23 High-Traffic & Concurrent Stress Benchmark (`/api/v1/system/load-test`)"
-            subtitle="Spawns concurrent goroutine workers against Singleflight request coalescing, 32-shard write-through cache, SHA-256 ledger verification, and statutory 95/5 settlement math"
+            title="Concurrent Stress Benchmark"
             actions={
               <Button
                 variant="secondary"
@@ -607,8 +597,8 @@ export const PlatformWorkspace: React.FC<{
               </Button>
             }
           >
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <Button
                   variant="primary"
                   size="sm"
@@ -639,45 +629,45 @@ export const PlatformWorkspace: React.FC<{
               </div>
 
               {benchResult && (
-                <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-tint)] border border-[var(--border-strong)] flex flex-col gap-4">
+                <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-tint)] border border-[var(--border-strong)] flex flex-col gap-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <Badge tone="ok" label="ZERO ERRORS" />
                       <span className="text-sm font-bold text-[var(--text-primary)]">
-                        Measured Throughput: {benchResult.throughputRps.toLocaleString()} requests/sec
+                        Throughput: {benchResult.throughputRps.toLocaleString()} req/s
                       </span>
                     </div>
                     <span className="text-xs font-mono-code text-[var(--text-secondary)]">
-                      {benchResult.totalRequests} requests across {benchResult.concurrency} goroutines in {benchResult.durationMs} ms
+                      {benchResult.totalRequests} reqs · {benchResult.concurrency} workers · {benchResult.durationMs} ms
                     </span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-                    <div className="p-3 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
+                    <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
                       <div className="text-[var(--text-muted)] uppercase font-semibold">p50 Latency</div>
                       <div className="text-base font-bold font-mono-code text-[var(--text-primary)] mt-0.5">
                         {benchResult.p50LatencyMs} ms
                       </div>
                     </div>
-                    <div className="p-3 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
+                    <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
                       <div className="text-[var(--text-muted)] uppercase font-semibold">p95 Latency</div>
                       <div className="text-base font-bold font-mono-code text-[var(--text-primary)] mt-0.5">
                         {benchResult.p95LatencyMs} ms
                       </div>
                     </div>
-                    <div className="p-3 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
+                    <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
                       <div className="text-[var(--text-muted)] uppercase font-semibold">p99 Latency</div>
                       <div className="text-base font-bold font-mono-code text-[var(--text-primary)] mt-0.5">
                         {benchResult.p99LatencyMs} ms
                       </div>
                     </div>
-                    <div className="p-3 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
-                      <div className="text-[var(--text-muted)] uppercase font-semibold">Sharded Cache Hits</div>
+                    <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
+                      <div className="text-[var(--text-muted)] uppercase font-semibold">Cache Hits</div>
                       <div className="text-base font-bold font-mono-code text-[var(--text-primary)] mt-0.5">
                         +{benchResult.cacheHitsDelta}
                       </div>
                     </div>
-                    <div className="p-3 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
-                      <div className="text-[var(--text-muted)] uppercase font-semibold">Singleflight Coalesced</div>
+                    <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
+                      <div className="text-[var(--text-muted)] uppercase font-semibold">Coalesced</div>
                       <div className="text-base font-bold font-mono-code text-[var(--text-primary)] mt-0.5">
                         +{benchResult.coalescedDelta}
                       </div>
@@ -685,57 +675,6 @@ export const PlatformWorkspace: React.FC<{
                   </div>
                 </div>
               )}
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-                      1. 32-Shard Cache & Singleflight
-                    </span>
-                    <Badge tone="ok" label={`${scaleMetrics?.cacheShards ?? 32} SHARDS`} />
-                  </div>
-                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                    FNV-1a 32-way sharded RWMutex TTL cache eliminates global lock contention. Thundering-herd cache misses on the same tenant coalesce into a single PostgreSQL batch query via `Singleflight`.
-                  </p>
-                  <div className="mt-auto pt-2 border-t border-[var(--border-hair)] flex items-center justify-between text-xs font-mono-code">
-                    <span>Hits: {scaleMetrics?.cacheHits ?? 0}</span>
-                    <span>Misses: {scaleMetrics?.cacheMisses ?? 0}</span>
-                    <span>Coalesced: {scaleMetrics?.singleflightCoalesced ?? 0}</span>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-                      2. Single-Roundtrip PG Batch & Pool
-                    </span>
-                    <Badge tone="info" label="20x FEWER IOPS" />
-                  </div>
-                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                    `db.QueryBatch` executes all 20 tenant bootstrap queries in 1 batched round-trip over a persistent HTTP/1.1 Keep-Alive connection pool (`MaxIdleConnsPerHost: 256`) backed by migration `006` covering indexes.
-                  </p>
-                  <div className="mt-auto pt-2 border-t border-[var(--border-hair)] flex items-center justify-between text-xs font-mono-code">
-                    <span>SQL Saved: {scaleMetrics?.batchedSqlQueriesSaved ?? 0}</span>
-                    <span>Gzip Resp: {scaleMetrics?.gzipCompressedResponses ?? 0}</span>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-                      3. Bulkhead Isolation & Token Bucket
-                    </span>
-                    <Badge tone="ok" label={`${scaleMetrics?.goroutines ?? 12} GOROUTINES`} />
-                  </div>
-                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                    Read lane (`{scaleMetrics?.readBulkheadCap ?? 512}` concurrent) and write lane (`{scaleMetrics?.writeBulkheadCap ?? 128}` concurrent) semaphores prevent slow mutations from starving pit reads, paired with sharded token-bucket rate limiting.
-                  </p>
-                  <div className="mt-auto pt-2 border-t border-[var(--border-hair)] flex items-center justify-between text-xs font-mono-code">
-                    <span>Heap: {scaleMetrics?.heapAllocMb ?? 8.4} MB</span>
-                    <span>429/503 Shed: {(scaleMetrics?.rateLimitedRejected ?? 0) + (scaleMetrics?.bulkheadRejected ?? 0)}</span>
-                  </div>
-                </div>
-              </div>
             </div>
           </Card>
         </div>

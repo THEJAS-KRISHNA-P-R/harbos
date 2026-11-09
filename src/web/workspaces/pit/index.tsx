@@ -164,26 +164,22 @@ export const PitWorkspace: React.FC<{
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="p-5 sm:p-6 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-4 min-w-0">
-          <AuctionPitAmphitheatreSvgDecor size={52} />
+    <div className="flex flex-col gap-5">
+      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <AuctionPitAmphitheatreSvgDecor size={40} />
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--brand)] mb-1">
-              <AuctionGavelBellIcon size={15} />
-              <span>Pit Amphitheatre · 8-Gate Statutory Clearing · Atomic Ledger Post</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-              Auction Pit Pad Terminal
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+              Auction Pit Pad
             </h1>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">
-              Single-transaction statutory enforcement (s.4(4), s.4(8), s.5, s.10, s.19, s.21) + atomic double-entry journal posting.
+            <p className="text-xs text-[var(--text-secondary)] truncate">
+              {openLots.length} Open Lots · Atomic Ledger Post
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <Badge tone="ok" label="LEADER LEASE ACTIVE" code={`FENCE #${fencingToken}`} />
-          <Badge tone="info" label={`CONFIRM P50: ${lastLatencyMs} MS`} />
+          <Badge tone="info" label={`P50: ${lastLatencyMs} MS`} />
         </div>
       </div>
 
@@ -196,48 +192,15 @@ export const PitWorkspace: React.FC<{
         />
       )}
 
-      {/* Interactive 4-Gate Pit Clearing Workflow Cues */}
-      <WorkflowStepStrip
-        steps={[
-          {
-            step: 'GATE 01 · LOT & s.21',
-            title: `Lot ${currentLot?.lot_code ?? '—'}`,
-            detail: `Grade: ${currentLot?.inspection_grade ?? '—'} · ${currentLot?.available_boxes ?? 0} boxes avail`,
-            active: true,
-            done: currentLot?.inspection_grade !== 'REJECTED_UNFIT',
-          },
-          {
-            step: 'GATE 02 · s.5 & s.4(8)',
-            title: 'Auctioneer Licence',
-            detail: `${currentLicence?.auctioneer_name ?? '—'} (${currentLicence?.status ?? '—'})`,
-            done: currentLicence?.status === 'ACTIVE',
-          },
-          {
-            step: 'GATE 03 · s.19 & s.23',
-            title: 'Floor & Credit Lock',
-            detail: `Bid ₹${bidPriceRupeesPerKg}/kg vs Floor ${formatInrFromPaise(currentSpecies?.floor_price_paise_per_kg ?? '0')}/kg`,
-            done: true,
-          },
-          {
-            step: 'GATE 04 · LEDGER',
-            title: 'Atomic Journal Post',
-            detail: `8-line double-entry + SHA-256 chain (${lastLatencyMs} ms)`,
-            done: data.allocations.length > 0,
-          },
-        ]}
-      />
-
       {/* Current Lot Status Metrics */}
       {currentLot && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           <Metric
             featured
-            icon={<AuctionGavelBellIcon size={16} />}
             label={`Current Lot: ${currentLot.lot_code}`}
             value={`${currentLot.available_boxes} / ${currentLot.total_boxes}`}
-            unit="BOXES REMAINING"
-            sublabel={`Available Weight: ${formatKgFromGrams(currentLot.available_grams)}`}
-            formulaCue="Pro-rata integer gram allocation per box"
+            unit="BOXES"
+            sublabel={formatKgFromGrams(currentLot.available_grams)}
             status={{
               tone:
                 currentLot.inspection_grade === 'REJECTED_UNFIT'
@@ -249,24 +212,19 @@ export const PitWorkspace: React.FC<{
             }}
           />
           <Metric
-            icon={<StatutorySealIcon size={16} />}
-            label="Section 19 Basic Floor Price"
+            label="Floor Price (s.19)"
             value={formatInrFromPaise(currentSpecies?.floor_price_paise_per_kg ?? '0')}
             unit="/ KG"
-            sublabel={`${currentSpecies?.name_en ?? ''} (${currentSpecies?.name_ml ?? ''})`}
-            formulaCue={`Tenant Enforcement: ${data.tenant?.floor_enforcement ?? 'WARN'}`}
+            sublabel={currentSpecies?.name_en ?? ''}
             status={{
               tone: 'info',
               label: `MODE: ${data.tenant?.floor_enforcement ?? 'WARN'}`,
             }}
           />
           <Metric
-            icon={<ShieldCheck className="w-4 h-4" />}
-            label="Section 4(8) Vessel Loan Check"
+            label="Vessel Loan (s.4(8))"
             value={currentVessel?.has_active_society_loan ? 'LOAN TIED' : 'FREE VESSEL'}
-            unit={currentVessel?.loan_coop_society_id ?? 'ANY LICENCE'}
-            sublabel={`Vessel: ${currentVessel?.vessel_name_en ?? ''} (${currentVessel?.registration_no ?? ''})`}
-            formulaCue="Loan-tied vessels require society-deputed auctioneer"
+            sublabel={currentVessel?.vessel_name_en ?? ''}
             status={{
               tone: currentVessel?.has_active_society_loan ? 'warn' : 'ok',
               label: currentVessel?.has_active_society_loan ? 'DEPUTED ONLY' : 'OPEN',
@@ -276,15 +234,9 @@ export const PitWorkspace: React.FC<{
       )}
 
       {/* Pit Allocation Grid: Left = Lot & Statutory Controls, Right = Keypad */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         <div className="lg:col-span-7 flex flex-col gap-4">
-          <Card
-            stepBadge="STEP 01"
-            kicker="8-Gate Statutory Pre-Flight"
-            title="1. Lot, Auction Mode & Statutory Licence Selection"
-            subtitle="Test s.4(8) society-loan enforcement, s.5 expired licence rejection, or s.21 unfit lot rejection live"
-            icon={<StatutorySealIcon size={20} />}
-          >
+          <Card title="Lot, Mode & Licence Selection">
             <div className="flex flex-col gap-4">
               <Select
                 label="Select Landed Lot (Includes Open, Society-Loan & Unfit s.21 Lots)"

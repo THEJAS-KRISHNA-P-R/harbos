@@ -429,16 +429,12 @@ export const HarbourWorkspace: React.FC<{
 
   const auditLogsSection = (
     <Card
-      stepBadge="OBSERVABILITY"
-      kicker="Immutable Event Stream · core.audit_logs"
       title="Audit Logs"
-      subtitle="Search and filter immutable statutory audit entries by actor, action code, or target ID"
-      icon={<Search className="w-5 h-5" />}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Badge
             tone="info"
-            label={`Showing ${filteredAuditLogs.length} of ${allAuditLogs.length} entries`}
+            label={`${filteredAuditLogs.length} / ${allAuditLogs.length}`}
           />
           {(auditSearchQuery.trim() !== '' || auditRoleFilter !== 'ALL') && (
             <Button
@@ -450,29 +446,29 @@ export const HarbourWorkspace: React.FC<{
                 setAuditRoleFilter('ALL');
               }}
             >
-              Reset Filter
+              Reset
             </Button>
           )}
         </div>
       }
     >
-      <div className="flex flex-col gap-5">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <div className="md:col-span-2">
             <Input
-              label="Search Audit Logs (Actor, Action Code, or Target ID)"
+              label="Search Audit Logs"
               type="search"
-              placeholder="Search by actor (e.g. Deepa, USR-AUCT-01), action code (e.g. LOT_ALLOCATED), or target ID (e.g. LOT-2026-001)…"
+              placeholder="Actor, action code, or target ID…"
               value={auditSearchQuery}
               onChange={(e) => setAuditSearchQuery(e.target.value)}
             />
           </div>
           <Select
-            label="Filter by Actor Role"
+            label="Role"
             value={auditRoleFilter}
             onChange={(e) => setAuditRoleFilter(e.target.value)}
             options={[
-              { value: 'ALL', label: 'All Harbour Roles' },
+              { value: 'ALL', label: 'All Roles' },
               { value: 'HARBOUR_ADMIN', label: 'HARBOUR_ADMIN' },
               { value: 'ACCOUNTANT', label: 'ACCOUNTANT' },
               { value: 'LICENSED_AUCTIONEER', label: 'LICENSED_AUCTIONEER' },
@@ -483,18 +479,13 @@ export const HarbourWorkspace: React.FC<{
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)] flex items-center gap-1.5">
-            <Search className="w-3.5 h-3.5" />
-            <span>Quick Filter:</span>
-          </span>
+        <div className="flex flex-wrap items-center gap-1.5">
           {[
-            { label: 'All Entries', query: '' },
+            { label: 'All', query: '' },
             { label: 'Allocations', query: 'LOT_ALLOCATED' },
-            { label: 's.21 Rejections', query: 'REJECTED_S21' },
-            { label: 'Dual-Key Reversals', query: 'REVERSAL' },
-            { label: 'Payout Batches', query: 'PAYOUT_BATCH' },
-            { label: 'LOT-2026-001', query: 'LOT-2026-001' },
+            { label: 'Rejections', query: 'REJECTED_S21' },
+            { label: 'Reversals', query: 'REVERSAL' },
+            { label: 'Batches', query: 'PAYOUT_BATCH' },
           ].map((preset) => (
             <Button
               key={preset.label}
@@ -520,31 +511,31 @@ export const HarbourWorkspace: React.FC<{
   );
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="p-5 sm:p-6 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-4 min-w-0">
-          <HarbourQuayDawnSvgDecor size={52} />
-          <div className="min-w-0">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--brand)] mb-1">
-              <StatutorySealIcon size={15} />
-              <span>Kerala Act 16 of 2021 · Go 1.23 + PostgreSQL 16 Clearing Engine</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-              Harbour Administration & Statutory Accounting
-            </h1>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">
-              {data.tenant?.name_en} (<span lang="ml">{data.tenant?.name_ml}</span>) · Policy:{' '}
-              <span className="font-semibold">{data.tenant?.active_policy_id}</span>
-            </p>
-          </div>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+            {data.tenant?.name_en ?? 'Harbour Operations'}
+          </h1>
+          <p className="text-xs text-[var(--text-muted)]">
+            Policy {data.tenant?.active_policy_id} · <span lang="ml">{data.tenant?.name_ml}</span>
+          </p>
         </div>
-        <div className="shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<FileDown className="w-3.5 h-3.5" />}
+            onClick={handleExportSection22ReturnCsv}
+          >
+            Export s.22 CSV
+          </Button>
           <Tabs
             items={[
-              { id: 'today', label: 'Today Board', badge: data.lots.length },
-              { id: 'accounting', label: 'Batches & Reversals', badge: data.reversals.length },
-              { id: 'reports', label: 's.22 & Exports' },
-              { id: 'audit', label: 'Audit Logs', badge: allAuditLogs.length },
+              { id: 'today', label: 'Overview', badge: data.lots.length },
+              { id: 'accounting', label: 'Accounting', badge: data.reversals.length },
+              { id: 'reports', label: 'Reports' },
+              { id: 'audit', label: 'Audit', badge: allAuditLogs.length },
             ]}
             activeId={activeTab}
             onChange={(id) => setActiveTab(id as 'today' | 'accounting' | 'reports' | 'audit')}
@@ -561,97 +552,79 @@ export const HarbourWorkspace: React.FC<{
         />
       )}
 
-      {/* Interactive 4-Step Governance Workflow Cues */}
-      <WorkflowStepStrip
-        steps={[
-          {
-            step: 'STEP 01 · s.19',
-            title: 'Floor Price & Licences',
-            detail: `${data.species.length} species · Mode: ${data.tenant?.floor_enforcement ?? 'WARN'}`,
-            active: activeTab === 'today',
-            done: true,
-            onClick: () => setActiveTab('today'),
-          },
-          {
-            step: 'STEP 02 · BATCHES',
-            title: 'Payouts & Reversals',
-            detail: `${data.payoutBatches.length} nodal batches · ${data.reversals.length} reversals`,
-            active: activeTab === 'accounting',
-            done: data.payoutBatches.some((b) => b.status === 'RECONCILED_UTR'),
-            onClick: () => setActiveTab('accounting'),
-          },
-          {
-            step: 'STEP 03 · s.22',
-            title: 'Statutory Returns & PDF',
-            detail: 'Export Section 22 auctioneer return CSV',
-            active: activeTab === 'reports',
-            done: data.allocations.length > 0,
-            onClick: () => setActiveTab('reports'),
-          },
-          {
-            step: 'STEP 04 · AUDIT',
-            title: 'Immutable Audit Trail',
-            detail: `${allAuditLogs.length} actor & target events logged`,
-            active: activeTab === 'audit',
-            done: allAuditLogs.length > 0,
-            onClick: () => setActiveTab('audit'),
-          },
-        ]}
-      />
-
-      {/* Top Metrics with Clear Primary Focal Anchor */}
+      {/* Compact 3-Metric Strip */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Metric
           featured
-          icon={<HarbourLedgerVaultIcon size={16} />}
-          label="Gross Auction Turnover (GTV)"
+          label="Gross Turnover (GTV)"
           value={formatInrFromPaise(totalGtvPaise)}
-          sublabel={`${data.allocations.length} settled allocations today`}
-          formulaCue="100% GTV = 95% Fisher Net + 5% Statutory Commission"
+          sublabel={`${data.allocations.length} allocations settled`}
           status={{ tone: 'ok', label: 'BALANCED' }}
         />
         <Metric
-          icon={<StatutorySealIcon size={16} />}
-          label="Fisher Bonus Escrow Pool (40%)"
+          label="Fisher Bonus Pool (40%)"
           value={formatInrFromPaise(totalBonusEscrowPaise)}
-          sublabel="Accrued in ledger.accounts per fisherman"
-          formulaCue="Act 16 s.4(5)(a): 40% of 5% commission (2.00% GTV)"
-          status={{ tone: 'info', label: 'ACT 16 s.4(5)' }}
+          sublabel="2.00% GTV escrow"
+          status={{ tone: 'info', label: 'ESCROW' }}
         />
         <Metric
-          icon={<ShieldCheck className="w-4 h-4" />}
-          label="SHA-256 Ledger Chain"
-          value={`${data.ledgerVerification.entryCount} ENTRIES`}
-          sublabel={`Head: ${data.ledgerVerification.headHash.slice(0, 16)}…`}
-          formulaCue="PostgreSQL BEFORE UPDATE/DELETE trigger protected"
+          label="Ledger Chain"
+          value={`${data.ledgerVerification.entryCount} rows`}
+          sublabel={`Head ${data.ledgerVerification.headHash.slice(0, 12)}…`}
           status={{
             tone: data.ledgerVerification.verified ? 'ok' : 'danger',
-            label: data.ledgerVerification.verified ? 'SHA-256 VERIFIED' : 'TAMPER DETECTED',
+            label: data.ledgerVerification.verified ? 'VERIFIED' : 'ALERT',
           }}
         />
       </div>
 
       {activeTab === 'today' && (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5">
+          {/* 1-Click Payout Batch & UTR Reconciliation surfaced directly on Overview */}
           <Card
-            stepBadge="STATUTORY GATE s.19"
-            kicker="Kerala Act 16 of 2021 · Basic Price Schedule"
-            title="Section 19 Basic Floor Price Schedule & Enforcement Mode"
-            subtitle="Configure per-tenant floor enforcement (BLOCK | WARN | OFF — Conflict C6 / OPEN-01)"
-            icon={<PelagicFishIcon size={20} />}
+            title="Payout Batches & UTR Clearing"
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={utrInput}
+                  onChange={(e) => setUtrInput(e.target.value)}
+                  aria-label="Bank UTR Reference"
+                  placeholder="UTR reference…"
+                  className="h-9 px-3 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-xs font-mono-code text-[var(--text-primary)]"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Landmark className="w-3.5 h-3.5" />}
+                  onClick={handleGenerateBatch}
+                >
+                  New Batch
+                </Button>
+              </div>
+            }
           >
+            <DataTable
+              caption="Payout Batches"
+              columns={batchColumns}
+              rows={data.payoutBatches}
+              getRowKey={(r) => r.batch_id}
+            />
+          </Card>
+
+          <Card title="Floor Price Schedule (s.19)">
             <form
               onSubmit={handleUpdateFloorSchedule}
-              className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-6 pb-6 border-b border-[var(--border-hair)]"
+              className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end mb-4 pb-4 border-b border-[var(--border-hair)]"
             >
               <Select
-                label="Tenant Floor Enforcement (s.19)"
+                label="Enforcement"
                 value={floorEnforcement}
                 onChange={(e) => setFloorEnforcement(e.target.value as FloorEnforcement)}
                 options={[
-                  { value: 'WARN', label: 'WARN (Allow & Flag Below Floor — Default)' },
-                  { value: 'BLOCK', label: 'BLOCK (Reject Bids Below Basic Price)' },
-                  { value: 'OFF', label: 'OFF (Advisory Display Only)' },
+                  { value: 'WARN', label: 'WARN (Flag Below Floor)' },
+                  { value: 'BLOCK', label: 'BLOCK (Reject Below Floor)' },
+                  { value: 'OFF', label: 'OFF (Advisory)' },
                 ]}
               />
               <Select
@@ -683,13 +656,7 @@ export const HarbourWorkspace: React.FC<{
             />
           </Card>
 
-          <Card
-            stepBadge="STATUTORY GATE s.5 & s.4(8)"
-            kicker="Harbour Management Society Registry"
-            title="Licensed Auctioneers Registry (Section 5 & Section 4(8))"
-            subtitle="Expired licences and mismatched society-loan deputations are automatically blocked in the Pit"
-            icon={<StatutorySealIcon size={20} />}
-          >
+          <Card title="Licensed Auctioneers">
             <DataTable
               caption="Licensed Auctioneers Registry"
               columns={licenceColumns}

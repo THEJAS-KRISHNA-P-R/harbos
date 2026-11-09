@@ -4,7 +4,11 @@ import path from 'node:path';
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
-import { createApiApp, createEdgeRateLimiters } from '@server/app.ts';
+import {
+  createApiApp,
+  createEdgeRateLimiters,
+  invalidateLedgerAuditSqlLruCache,
+} from '@server/app.ts';
 import { config } from '@server/config.ts';
 import type { DbPort } from '@server/ports/db.ts';
 import { PGliteAdapter } from '@server/adapters/db-pglite.ts';
@@ -220,9 +224,13 @@ export async function startServer(): Promise<void> {
 
   // Proxy all /api/* requests to the live Go 1.23 backend when active
   app.use((req, res, next) => {
+    if (req.method === 'POST' && req.url.startsWith('/api/v1/')) {
+      invalidateLedgerAuditSqlLruCache();
+    }
     if (
       !req.url.startsWith('/api/') ||
       req.url.startsWith('/api/v1/system/metrics') ||
+      req.url.startsWith('/api/v1/ledger/audit-imports') ||
       !goProc
     ) {
       next();

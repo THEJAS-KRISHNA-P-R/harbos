@@ -250,34 +250,26 @@ export const WeighingWorkspace: React.FC<{
   ];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {/* Top Status & Connectivity Banner */}
-      <div className="p-5 sm:p-6 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-4 min-w-0">
-          <DocksideWeighingScaleSvgDecor size={52} />
+      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <DocksideWeighingScaleSvgDecor size={40} />
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--brand)] mb-1">
-              <DockScaleIcon size={15} />
-              <span>Dockside Terminal · Integer Grams · HMAC-SHA256 Signed QR</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] tracking-tight">
-              Dockside Weighing & QR Lot Tagging
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+              Weighing &amp; Lots
             </h1>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">
-              Scan vessel QR → Select Kerala species → Capture integer gram weight → Lock & print HMAC-signed sticker.
+            <p className="text-xs text-[var(--text-secondary)] truncate">
+              {data.vessels.length} Vessels · HMAC-SHA256 Signed QR
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <ConnectivityBadge
             online={!simulateOffline}
             queuedCount={offlineQueue.length}
             onToggleSimulateOffline={() => setSimulateOffline((prev) => !prev)}
           />
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-xs font-semibold text-[var(--text-secondary)] whitespace-nowrap shrink-0">
-            <TrawlerVesselIcon size={15} className="text-[var(--brand)] shrink-0" />
-            <span>{data.vessels.length} Registered Vessels</span>
-          </span>
           {offlineQueue.length > 0 && (
             <Button
               variant="primary"
@@ -301,81 +293,35 @@ export const WeighingWorkspace: React.FC<{
         />
       )}
 
-      {/* Interactive 3-Step Dockside Weighing Workflow Cues */}
-      <WorkflowStepStrip
-        steps={[
-          {
-            step: 'STEP 01 · VESSEL',
-            title: 'Select Landed Vessel',
-            detail: 'Bind registration & s.4(8) society loan flag',
-            active: true,
-            done: Boolean(selectedVesselId),
-          },
-          {
-            step: 'STEP 02 · SPECIES',
-            title: 'Choose Kerala Species',
-            detail: 'Bilingual EN/ML + Section 19 floor price',
-            done: Boolean(selectedSpeciesId),
-          },
-          {
-            step: 'STEP 03 · WEIGHT',
-            title: 'Capture Integer Grams',
-            detail: `${Math.round((Number(netKgInput) || 0) * 1000).toLocaleString('en-IN')} g (${totalBoxes} boxes)`,
-            done: Number(netKgInput) > 0,
-          },
-          {
-            step: 'STEP 04 · QR HMAC',
-            title: 'Print Signed Sticker',
-            detail: 'HMAC-SHA256 authenticated lot tag',
-            done: data.lots.length > 0,
-          },
-        ]}
-      />
-
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
         <Metric
           featured
-          icon={<DockScaleIcon size={16} />}
           label="Total Landed Weight"
           value={formatKgFromGrams(
             data.lots.reduce((acc, l) => acc + BigInt(l.net_grams), 0n)
           )}
-          sublabel="Zero IEEE-754 floating-point math"
-          formulaCue="Stored as exact BIGINT grams in auction.lots"
           status={{ tone: 'info', label: 'BIGINT GRAMS' }}
         />
         <Metric
-          icon={<QrCode className="w-4 h-4" />}
           label="Tagged Lots Today"
           value={String(data.lots.length)}
           unit="LOTS"
-          sublabel="Integer grams stored in PostgreSQL"
-          formulaCue="Each lot signed with HMAC-SHA256 QR token"
           status={{ tone: 'ok', label: 'HMAC SIGNED' }}
         />
         <Metric
-          icon={<RefreshCw className="w-4 h-4" />}
-          label="Offline Command Queue"
+          label="Offline Queue"
           value={String(offlineQueue.length)}
           unit="PENDING"
-          sublabel="UUIDv7 / idempotency dedupe active"
-          formulaCue="Replays via /api/v1/sync/commands with zero dupes"
           status={{
             tone: simulateOffline ? 'warn' : 'ok',
-            label: simulateOffline ? 'OFFLINE MODE' : 'SYNCED',
+            label: simulateOffline ? 'OFFLINE' : 'SYNCED',
           }}
         />
       </div>
 
       {/* Main Weighing Terminal Card */}
-      <Card
-        stepBadge="DOCKSIDE TERMINAL"
-        kicker="Integer Grams · Wet-Hand 64px+ Controls"
-        title="Step 1 & 2: Vessel Selection & Bilingual Species Grid"
-        subtitle="Touch targets >= 64px for wet-hand dockside tablet operation"
-        icon={<DockScaleIcon size={20} />}
-      >
+      <Card title="Weighing & Lot Tagging">
         <form onSubmit={handleTagLot} className="flex flex-col gap-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select

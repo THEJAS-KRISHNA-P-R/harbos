@@ -295,9 +295,6 @@ export interface CardProps {
 export const Card: React.FC<CardProps> = ({
   title,
   subtitle,
-  kicker,
-  stepBadge,
-  icon,
   actions,
   children,
   className = '',
@@ -307,45 +304,24 @@ export const Card: React.FC<CardProps> = ({
     <section
       className={`bg-[var(--bg-surface)] border border-[var(--border-hair)] rounded-[var(--radius-card)] overflow-hidden transition-colors ${className}`}
     >
-      {(title || subtitle || kicker || stepBadge || actions) && (
-        <header className="px-4 sm:px-6 py-4 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex flex-wrap items-start sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-3 sm:gap-3.5 min-w-0 flex-1">
-            {icon && (
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-[var(--radius-control)] bg-[var(--brand-soft)] border border-[var(--navy-200)] text-[var(--brand)] flex items-center justify-center shrink-0 mt-0.5">
-                {icon}
-              </div>
+      {(title || actions) && (
+        <header className="px-5 py-3.5 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {title && (
+              <h3 className="text-[15px] leading-5 font-bold text-[var(--text-primary)] tracking-tight truncate">
+                {title}
+              </h3>
             )}
-            <div className="min-w-0 flex-1">
-              {(stepBadge || kicker) && (
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  {stepBadge && (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--brand-soft)] text-[var(--brand-soft-fg)] border border-[var(--navy-200)] text-[11px] font-bold font-mono-code tracking-wider uppercase whitespace-nowrap shrink-0">
-                      {stepBadge}
-                    </span>
-                  )}
-                  {kicker && (
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)]">
-                      {kicker}
-                    </span>
-                  )}
-                </div>
-              )}
-              {title && (
-                <h3 className="text-[15px] sm:text-[16px] leading-6 font-bold text-[var(--text-primary)] tracking-tight">
-                  {title}
-                </h3>
-              )}
-              {subtitle && (
-                <p className="text-[13px] leading-5 text-[var(--text-secondary)] mt-0.5">{subtitle}</p>
-              )}
-            </div>
+            {subtitle && (
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5 truncate">{subtitle}</p>
+            )}
           </div>
           {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
         </header>
       )}
-      <div className="p-4 sm:p-6">{children}</div>
+      <div className="p-4 sm:p-5">{children}</div>
       {sunkenFooter && (
-        <footer className="px-4 sm:px-6 py-3.5 bg-[var(--bg-sunken)] border-t border-[var(--border-hair)] text-xs text-[var(--text-secondary)]">
+        <footer className="px-5 py-3 bg-[var(--bg-sunken)] border-t border-[var(--border-hair)] text-xs text-[var(--text-secondary)]">
           {sunkenFooter}
         </footer>
       )}
@@ -429,58 +405,40 @@ export const Metric: React.FC<MetricProps> = ({
   value,
   unit,
   sublabel,
-  formulaCue,
   featured = false,
-  icon,
   status,
   action,
 }) => {
   return (
     <div
-      className={`rounded-[var(--radius-card)] p-5 sm:p-6 flex flex-col justify-between gap-3 border transition-colors ${
+      className={`rounded-[var(--radius-card)] p-4 sm:p-5 flex flex-col justify-between gap-2 border transition-colors ${
         featured
-          ? 'bg-[var(--brand-soft)]/55 border-[var(--navy-200)]'
+          ? 'bg-[var(--brand-soft)]/50 border-[var(--navy-200)]'
           : 'bg-[var(--bg-surface)] border-[var(--border-hair)]'
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          {icon && (
-            <span className="w-7 h-7 rounded-[var(--radius-pill)] bg-[var(--brand-soft)] text-[var(--brand)] inline-flex items-center justify-center shrink-0">
-              {icon}
-            </span>
-          )}
-          <span className="text-[11px] leading-4 font-bold uppercase tracking-[0.04em] text-[var(--text-secondary)]">
-            {label}
-          </span>
-        </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-[var(--text-secondary)] truncate">
+          {label}
+        </span>
         {status && <Badge tone={status.tone} label={status.label} className="shrink-0" />}
       </div>
-      <div className="flex items-baseline gap-2 pt-0.5">
-        <span
-          className={`${
-            featured ? 'text-[30px] leading-[36px]' : 'text-[26px] leading-[32px]'
-          } font-bold text-[var(--text-primary)] font-mono-code tabular-nums tracking-tight`}
-        >
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-2xl font-bold text-[var(--text-primary)] font-mono-code tabular-nums tracking-tight">
           {value}
         </span>
         {unit && (
-          <span className="text-xs font-semibold text-[var(--text-secondary)] font-mono-code">
+          <span className="text-xs font-semibold text-[var(--text-muted)] font-mono-code">
             {unit}
           </span>
         )}
       </div>
-      {(sublabel || formulaCue || action) && (
-        <div className="flex flex-col gap-1.5 pt-2 border-t border-[var(--border-hair)]">
-          <div className="flex items-center justify-between gap-2">
-            {sublabel && <p className="text-xs font-medium text-[var(--text-secondary)]">{sublabel}</p>}
-            {action}
-          </div>
-          {formulaCue && (
-            <div className="text-[11px] font-mono-code text-[var(--text-muted)]">
-              {formulaCue}
-            </div>
+      {(sublabel || action) && (
+        <div className="flex items-center justify-between gap-2 pt-1">
+          {sublabel && (
+            <p className="text-xs text-[var(--text-muted)] truncate">{sublabel}</p>
           )}
+          {action}
         </div>
       )}
     </div>
@@ -1382,46 +1340,39 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
           </nav>
         </div>
 
-        {/* Bottom Operator Profile & Statutory Anchor Card */}
-        <div className="flex flex-col gap-2.5 w-full pt-3 border-t border-[var(--border-hair)]">
+        {/* Bottom Operator Profile Card */}
+        <div className="flex flex-col gap-2 w-full pt-3 border-t border-[var(--border-hair)]">
           {operatorCard && (
             <button
               type="button"
               onClick={operatorCard.onOpenProfile}
               title={`Operator Profile: ${operatorCard.fullName} (${operatorCard.roleBadge})`}
               aria-label={`Open Operator Profile for ${operatorCard.fullName}`}
-              className={`rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-strong)]/60 hover:border-[var(--brand)] transition-colors cursor-pointer text-left ${
-                sidebarCollapsed ? 'w-10 h-10 mx-auto flex items-center justify-center p-0' : 'p-3 w-full flex items-center gap-3'
+              className={`rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] hover:border-[var(--brand)] transition-colors cursor-pointer text-left ${
+                sidebarCollapsed ? 'w-10 h-10 mx-auto flex items-center justify-center p-0' : 'p-2.5 w-full flex items-center gap-2.5'
               }`}
             >
-              <span className="w-8 h-8 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-xs font-bold font-mono-code inline-flex items-center justify-center shrink-0">
+              <span className="w-7 h-7 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-xs font-bold font-mono-code inline-flex items-center justify-center shrink-0">
                 {operatorCard.initials}
               </span>
               {!sidebarCollapsed && (
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                  <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
                     {operatorCard.fullName}
                   </div>
-                  <div className="text-[11px] font-medium text-[var(--brand)] truncate">
-                    {operatorCard.roleBadge} · Profile
+                  <div className="text-[11px] text-[var(--text-muted)] truncate">
+                    {operatorCard.roleBadge}
                   </div>
                 </div>
               )}
             </button>
           )}
-
-          {!sidebarCollapsed && (
-            <div className="px-2.5 py-2 rounded-[var(--radius-control)] bg-[var(--bg-surface)]/70 border border-[var(--border-hair)] text-[11px] text-[var(--text-secondary)] flex items-center gap-2">
-              <StatutorySealIcon size={15} className="text-[var(--brand)] shrink-0" />
-              <span className="truncate font-medium">Act 16 of 2021 · Go 1.23 · PG 16</span>
-            </div>
-          )}
         </div>
       </aside>
 
-      {/* Main Workspace Area (Optimized for Mobile, iPad/Tablet, MacBook 13"/14"/16", and Desktop) */}
+      {/* Main Workspace Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="min-h-[58px] px-3 sm:px-6 lg:px-8 py-2 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex items-center justify-between gap-2 no-print">
+        <header className="min-h-[54px] px-4 sm:px-6 lg:px-8 py-2 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex items-center justify-between gap-4 no-print">
           <div className="flex items-center gap-2 min-w-0 shrink-0">
             <button
               type="button"
@@ -1431,35 +1382,11 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
             >
               <Menu className="w-4 h-4" />
             </button>
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed((prev) => !prev)}
-              aria-label={sidebarCollapsed ? 'Expand navigation sidebar' : 'Collapse navigation sidebar'}
-              title={sidebarCollapsed ? 'Expand navigation sidebar' : 'Collapse navigation sidebar'}
-              className="hidden md:inline-flex w-9 h-9 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] hover:bg-[var(--brand-soft)] text-[var(--text-secondary)] items-center justify-center transition-colors cursor-pointer shrink-0"
-            >
-              {sidebarCollapsed ? (
-                <PanelLeftOpen className="w-4 h-4" />
-              ) : (
-                <PanelLeftClose className="w-4 h-4" />
-              )}
-            </button>
-            <div className="md:hidden shrink-0">
-              <MaritimeCrestSvgEmblem size={28} />
-            </div>
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="hidden xl:inline text-xs font-semibold text-[var(--text-muted)] truncate max-w-[140px]">
-                {brandSubtitle}
-              </span>
-              <span className="hidden xl:inline text-xs text-[var(--text-muted)]" aria-hidden="true">
-                /
-              </span>
-              <span className="text-xs sm:text-sm font-bold text-[var(--text-primary)] truncate max-w-[125px] sm:max-w-none">
-                {activeItem?.labelEn ?? 'Workspace'}
-              </span>
-            </div>
+            <span className="text-sm font-bold text-[var(--text-primary)] truncate">
+              {activeItem?.labelEn ?? 'Workspace'}
+            </span>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto max-w-full py-0.5">
+          <div className="flex items-center gap-2 overflow-x-auto max-w-full py-0.5">
             {headerRight}
           </div>
         </header>
