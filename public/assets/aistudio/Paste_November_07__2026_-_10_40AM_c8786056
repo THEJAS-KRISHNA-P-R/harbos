@@ -1,0 +1,421 @@
+HARBOUROS — MASTER AGENT PROMPT (v1.0)
+Paste §0 (Kick-off) into AI Studio as your first message. Keep this file in the repo root as HARBOUROS_AGENT_PROMPT.md. The agent re-reads it at the start of every session.
+Inputs the agent already has: harbour.zip (prototype), Multi-Tenant_Fisheries_SaaS_Architecture.pdf/.docx (PDF), harbouros_master_saas_business_legal_payment_ui_ux_plan.md (MD), design.md (DESIGN).
+0. KICK-OFF MESSAGE (paste this first)
+Text
+You are the lead engineer for HarbourOS. Read HARBOUROS_AGENT_PROMPT.md fully before touching any code.
+
+Rules for every session:
+1. Start by reading docs/PROGRESS.md and docs/DECISIONS.md. End by updating both.
+2. Work ONE milestone per session (I will say "go M3"). Do not start the next milestone.
+3. Never claim something works without pasting the command you ran and its real output.
+4. Never invent legal text, tax rules, bank file formats, scale protocols or government templates.
+   Put them in docs/DECISIONS.md as OPEN with an owner, and build a swappable adapter instead.
+5. No Firebase. No vendor lock-in. Every external dependency sits behind a port (see §4).
+6. If something in the prototype is fake, delete it or rebuild it for real. Do not decorate it.
+
+Start with M0. Before writing code, reply with: (a) your understanding of §2 conflicts and §3 audit in 10 lines,
+(b) any point in this prompt you believe is wrong, with evidence. Then execute M0.
+1. MISSION & DEFINITION OF DONE
+Product: HarbourOS is a multi-tenant system that runs a fishing harbour's morning: weigh → tag → auction → settle → report, in compliance with the Kerala Fish Procurement, Marketing and Maintenance of Quality Act, 2021 (Act 16 of 2021), with an append-only, hash-chained double-entry ledger.
+Done means all of the following are true, with evidence in docs/PROGRESS.md:
+#	Criterion	Evidence
+D1	Clean install and build from a fresh clone	npm ci && npm run check exits 0
+D2	Every money path is integer paise; zero float math on money or weight	grep gate + property tests
+D3	Ledger is real SHA-256, append-only, balanced, verifiable	golden-vector test + tamper test + verify-ledger script
+D4	Tenant isolation enforced by Postgres RLS, fail-closed	cross-tenant test suite
+D5	A lot can never be oversold, even with two tablets and offline sync	concurrency + fencing-token tests
+D6	All 7 workspaces work end to end against the real DB	scripted e2e simulation
+D7	UI uses the navy/off-white system, passes the contrast script, no green anywhere	npm run check:contrast + grep for green hex/classes
+D8	App runs on any Postgres by changing only DATABASE_URL	portability proof in M12
+D9	Zero Firebase imports; vendor SDKs only inside adapters/	npm run check:boundaries
+D10	Every OPEN decision is listed with an owner, none silently assumed	docs/DECISIONS.md
+2. SOURCE-OF-TRUTH ORDER AND VERIFIED CONFLICTS
+Order of authority when documents disagree: (1) the Act text (India Code, Act 16 of 2021) → (2) PDF → (3) MD → (4) prototype code → (5) DESIGN (for UI structure only; its colours are overridden by §11).
+The three documents contradict each other. These were checked against the Act's text. Resolve exactly as below; do not re-litigate without new evidence.
+#	Topic	PDF says	MD says	Act text says	Decision
+C1	Commission cap	≤5%	≤5%	s.4(4): amount not exceeding 5% may be realised	Cap = 500 bps, hard CHECK for Kerala regimes. Policy is per-tenant data.
+C2	Harbour / landing-centre split (s.4(5)(a))	Auctioneer 20, HMS 20, fisher annual bonus 40, co-op societies 20	Auctioneer 20, HMS 20, Matsyafed 20, primary co-op 40	Exactly the PDF split. Clause (iv) is "societies taking part in the auction"	Use PDF. MD's Matsyafed row is not in the Act. Recipients are data (recipient_kind), presets come from the Act; each policy stores legal_basis_ref.
+C3	Fish-market split (s.4(5)(b))	20/20/30/30 (auctioneer, FMMS, Welfare Fund Board, LSGI/owner)	not covered	Same as PDF	Use PDF.
+C4	s.4(5) wording	"must be apportioned"	"four statutory pillars"	"may be apportioned"	Ratio is configurable per tenant, sum must equal 10,000 bps, notification_ref required. Presets ship with the Act's ratios.
+C5	s.4(8)	Loan-tied vessels may only be auctioned by the society-deputed auctioneer	Same, plus "97% / 3% commission for private auctioneer"	Only the first part. No 97/3 rule exists.	Enforce deputed-auctioneer rule only. Delete any 97/3 logic.
+C6	s.19 basic price	Bids below floor are rejected	Same	HMS fixes a basic price; fishermen may opt to be procured by their co-op at that price. The Act does not say bids below it are illegal.	Floor enforcement is per-tenant config: BLOCK | WARN | OFF. Default WARN. Log decision as OPEN-01.
+C7	s.4(6) "no person shall realise any other benefits… in connection with fish auctioning"	Buyer fee and institutional cut are fine "subject to legal sign-off"	Mode A (flat SaaS) is safest; B/C need written sign-off	s.4(6) applies to any person, s.6(1)(iii) to the auctioneer	Default FIXED_SAAS_ONLY. Modes B/C are blocked by a DB CHECK unless legal_signoff_ref and legal_signoff_date are set on the policy. A buyer-side fee may itself be challengeable under s.4(6): record as OPEN-02.
+C8	GST	GST on buyer fee only → buyer pays ₹1,01,180	GST on all platform revenue (₹1,600 → ₹288) → ₹1,01,288	Not in the Act	OPEN-03 (needs a CA). Implement PDF behaviour (GST on buyer fee only; GST on any institutional share is handled on the monthly tax invoice to the institution, outside the dockside ledger). Alternative sits behind a policy flag. Never assert tax claims in UI copy.
+C9	MD's "60 bps institutional share"	n/a	20% of (HMS 20% + co-op 40%)	Derived from the wrong split (C2)	With the Act split it is 40 bps (₹400 on ₹1,00,000), matching the PDF.
+C10	Architecture	7 microservices, Go, NATS, Redis, PgBouncer, Flutter	Pilot-first modular monolith	n/a	Modular monolith (ADR-001). MD wins. PDF's stack is the extraction roadmap (§15), not Phase work.
+C11	s.22	Not mentioned	Not mentioned	Licensed auctioneers must submit returns to the Authorised Officer	Add a statutory return export (M9).
+C12	s.10 proviso	Mentioned	Mentioned	HMS may, with Government permission, take over first sale avoiding auction	Auction mode HMS_DIRECT_TAKEOVER (needs permission reference).
+C13	s.19(2)	Mentioned	Mentioned	Co-op may procure at the basic price	Auction mode COOP_PROCUREMENT.
+Golden vectors (Act split, ₹1,00,000 hammer = 10,000,000 paise). These must pass as tests in M1:
+Mode	Fisherman net	Bonus escrow	Auctioneer	HMS net	Co-op net	HarbourOS revenue	Buyer payable
+A FIXED_SAAS_ONLY	9,500,000	200,000	100,000	100,000	100,000	0	10,000,000
+B INSTITUTIONAL_TECH_SHARE (20% of HMS and co-op shares)	9,500,000	200,000	100,000	80,000	80,000	40,000	10,000,000
+C HYBRID (B + 100 bps buyer fee, 18% GST on buyer fee only)	9,500,000	200,000	100,000	80,000	80,000	140,000	10,118,000
+Conservation law per sale: buyerPayable == fishermanNet + bonusEscrow + auctioneer + hmsNet + coopNet + harbourosRevenue + gstOnBuyerFee.
+Check mode C: 9,500,000 + 200,000 + 100,000 + 80,000 + 80,000 + 140,000 + 18,000 = 10,118,000. ✔
+3. PROTOTYPE AUDIT (harbour.zip) — WHAT IS REAL, WHAT IS FAKE
+Verified by reading the code and running commands. The agent must re-verify in M0 and record results.
+#	Finding	Evidence	Action
+P1	npm install fails: ERESOLVE, esbuild 0.25 vs vite 8 peer requirement	npm install output	Fix in M0 (drop the direct esbuild devDependency or pin to a compatible range)
+P2	The "SHA-256" ledger hash is not SHA-256. computeLedgerRowHash is a custom 4×32-bit mixer. The UI says "SHA-256 verified".	src/domain/settlement.ts	Rewrite with node:crypto (server) and a golden vector shared with the SQL trigger
+P3	Migrations are never executed. db/migrate.ts reads files and returns hardcoded metadata (executionTimeMs, APPLIED). No Postgres driver is in package.json. State is a JSON file written with fs.writeFileSync. RLS, triggers and constraints have never run.	db/migrate.ts, src/domain/dbEngine.ts	Replace with a real runner on real Postgres (ADR-002)
+P4	Weights and prices use floats: parseFloat(x.toFixed(2)), Math.round(kg * price).	allocateLotBoxes	Integer grams, BigInt paise, defined rounding (§7)
+P5	No authentication. Role is a React state toggle. Tenant comes from the request body. No auth middleware in server.ts or App.tsx.	grep for jwt/session/login/otp returned nothing	Build real auth + RBAC + tenant context (M3)
+P6	/api/health hardcodes every service as UP; /api/metrics returns Math.random() numbers.	server.ts	Real checks and real counters, or delete
+P7	Gemini routes return canned fake results when no key is set (e.g. "Yellowfin Tuna, 0.98, A_EXPORT"), and a "legal counsel" route returns hardcoded legal conclusions.	server.ts	Delete canned fallbacks. Delete the legal-advice feature. Keep one optional, human-confirmed catch-photo assist behind LlmPort (ADR-009)
+P8	Model names are hardcoded (gemini-4-argon, gemini-3.8-flash, …) and @google/genai is imported in server.ts. This is vendor lock-in.	server.ts	Model IDs from env; SDK only inside adapters/llm-gemini.ts. Check the model list available in your AI Studio session before choosing defaults
+P9	CloudMigrationHub.tsx (628 lines) and iacTemplates.ts (492 lines) are UI and data about AWS/Azure/GCP with invented portability scores, costs and RPO/RTO numbers. No actual deployable artifact exists.	src/infra, src/components	Delete. Replace with a real Dockerfile, docker-compose.yml and docs/PORTABILITY.md (M12)
+P10	Developer tooling is mixed into the product UI: DatabaseSchemaExplorer, DocumentationHub, PilotCheckpointsHub, ObservabilityDashboard, GeminiSuite.	src/components	Delete or move to docs. Platform workspace gets one real "System" page (§10)
+P11	Ledger rows use account_type + free-text beneficiary_name, so per-beneficiary balances cannot be computed reliably.	004_*.sql	Real ledger.accounts table, one account per owner entity
+P12	Hash payload omits entry_seq; the SQL trigger uses digest() (requires pgcrypto).	004_*.sql	Include entry_seq; use built-in sha256() (PostgreSQL 11+) so no extension is needed. Verify on your engine in M2
+P13	RLS uses ENABLE without FORCE; policies have no WITH CHECK; the same DB role owns the tables.	all migrations	FORCE ROW LEVEL SECURITY, WITH CHECK, separate owner/app roles (§8)
+P14	settlement.test.ts imports a type as a value; it fails under bare node --experimental-strip-types.	test run	Run tests with tsx; use import type
+Keep as reference only: the SQL migrations and settlement.ts. Try to apply the five migrations on the real engine first (this reveals defects), then write a clean new chain. Nothing was ever deployed, so squash freely.
+4. HARD CONSTRAINTS
+4.1 No lock-in rule
+Every external concern is behind a port (a small TypeScript interface). Vendors exist only as adapters. Swapping a vendor must touch one adapter file and one env var.
+Concern	Port	Default adapter (works in AI Studio)	Production options	Banned
+Database	Db (query, tx)	PGlite (WASM Postgres)	Any Postgres via DATABASE_URL (RDS, Cloud SQL, Neon, Supabase as plain Postgres, self-hosted)	Firebase/Firestore, any non-Postgres store
+Auth	built in	Own OTP + JWT (jose), own users table	Same; OTP delivery via Notify	Firebase Auth, Clerk, Auth0
+Files (photos, QR images)	Storage	Postgres bytea table (small files only)	S3-compatible via adapter, local disk	Firebase Storage
+SMS / WhatsApp	Notify + outbox table	Console adapter (writes to outbox)	Any provider adapter, added later	Provider SDK in domain code
+LLM (optional)	Llm	Gemini adapter, off by default	Any other provider adapter	Model IDs or SDK outside adapters/
+Payments	BankFileFormatter now; PaymentGateway later	CSV payout batch	Razorpay Route / Cashfree / others as adapters (post-compliance)	Gateway SDK in modules
+Realtime	SSE over HTTP	Express SSE	Same, behind any proxy that supports streaming	Vendor realtime services
+Hosting	Dockerfile	AI Studio preview	Cloud Run, Fly, any VPS, k8s	Platform-specific config in code
+Config/secrets	server/config.ts (zod-validated env)	AI Studio Secrets	Any secret manager that injects env vars	process.env outside config.ts
+Fonts/assets	Bundled via npm	@fontsource/*	Same	Google Fonts CDN (breaks offline)
+Analytics	none	none	n/a	Third-party trackers
+4.2 AI Studio runtime facts (verified from Google's Build-mode docs)
+Web app = React client + a Node.js server runtime with npm packages and secrets. Deploys to Cloud Run. GitHub sync and ZIP export exist.
+Treat container disk as ephemeral. PGlite data in the preview may reset on restart. Therefore: the app seeds deterministically on boot when the DB is empty, and DATABASE_URL switches to a durable Postgres.
+There is no Go, Flutter, Docker, Redis or NATS in AI Studio. Do not plan work that needs them.
+Anything you cannot run in AI Studio (Docker, real-Postgres tests, Web Bluetooth hardware, device voices) must be marked UNVERIFIED-IN-AI-STUDIO in PROGRESS.md with the exact command for the human to run locally. Do not mark it done.
+4.3 Engineering principles (ponytail)
+Does it need to exist? If it is speculative, skip it and log it in docs/DECISIONS.md under DEFERRED.
+Reuse what is in the repo. Then stdlib. Then native browser/Postgres features. Then an already-installed dependency. A new dependency needs a one-line justification in DECISIONS.
+Deletion before addition. Fewest files that stay readable.
+Non-trivial logic ships with one runnable check (test). Money, security and ledger paths ship with property tests.
+Mark known simplifications with a // ponytail: comment stating the ceiling and the upgrade path.
+Never lazy about understanding: read the code a change touches and trace the flow before editing. Bug fix = root cause, fixed once where all callers route.
+Dependency allowlist (everything else needs justification): react, react-dom, react-router, tailwindcss + @tailwindcss/vite, vite + @vitejs/plugin-react, lucide-react, express, pg, @electric-sql/pglite, zod, jose, idb, qrcode, uuid (must support v7; verify version), @fontsource/inter, @fontsource/noto-sans-malayalam, @fontsource/jetbrains-mono, tsx, typescript, @types/*. Drop: motion (CSS transitions suffice), dotenv (config reads env directly), @google/genai stays only if the Gemini adapter is built.
+5. ARCHITECTURE DECISIONS (ADR format)
+ADR-001: Modular monolith, one package.json, workspace-ready folders
+Status: Accepted. Deciders: Thejas.
+Context: AI Studio runs one Node process and one Vite client. The MD recommends a pilot-first modular monolith. The PDF's microservices need infrastructure AI Studio cannot run.
+Options: (A) Nx monorepo with 7 services: fails in AI Studio, 5× ops cost for a one-harbour pilot. (B) npm workspaces: unverified in AI Studio's build pipeline. (C) Single package, strict folders and path aliases (@shared, @server, @web), enforced by a boundary script.
+Decision: C. Folders map 1:1 to future workspaces/services, so extraction is a move, not a rewrite.
+Consequences: Easier now: one install, one deploy. Harder later: a mechanical extraction step. Revisit when a second team or independent scaling is needed (§15).
+ADR-002: Postgres is the only datastore; PGlite by default, DATABASE_URL in production
+Context: RLS, triggers, constraints and the hash chain are the product's integrity story. Firestore cannot provide them and would lock the data model to Google.
+Decision: One SQL migration chain in db/migrations/, executed by our own ~80-line runner (schema_migrations table with checksums). A Db port with two adapters: PGlite (in-process, default) and pg Pool (when DATABASE_URL is set).
+Consequences: Same SQL everywhere. No ORM (SQL is the portable asset). PGlite is not for high-concurrency production use, so production must set DATABASE_URL.
+Verify in M2: PGlite supports roles, FORCE ROW LEVEL SECURITY, deferred constraint triggers, BEFORE TRUNCATE triggers and built-in sha256(). Record exactly what it does not support and run those tests against real Postgres locally.
+ADR-003: Own authentication
+Passwordless mobile OTP → short-lived access JWT (jose, 15 min) + rotating refresh token (httpOnly, SameSite cookie, hash stored in DB). Users, devices, sessions and audit logs in our schema. OTP is delivered through Notify; in dev/demo it is echoed in the UI only when OTP_DEV_ECHO=true (refuse to start with that flag when NODE_ENV=production). Staff roles may additionally require a device PIN for sensitive actions (manual weight override, reversal approval).
+ADR-004: Ports and adapters only where things really vary
+Ports: Db, Llm, Notify, Storage, Clock, BankFileFormatter. Domain math (@shared/domain) has zero imports from anywhere.
+ADR-005: Realtime = SSE + REST
+Server → client via Server-Sent Events (15 s keep-alive comments); client → server via REST commands. No WebSocket library. Dutch clock is time-computed (price is a pure function of server start time and schedule; clients render locally; the server decides the winning "stop" with an atomic claim), so there are no per-tick broadcasts. Do not promise "<50 ms"; measure server-side processing latency and report it.
+ADR-006: Offline = PWA with an IndexedDB command queue
+Weighing is fully offline-capable: client-generated UUIDv7 ids, idempotency keys, queued commands, server dedupe, conflict quarantine. Auctioning is online single-leader first (M6); offline local-leader leases are a separate step (M6b) with a fencing token and a quarantine path.
+ADR-007: Settlement and ledger design
+Pure functions in @shared/domain compute allocations; the ledger module posts them inside the same DB transaction as the sale allocation. The database, not application code, enforces append-only, balanced journals and the hash chain.
+ADR-008: Payments, bank file first
+No payment gateway is required for the pilot. Generate a payout batch (CSV through a formatter port) plus UTR reconciliation import. Gateway adapters are deferred (§15).
+ADR-009: AI is optional, advisory and human-confirmed
+Allowed: catch-photo assist for the inspector (species and freshness suggestion). Required behaviour: off by default; clearly labelled "AI suggestion — inspector must confirm"; if unavailable, return an explicit UNAVAILABLE state, never fabricated data; nothing is auto-graded or auto-priced. Removed: legal-advice chat, market-rate search, image generation.
+6. REPOSITORY LAYOUT AND BOUNDARY RULES
+Text
+/
+  package.json  tsconfig.json  vite.config.ts  index.html  .env.example
+  Dockerfile  docker-compose.yml  HARBOUROS_AGENT_PROMPT.md
+  docs/        PROGRESS.md  DECISIONS.md  PORTABILITY.md  RUNBOOK.md  adr/
+  db/          migrations/NNN_*.sql   seed/
+  scripts/     migrate.ts  seed.ts  verify-ledger.ts  export-data.ts
+               check-boundaries.ts  check-contrast.ts
+  src/
+    shared/    contracts/ (zod schemas + types)   domain/ (money, split, allocate, ledger-hash)   ids.ts
+    server/
+      main.ts  app.ts  config.ts            # composition root, the ONLY place adapters are wired
+      platform/  http, auth, rbac, tenancy, audit, idempotency, ratelimit, errors, sse, logger
+      modules/   identity  harbour  catch  auction  ledger  notify  reports  sdk
+      ports/     db  llm  notify  storage  clock  bank-file
+      adapters/  db-pglite  db-pg  llm-gemini  notify-console  storage-pg  bank-csv
+    web/
+      app/       router  providers  auth  offline
+      ui/        design system (tokens.css + components)
+      lib/       api client  i18n  format  sse  offline-queue
+      workspaces/ weighing  pit  buyer  fisher  inspector  harbour  platform
+  tests/         unit/  db/  api/  sim/
+Import rules, enforced by scripts/check-boundaries.ts (fails the build):
+@shared/* imports nothing outside @shared.
+@server/* and @web/* import @shared only; they never import each other.
+A module imports another module only through its index.ts. No reaching into internals.
+Modules depend on ports/, never on adapters/. Only server/main.ts imports adapters.
+A workspace (web/workspaces/x) never imports another workspace. Shared UI lives in web/ui, shared helpers in web/lib.
+process.env only in server/config.ts. firebase* anywhere = fail. @google/genai only in adapters/llm-gemini.ts.
+No Math.random in src/shared/domain or src/server/modules. No float arithmetic on identifiers named *paise*, *grams*, *bps* (regex gate plus review).
+7. DOMAIN RULES (the agent implements exactly these)
+Types. Money = bigint paise. Weight = bigint grams. Rates = integer basis points (10,000 = 100%). JSON wire format for money/weight = decimal strings validated by zod. DB columns = BIGINT. Never number for these.
+Split allocation. Use largest-remainder allocation with a deterministic tie-break order (Auctioneer, HMS/Market society, Fisher bonus/Welfare fund, Co-op/LSGI). Property test: for 10,000 random hammer prices and valid policies, sum(shares) == totalCommission and sum(all flows) == buyerPayable. Do not use "remainder goes to one party".
+Price × weight. amountPaise = (grams × pricePerKgPaise + 500) / 1000 using BigInt integer division (round half up). Defined once in @shared/domain/money.ts, tested with boundary cases.
+Partial boxes. A lot has total_boxes, net_grams. Allocation of k boxes takes floor(net_grams × k / total_boxes) grams, except the last allocation, which takes all remaining grams, so the sum equals the lot exactly. Actual weighed boxes may differ; if per-box weights are captured, use them instead and test both paths.
+Statutory checks at allocation time (all server-side, in one transaction):
+Auctioneer licence is ACTIVE, valid_from ≤ today ≤ valid_until, and its harbour_id equals the lot's harbour (s.5(7)–(8)).
+If the vessel has_active_society_loan, the auctioneer's deputed_by_society_id must equal loan_coop_society_id (s.4(8)).
+Lot is not REJECTED_UNFIT (s.21 inspection result).
+Floor price per tenant floor_enforcement (BLOCK rejects, WARN records a flagged event, OFF ignores).
+Commission ≤ cap (500 bps for Kerala regimes), recipients sum to 10,000 bps.
+Buyer available limit ≥ amount: available = escrow + approved_credit − unsettled_payables − active_holds. The credit row is locked FOR UPDATE inside the transaction.
+Idempotency key unique; replay returns the original result.
+Fencing token ≥ the session's current lease token (rejects stale leader tablets).
+Policies. commission_policies are versioned and effective-dated (effective_from, effective_to); a sale stores the policy_id it was settled under. Modes B/C require legal_signoff_ref + legal_signoff_date (DB CHECK). Changing a policy never rewrites old sales.
+Auction modes. PHYSICAL_SHOUT (keypad: paddle number, boxes, price), HYBRID_REMOTE (floor + remote buyers via SSE/REST), DUTCH_CLOCK (time-computed descending price; atomic first-stop-wins), COOP_PROCUREMENT (s.19(2), at basic price), HMS_DIRECT_TAKEOVER (s.10 proviso, requires government_permission_ref).
+Sale units (s.4(7)). Lots sell by weight, box count, basket count or piece count. Store sale_unit_type; the UI shows the correct unit.
+Reversals. Never edit. A correction is a compensating journal with reverses_journal_id, two different authorizing users (Accountant + Harbour Admin) and a mandatory reason.
+Bonus escrow. The 40% fisher share accrues in FISHERMAN_BONUS_ESCROW per fisherman. The annual return is a separate, explicit payout journal (M7); do not auto-release.
+8. DATABASE SPECIFICATION
+Schemas: core, harbour, auction, ledger, sync. Every operational table has tenant_id UUID NOT NULL. Child tables use composite FKs (tenant_id, parent_id) so a row can never point at another tenant's parent.
+Roles
+harbour_owner: owns objects and runs migrations. Never used at runtime.
+harbour_app: runtime role, NOBYPASSRLS, no UPDATE/DELETE/TRUNCATE on ledger tables.
+harbour_platform: separate pool for SUPER_ADMIN cross-tenant reads (BYPASSRLS or explicit policies), every use audited.
+No SUPER_ADMIN bypass through a session variable. Any client that can set a GUC could spoof it. (The PDF's policies do exactly this; do not copy them.)
+RLS pattern
+SQL
+CREATE FUNCTION core.current_tenant_id() RETURNS uuid
+  LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid $$;
+
+ALTER TABLE x ENABLE ROW LEVEL SECURITY;
+ALTER TABLE x FORCE  ROW LEVEL SECURITY;
+CREATE POLICY tenant_rw ON x
+  USING (tenant_id = core.current_tenant_id())
+  WITH CHECK (tenant_id = core.current_tenant_id());
+Unset context → NULL → no rows (fail closed). The app sets context per request with BEGIN; SELECT set_config('app.tenant_id', $1, true), set_config('app.user_id', $2, true), set_config('app.role', $3, true); (transaction-local, so it is safe behind transaction-mode poolers). Do not use connection startup options for search_path; schema-qualify names instead.
+Ledger
+ledger.accounts(account_id, tenant_id, kind, owner_entity_id, …): one account per owner entity (per fisherman payable, per fisherman bonus escrow, per buyer, HMS, co-op, auctioneer, HarbourOS revenue, GST payable).
+ledger.journals: header, reference_type, reference_id, reverses_journal_id, authorized_by_user_1/2, reason_note, CHECK for dual-key on reversals (users differ, reason present).
+ledger.entries: entry_seq, account_id, direction ('D'|'C'), amount_paise > 0, prev_row_hash, row_hash.
+ledger.heads(tenant_id PK, last_entry_seq, last_row_hash): locked FOR UPDATE inside the insert trigger, so concurrent posts serialise. (The PDF's "lock the last entry" trick has no row to lock on an empty ledger, which races on the first insert.)
+Hash payload (canonical, identical in SQL and TypeScript):
+tenant_id|entry_seq|prev_row_hash|journal_id|account_id|direction|amount_paise|created_at_utc_iso_ms
+row_hash = hex(sha256(utf8(payload))). SQL: encode(sha256(convert_to(payload,'UTF8')),'hex').
+Triggers: BEFORE UPDATE/DELETE and BEFORE TRUNCATE raise on entries and journals; BEFORE INSERT assigns seq and hash; deferred constraint trigger asserts each journal has ≥ 2 entries and SUM(D) = SUM(C).
+REVOKE UPDATE, DELETE, TRUNCATE on ledger tables from harbour_app.
+scripts/verify-ledger.ts recomputes the whole chain per tenant in TypeScript and compares with stored hashes. A golden vector (fixed inputs → fixed hash) lives in tests/ and is asserted by both the TS function and the SQL function.
+Honest limit: triggers stop the app role; a DB owner or superuser can still rewrite rows. The verifier is what detects that. State this in docs/RUNBOOK.md; periodically anchor the latest head hash outside the DB (e.g. emailed daily by the HMS accountant).
+Auction tables. sale_allocations has allocation_seq, idempotency_key UNIQUE, fencing_token, UNIQUE (tenant_id, lot_id, allocation_seq); a trigger decrements available_boxes and available_grams with CHECK (available_* >= 0) and sets FULLY_SOLD at zero. leader_leases(tenant_id, session_id, holder_device_id, fencing_token, expires_at).
+Sync tables. sync.client_commands(tenant_id, device_id, command_id UNIQUE, status APPLIED|QUARANTINED|REJECTED, …) and sync.outbox_events (webhooks and notifications).
+Tests (M2 gate). Cross-tenant read/write denied for every table; unset tenant returns zero rows; direct UPDATE/DELETE/TRUNCATE on ledger fails; unbalanced journal fails at commit; oversell fails; stale fencing token fails; golden hash matches TS.
+9. SERVER MODULES AND API SURFACE
+REST, JSON, zod-validated at the boundary, errors as { error: { code, message, details? } }, every mutating route requires Idempotency-Key. Tenant comes from the verified JWT, never from the request body (fixes P5).
+Module	Responsibility	Representative endpoints
+identity	OTP login, sessions, devices, users, RBAC, audit	POST /auth/otp/request, /auth/otp/verify, /auth/refresh, /auth/logout, GET /me
+harbour	Tenants, policies, fishermen, vessels, society loans, buyers + credit, auctioneer licences, floor prices, species master	/tenants, /policies, /fishermen, /vessels, /buyers, /licences, /floor-prices, /species
+catch	Trips, lots, weighing, QR signing, quality inspections, offline sync	/trips, /lots, /inspections, /sync/commands
+auction	Sessions, leader lease, bids, allocations, Dutch clock, SSE streams	/sessions, /sessions/:id/lease, /lots/:id/allocations, /sessions/:id/stream (SSE)
+ledger	Accounts, journals, balances, reversals, payout batches, reconciliation, verifier	/ledger/balances, /ledger/reversals, /payout-batches, /payout-batches/:id/reconcile, /ledger/verify
+notify	Outbox, templates (Malayalam + English), delivery attempts	internal + /notifications
+reports	Daily/monthly reports, statutory return, dossier, CSV export	/reports/*
+sdk	API keys (hashed), HMAC-signed webhooks, partner sandbox	/sdk/keys, /sdk/webhooks
+RBAC matrix (single source src/shared/contracts/rbac.ts, tested): SUPER_ADMIN, HARBOUR_ADMIN, LICENSED_AUCTIONEER, FISHERMAN_BOAT_OWNER, WHOLESALE_BUYER, WEIGHING_OPERATOR, ACCOUNTANT, AUTHORIZED_INSPECTOR. Each route declares its allowed roles; a test iterates every route and fails if one has no declaration. A user may have several roles; each maps to one or more workspaces.
+10. THE SEVEN WORKSPACES
+"Workspace" = a role-specific application area with its own shell, own navigation, own route tree, own code folder, lazy-loaded, no imports from sibling workspaces. Shared only: web/ui and web/lib. After login the user lands in their workspace; multi-role users see a workspace picker. A demo persona switcher exists only when DEMO_MODE=true (seed data) and is compiled out of production builds.
+#	Workspace (/w/…)	Roles	Device	Purpose and key screens	Done when
+1	weighing	WEIGHING_OPERATOR	Phone/tablet, offline	Scan vessel QR → species grid (photo + Malayalam + English) → weight (manual, simulator or Web Bluetooth adapter) → boxes, temp, grade → lock → print sticker with signed lot QR. Offline queue status always visible. Supervisor PIN for manual weight override (logged).	50 lots tagged offline, synced with 0 duplicates; sticker prints via browser print CSS; Web Bluetooth marked UNVERIFIED until tested with the real scale
+2	pit	LICENSED_AUCTIONEER	Tablet	Open lot by QR → current lot panel (remaining boxes, floor) → numeric keypad (paddle, boxes, price, quick increments) → confirm allocation. Lease indicator. Dutch clock view. Undo window before confirm only (confirmed allocations are immutable).	Server rejects wrong licence/harbour, 4(8) mismatch, oversell, stale lease; confirm round trip measured and reported
+3	buyer	WHOLESALE_BUYER	Phone + desktop	Live watchlist of lots, credit bar (limit, holds, available), place remote bid / stop clock, purchases, invoices, export dossier download.	Cannot bid beyond available limit; holds release on rejection
+4	fisher	FISHERMAN_BOAT_OWNER	Phone PWA	Icon-first passbook: today's catch, sale price, transparent deduction card (shows the 5% and its Act split, and the bonus escrow balance), net payout status, statement export. "Listen" button using the browser's speech synthesis in Malayalam.	Works at 360 px width; if no Malayalam voice is available the button hides and shows text (verify on target devices: UNVERIFIED)
+5	inspector	AUTHORIZED_INSPECTOR	Phone	Inspect lot → grade (A_EXPORT / A_DOMESTIC / B_PROCESS / REJECTED_UNFIT) with notes and photos; optional AI assist panel (ADR-009).	Rejected lots cannot be allocated
+6	harbour	HARBOUR_ADMIN, ACCOUNTANT	Desktop-first, responsive	Today board; floor-price schedule; licences with expiry alerts; fishermen/vessels/co-op loans; buyers and credit; payout batches and UTR reconciliation; dual-key reversal queue; apportionment and statutory reports; users and devices.	Accountant can close a day: batch → reconcile → zero unexplained difference
+7	platform	SUPER_ADMIN	Desktop	Tenants (create in < 60 s from a preset), policy versions with legal sign-off fields, ledger integrity monitor per tenant, SDK partners/keys, system page (real migration status, real counters, audit search).	A new tenant can be provisioned and logged into without code changes
+Public: /login only. Everything else needs a session.
+UX rules for all workspaces
+One primary action per screen. No dropdown menus during an active auction or weighing flow.
+Dockside screens (1, 2, 4): touch targets ≥ 64 px high, 12 px spacing, large numerals, no hover-dependent UI, works one-handed, always shows connectivity and queue state.
+Every list has loading, empty and error states. Every mutation shows pending → success/failure and never double-submits.
+Bilingual: a simple i18n dictionary (ml-IN, en-IN), language toggle persisted per user. Malayalam strings are written by a human reviewer; mark machine-drafted strings with // TODO-REVIEW-ML.
+Currency shown with the Indian grouping (en-IN), always from integer paise via one formatter in web/lib/format.ts.
+Status is never colour-only: every status pill has an icon and a text label.
+11. DESIGN SYSTEM — "CLEAN, SIMPLE, NAVY ON OFF-WHITE"
+Source: design.md supplies the layout language (calm, spacious, soft surfaces, pill controls, right-hand drawers). Its colours are replaced. Remove from it: all green tokens, the pastel yellow/purple hero cards, dashed action cards, and blurred scrims. The brief is "clean and simple", so fewer card types and one accent family.
+11.1 Tokens (src/web/ui/tokens.css, Tailwind v4 @theme)
+CSS
+:root {
+  /* Navy scale */
+  --navy-50:#F1F4F9; --navy-100:#E2E8F2; --navy-200:#C5D0E3; --navy-300:#9AAECE;
+  --navy-400:#6B86B3; --navy-500:#43609A; --navy-600:#2D4A80; --navy-700:#1F3866;
+  --navy-800:#162A4F; --navy-900:#0F1F3D; --navy-950:#0A1630;
+
+  /* Surfaces: off-white, not pure white */
+  --bg-app:#F6F6F3;      /* page */
+  --bg-sunken:#ECEDE8;   /* sidebar, table headers, input wells */
+  --bg-surface:#FFFFFF;  /* cards, drawers, modals */
+  --bg-tint:var(--navy-50);
+  --scrim:rgba(15,31,61,.40);
+
+  /* Text */
+  --text-primary:#0F1F3D;   /* 15.11:1 on bg-app */
+  --text-secondary:#3B4A66; /*  8.23:1 */
+  --text-muted:#5A6882;     /*  5.19:1 on bg-app, 5.62:1 on surface. Min 14px. */
+
+  /* Lines */
+  --border-hair:#DDE2EA;    /* decorative dividers ONLY (1.2:1) */
+  --border-strong:#74829F;  /* inputs, outline buttons, focusable edges (3.57:1 on bg-app) */
+
+  /* Brand = navy */
+  --brand:#1F3866;          /* 11.57:1 with white text */
+  --brand-hover:#162A4F;    /* 14.21:1 */
+  --brand-fg:#FFFFFF;
+  --brand-soft:#E6EBF4;     /* secondary button / selected row, 11.88:1 with navy-800 text */
+  --brand-soft-fg:#162A4F;
+  --focus:#2D4A80;          /* 2px ring + 2px offset, 8.07:1 */
+
+  /* Semantic (no green anywhere) */
+  --danger:#B42318;  --danger-bg:#FDECEA;  --danger-fg:#8A1C13;   /* 6.57 / 8.14 */
+  --warning:#8A5300; --warning-bg:#FFF4DB;                         /* 5.79 */
+  --info:#1B5E92;    --info-bg:#E3F0FA;                            /* 5.91 */
+  /* Success = navy check icon + the word "Settled/Done" on --brand-soft. No green. */
+
+  --radius-pill:9999px; --radius-card:16px; --radius-control:10px;
+  --shadow-overlay:0 16px 36px -8px rgba(15,31,61,.18);   /* overlays only; cards are flat */
+  --ease:cubic-bezier(.16,1,.3,1); --dur:160ms;
+}
+Ratios above were computed with the WCAG formula; the agent must re-verify them in code (scripts/check-contrast.ts, run by npm run check:contrast, part of npm run check). --text-disabled is not defined: disabled controls use --text-muted at reduced opacity and are exempt, but disabled text must never carry information.
+11.2 Rules
+Page background is --bg-app. Cards are --bg-surface with a 1 px --border-hair, 16 px radius, no shadow. Shadows only on drawers, modals, menus.
+Interactive boundaries (inputs, outline buttons, checkboxes) use --border-strong. Never --border-hair.
+Text pairs: body ≥ 7:1 where practical (primary and secondary tokens pass); everything ≥ 4.5:1; large text and UI boundaries ≥ 3:1. No text below 14 px except uppercase 11–12 px labels that still pass 4.5:1.
+One accent: navy. Primary button = --brand pill. Secondary = --brand-soft. Ghost = text only. Danger = --danger. Charts use the navy ramp with direct labels and distinct markers/patterns, plus at most one amber series for warnings.
+Layout: left sidebar 240 px on --bg-sunken, active item = --brand-soft pill with --brand-soft-fg text. Content max-width 1200 px, 40 px gutters desktop, 16 px on phones. Section gaps 32–40 px. Dockside workspaces replace the sidebar with a bottom bar of ≤ 4 large items.
+Motion: opacity/transform only, 160 ms, respects prefers-reduced-motion. No sound effects (delete soundEffects.ts).
+No gradients, no glass blur, no decorative illustrations, no emoji as icons. Icons: lucide-react, 20 px, stroke 1.75.
+Typography: Inter (UI) + Noto Sans Malayalam (ml) + JetBrains Mono (IDs, hashes only). Numerals use font-variant-numeric: tabular-nums. Self-host via @fontsource/* (offline-first; no CDN). Scale from design.md §2.2 is kept (36/26/20/16/14/12/11).
+Required components in web/ui (build once, reuse everywhere): Button, IconButton, Input, NumberInput, Select (native), Checkbox, Badge/StatusPill, Card, Metric, DataTable (sticky header, row actions, empty/loading/error), Drawer (right, 560 px, portal to body), Modal, Toast, Tabs, Skeleton, EmptyState, Keypad (pit), SpeciesTile (weighing), ConnectivityBadge, AppShell (desktop) and DocksideShell (mobile).
+Accessibility floor: visible focus ring on every control, semantic HTML, labels on all inputs, aria-live for toasts and queue status, full keyboard path in desktop workspaces, lang="ml" on Malayalam text.
+Deferred: a "pre-dawn" dark theme for 4:30 AM use. Tokens are structured so [data-theme=dark] can be added later without touching components.
+11.3 Visual acceptance (M0 and every UI milestone)
+grep -riE "#(9FE870|8EE05B|163300|E8F8DE|DCF4CF)|\b(green|emerald|lime|teal)-[0-9]+" src returns nothing.
+No hardcoded hex in components: colours come only from tokens. grep -rE "#[0-9A-Fa-f]{6}" src/web --include=*.tsx returns nothing.
+Screenshots at 360, 768 and 1280 px for each workspace home are saved under docs/screens/ (if the environment cannot capture them, say so; do not skip silently).
+12. END-TO-END ROADMAP
+Unit of work = one agent session per milestone (split a milestone only if it truly cannot finish in one). Every milestone ends with the Exit gate: commands run, outputs pasted into docs/PROGRESS.md. A milestone is not done until every gate passes or is explicitly marked UNVERIFIED-IN-AI-STUDIO with the human command.
+npm run check = tsc --noEmit && tsx --test tests/**/*.test.ts && tsx scripts/check-boundaries.ts && tsx scripts/check-contrast.ts && vite build.
+Phase A — Foundation
+M0 — Triage and foundation
+Re-verify P1–P14, record results.
+Fix install (P1), import type, test runner via tsx, npm run check.
+Delete theatre (P9, P10, sound effects, canned AI fallbacks). Move useful domain reference code to docs/reference/.
+Create the layout in §6, path aliases, check-boundaries.ts, check-contrast.ts, config.ts (zod env), logger (structured JSON, ~20 lines), docs/PROGRESS.md, docs/DECISIONS.md (seed with C1–C13 resolutions and OPEN-01…03 plus the human tasks in §14).
+Write tokens.css and the 10 smallest ui components (Button, Input, Card, Badge, Metric, DataTable skeleton, Drawer, Modal, Toast, EmptyState) with a dev-only /ui gallery.
+Exit gate: npm ci OK; npm run check exit 0; grep gates from §11.3 pass; app boots to a login placeholder in the navy/off-white theme.
+M1 — Domain core (pure TypeScript)
+money.ts (BigInt, bps, round-half-up price×weight), split.ts (modes A/B/C, largest-remainder, conservation), allocate.ts (partial boxes, last-takes-remainder), ledger-hash.ts (node:crypto SHA-256, canonical payload), journal builders for a sale and for a reversal.
+Exit gate: golden vectors in §2 pass; 10,000-case property test for conservation (modes A/B/C, random policies satisfying invariants); partial-box property test (sum of grams equals lot net); hash golden vector committed; zero float usage per the regex gate.
+M2 — Database
+Db port + PGlite and pg adapters; migration runner (checksums, advisory lock, refuses edited applied files); try the prototype's five migrations first, log defects, then write the clean chain implementing §8 (roles, composite FKs, FORCE RLS, ledger heads/triggers, allocation trigger, leases, sync tables, outbox); deterministic seed (one demo harbour with realistic Kerala data, all 8 roles, a few lots).
+Exit gate: the full DB test list in §8 passes; scripts/migrate.ts is idempotent (second run applies 0); SQL hash equals TS golden vector; anything PGlite cannot verify is listed as UNVERIFIED with the docker compose command.
+Phase B — Platform and master data
+M3 — Platform core and auth
+Express app, request id, error model, zod validation helper, idempotency middleware, in-memory rate limiter, security headers (CSP, HSTS in prod, no sniff, frame deny), CORS off by default.
+OTP + JWT + refresh rotation, device registry, PIN gate for sensitive actions, RBAC middleware, tenant-context transaction wrapper, audit log writer.
+Exit gate: API tests: unauthenticated → 401; wrong role → 403; tenant A token cannot read tenant B (even with a forged body tenant id); refresh reuse is detected and revokes the session; every route has a role declaration (test iterates routes); refuses to boot with OTP_DEV_ECHO=true in production.
+M4 — Harbour master, Super Admin and Harbour Admin (first full vertical slice)
+Tenants, versioned policies with legal sign-off gate and presets (KERALA_HARBOUR, KERALA_LANDING_CENTRE, KERALA_MARKET, INDIA_COOP), users, fishermen, vessels + society loans, buyers + credit, licences (with expiry), Section 19 floor schedule, species master (Malayalam + English).
+UI: login, workspace picker, platform and harbour workspaces (master-data screens), complete web/ui kit.
+Exit gate: create tenant from preset in the UI; mode B/C cannot be saved without sign-off fields (UI and DB); licence past expiry blocks selection; screenshots at 3 widths; contrast script passes.
+Phase C — Dockside operations
+M5 — Weighing, lots, QR, offline sync
+Trips, lots, weighing adapter interface (Manual, Simulator, WebBluetooth stub behind a capability check), HMAC-signed QR payloads, print-CSS sticker, IndexedDB command queue with retry/backoff, /sync/commands (idempotent, quarantine on conflict), service worker for app shell, weighing workspace, inspector workspace.
+Exit gate: simulation tags 50 lots with the network disabled, reconnects, server shows 50 lots and 0 duplicates, replaying the same queue twice changes nothing; a forged QR is rejected; manual weight override requires PIN and writes an audit row; REJECTED_UNFIT lot is not allocatable (tested in M6).
+M6 — Auction engine and pit pad
+Sessions, leader lease with fencing tokens, allocation service enforcing all eight checks in §7 in one transaction, SSE stream, PHYSICAL_SHOUT and HYBRID_REMOTE first; then DUTCH_CLOCK, COOP_PROCUREMENT, HMS_DIRECT_TAKEOVER. pit and buyer workspaces.
+M6b (separate session): offline local-leader lease with fencing and quarantine on reconnect.
+Exit gate: concurrency test fires 50 parallel allocations at one lot, total sold never exceeds the lot; two devices holding leases: the stale token is rejected; each statutory check has a failing and a passing test; Dutch clock: 20 simultaneous "stop" calls produce exactly one winner; server-side confirm latency (p50/p95) measured and reported honestly (not a promise).
+Phase D — Money
+M7 — Ledger posting and settlement
+Post the sale journal in the same transaction as the allocation; buyer settlement entries; payout batch generation through BankFileFormatter (generic CSV now; bank-specific formatter is OPEN-04); UTR import and reconciliation; dual-key reversal flow; bonus-escrow accrual and an explicit annual payout journal; per-beneficiary statements; continuous verifier job (interval, per tenant).
+UI: harbour workspace accountant screens (batches, reconciliation, reversal queue, balances).
+Exit gate: simulation of 1,000 full and partial-box sales → conservation holds to the paisa, verify-ledger passes; direct SQL tamper by the app role fails; tamper by the owner role is detected by the verifier (test shows the failing chain index); reversal needs two different users; payout totals equal payable balances.
+Phase E — People and reporting
+M8 — Fisherman and buyer experience, notifications
+fisher workspace (passbook, deduction transparency, statements, listen button), buyer invoices and credit views, notification outbox with Malayalam/English templates, console adapter, delivery attempt log.
+Exit gate: after a sale, fisherman sees weight, price, split and net within one refresh/SSE event; every notification has an outbox row; no provider SDK exists in the repo (provider onboarding is a human task, §14).
+M9 — Reports and compliance exports
+Daily/monthly auction reports, fisherman earnings, buyer purchases, species volume and price trends, credit ageing, HMS apportionment report, s.22 auctioneer return export, CSV exports, print-ready PDF via browser print CSS (no PDF library), export-dossier JSON marked "draft, template unverified" until the real MPEDA/EU/US formats are confirmed (OPEN-05).
+Exit gate: report totals equal ledger balances for the seeded day (test); every export carries tenant, period, generated-by and generated-at.
+Phase F — Hardening and portability
+M10 — SDK and webhooks (post-pilot scope, build only if requested)
+API keys (hashed), HMAC-SHA256 signed webhooks from the outbox with retry/backoff, minimal <harbouros-auction-terminal> web component, partner sandbox tenant.
+Exit gate: signature verification test vectors; replayed webhook is idempotent on the receiver side sample; key revocation takes effect immediately.
+M11 — Security, observability, resilience
+OWASP-style review against our own routes (authz on every route, input validation, rate limits on auth, SSRF/XSS review, secrets never logged), dependency audit, structured logs with request ids, real /health (DB ping, migration version) and /metrics (simple counters), backup/restore scripts (pg_dump/pg_restore wrappers and a PGlite dump), load test script (autocannon or a small fetch harness), chaos script for offline sync.
+Exit gate: security checklist in PROGRESS.md with a result per item; load test numbers recorded with the machine they ran on; restore drill proves data round-trips; no Math.random metrics remain (grep).
+M12 — Portability proof and handover
+Dockerfile, docker-compose.yml (app + Postgres), docs/PORTABILITY.md (run on Cloud Run, Fly.io, a VPS; env var table), scripts/export-data.ts (full tenant export to JSON + SQL), runbook, ADR files, final check:boundaries (no Firebase, SDKs only in adapters).
+Exit gate: (a) the whole test suite passes with DATABASE_URL pointed at a real Postgres: UNVERIFIED-IN-AI-STUDIO, so supply the exact commands for the human and mark it pending until they report results; (b) a diff of the repo shows vendor names only under adapters/; (c) docs/PORTABILITY.md steps were followed literally by the agent where possible.
+Phase G — Pilot (human-led, tracked in PROGRESS.md)
+Mapped from the MD's phases: field discovery, legal opinion, MoU, hardware choices, bank format, WhatsApp/SMS onboarding (§14), 60-day live parallel run at one harbour, daily bank reconciliation, HMS sign-off. The agent supports with fixes, seed adjustments, training one-pagers and report tweaks. Pilot acceptance targets from the MD: 50 lots in < 15 minutes offline; < 2 s per hammer drop; zero-paisa discrepancy across 1,000 simulated sales; ≥ 90% of pilot vessels settled accurately on day of sale. Measure each; report real numbers.
+13. VERIFICATION PROTOCOL (applies to every milestone)
+Evidence or it did not happen. Paste command + real output. A summary without output is a failed milestone.
+Red then green. For every bug or rule, write the failing test first, show it fail, fix, show it pass.
+Search before you fix. When a library or platform behaves unexpectedly, look up its documentation and cite the page in DECISIONS before changing code.
+Root cause only. Grep every caller of a function before editing it. Fix once where all callers route.
+Surgical changes. Do not touch unrelated files. List every file changed at the end of the session.
+No false confidence. If you could not run something, say UNVERIFIED-IN-AI-STUDIO and give the human command. If a test is flaky, say so.
+Regression guard. Each session starts by running npm run check. If it was green last session and is red now, fix that first.
+PROGRESS.md entry format:
+Text
+## M<n> — <title> — <date>
+Status: DONE | PARTIAL | BLOCKED
+Changed files: …
+Gate results: <command> → <output excerpt>
+UNVERIFIED-IN-AI-STUDIO: <item> — human command: <cmd>
+New decisions / OPEN items: …
+Deviations from the prompt (with reason): …
+14. OPEN DECISIONS AND HUMAN TASKS (agent must not guess these)
+ID	Item	Owner	Blocks
+OPEN-01	Floor-price enforcement default (WARN assumed)	HMS / pilot harbour	M6 default only
+OPEN-02	Written legal opinion: is any transaction-linked HarbourOS fee compatible with s.4(6) and s.6(1)(iii)?	Lawyer + HMS	Enabling modes B/C in production
+OPEN-03	GST treatment of platform fees (who bears it, on what base)	Chartered accountant	Modes B/C
+OPEN-04	Pilot harbour's bank and its bulk-payment file format	HMS accountant	Bank formatter (M7)
+OPEN-05	Real templates for MPEDA / EU catch certificate / US documents	Exporter + MPEDA	Dossier beyond "draft"
+OPEN-06	Weighing scale model and its Bluetooth/serial protocol	Pilot harbour	Real BLE adapter
+OPEN-07	Thermal printer model and connectivity	Pilot harbour	Native sticker printing
+OPEN-08	WhatsApp Business onboarding and Malayalam template approval; SMS sender registration requirements (verify current Indian regulations)	Thejas	Real notification adapter
+OPEN-09	Malayalam copy review by a native reviewer	Reviewer	Pilot launch
+OPEN-10	Whether Matsyafed or another body must appear as a recipient under a current Government notification (the Act itself lists none)	HMS / Fisheries Dept	Policy presets
+OPEN-11	Production Postgres choice and backup owner	Thejas	M12 deployment
+OPEN-12	Data protection obligations for fisherman/buyer personal data and KYC (verify current Indian law)	Lawyer	Before storing real identity or bank data
+The agent opens each as a row in docs/DECISIONS.md, builds the adapter or flag, and moves on.
+15. DEFERRED (not built; extraction triggers recorded)
+Deferred	Why	Build when
+Microservices, NATS, Redis, PgBouncer, Go auction service	Not runnable in AI Studio; unjustified for one harbour	Concurrent auctions exceed what one Postgres + Node process serves (measured in M11), or a second team needs independent deploys
+Flutter native apps	PWA covers the pilot; Web Bluetooth is Chromium-only (not iOS Safari)	Pilot proves PWA hardware access is inadequate on the real devices
+Razorpay Route / Cashfree / Stripe adapters	Needs compliance approval and a legal answer to OPEN-02	After OPEN-02/03 and the pilot
+Government API sync (NFDP, ReALCraft, MPEDA)	No verified API contract in the inputs	When official API docs are obtained
+Pre-dawn dark theme	Tokens ready; not required for pilot	Operators request it
+Multi-currency, Stripe, global exchanges	Kerala-first	After the pilot succeeds
+Remote buyer fee products	s.4(6) risk (OPEN-02)	After legal opinion
+16. APPENDIX
+A. .env.example
+Text
+NODE_ENV=development
+PORT=3000
+DATABASE_URL=                 # empty = PGlite in-process; set for any real Postgres
+JWT_ACCESS_SECRET=            # >= 32 random bytes
+JWT_REFRESH_SECRET=
+QR_HMAC_SECRET=
+OTP_DEV_ECHO=false            # true only in dev/demo; boot fails if true in production
+DEMO_MODE=false               # seeds demo data and enables persona switcher
+LLM_PROVIDER=none             # none | gemini
+LLM_MODEL_VISION=             # read from your AI Studio model list; never hardcode
+GEMINI_API_KEY=
+SMS_PROVIDER=console
+WHATSAPP_PROVIDER=console
+B. Seed (deterministic). One tenant munambam-demo (preset KERALA_HARBOUR, mode FIXED_SAAS_ONLY), 1 HMS, 2 co-op societies (one with an active loan vessel), 3 licensed auctioneers (one expired, one deputed by the loan society), 12 vessels, 20 fishermen, 6 buyers with varied credit, floor prices for 8 species with Malayalam names, 40 lots across 3 days with sales, one open session, one pending reversal. All demo data labelled as demo and never mixed with real tenants.
+C. Glossary. HMS: Harbour Management Society. FLCMS: Fish Landing Centre Management Society. FMMS: Fish Market Management Society. LSGI: Local Self-Government Institution. bps: basis points. UTR: bank transfer reference number. Hammer price: winning price before any buyer-side charge.
+D. Statutory references used (Act 16 of 2021): s.4(1) notified places · s.4(4) 5% cap · s.4(5) apportionment · s.4(6) no other benefits · s.4(7) sale by number/weight/box/basket · s.4(8) society-loan rule · s.5 licence (3 years, harbour-bound, 30-day decision) · s.6(1)(iii) no other fees · s.10 HMS powers incl. takeover and basic price · s.19 basic price and co-op procurement · s.21 quality certification · s.22 returns. Source: India Code text of Act 16 of 2021. Re-read the section before implementing a rule that cites it; do not rely on this summary alone.
+Final instruction to the agent: begin with §0. Do M0 only. Report; wait for "go M1".

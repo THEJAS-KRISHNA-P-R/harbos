@@ -1,0 +1,338 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  parseAndMapBankUtrCsv,
+  generateSampleBankUtrCsv,
+  generateInvalidSampleBankUtrCsv,
+  detectUtrStatusTransitions,
+  formatLedgerInspectorCsv,
+  buildUtrImportHistory,
+  filterUtrImportHistory,
+  countUtrImportHistoryByFilter,
+  validateAndNormalizeBankUtr,
+  sanitizeBulkReconcilePayload,
+  buildCommandPaletteItems,
+  type AuditLogRow,
+  type EntryRow,
+  type JournalRow,
+  type PayoutBatchRow,
+} from '../../src/web/lib/api.ts';
+
+const MOCK_BATCHES: ReadonlyArray<PayoutBatchRow> = [
+  {
+    batch_id: 'BATCH-20261106-01',
+    batch_code: 'MUN-PAY-20261106-01',
+    beneficiary_kind: 'FISHERMAN_NET_SETTLEMENT',
+    total_amount_paise: '16473000',
+    item_count: 3,
+    status: 'RECONCILED_UTR',
+    bank_utr: 'HDFC000261106991',
+    reconciled_at: '2026-11-06T08:30:00.000Z',
+    created_at: '2026-11-06T08:00:00.000Z',
+  },
+  {
+    batch_id: 'BATCH-20261106-02',
+    batch_code: 'MUN-PAY-20261106-02',
+    beneficiary_kind: 'FISHERMAN_PAYABLE',
+    total_amount_paise: '9500000',
+    item_count: 2,
+    status: 'GENERATED_CSV',
+    bank_utr: null,
+    reconciled_at: null,
+    created_at: '2026-11-06T09:15:00.000Z',
+  },
+];
+
+const MOCK_JOURNALS: ReadonlyArray<JournalRow> = [
+  {
+    journal_id: 'JRN-ALLOC-0001',
+    reference_type: 'LOT_ALLOCATION',
+    reference_id: 'ALLOC-0001',
+    description: 'Hammer settlement for Lot #MUN-LOT-01',
+    reverses_journal_id: null,
+    authorized_by_user_1: 'USR-AUCT-01',
+    authorized_by_user_2: null,
+    reason_note: null,
+    total_amount_paise: '10000000',
+    created_at: '2026-11-06T07:00:00.000Z',
+  },
+];
+
+const MOCK_ENTRIES: ReadonlyArray<EntryRow> = [
+  {
+    entry_seq: '101',
+    journal_id: 'JRN-ALLOC-0001',
+    account_id: 'ACC-BUYER-ESCROW-01',
+    direction: 'D',
+    amount_paise: '10000000',
+    prev_row_hash: '0000000000000000',
+    row_hash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    created_at_utc_iso_ms: '2026-11-06T07:00:00.123Z',
+  },
+  {
+    entry_seq: '102',
+    journal_id: 'JRN-ALLOC-0001',
+    account_id: 'ACC-FISHER-PAYABLE-01',
+    direction: 'C',
+    amount_paise: '9500000',
+    prev_row_hash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    row_hash: 'f0e1d2c3b4a5968778695a4b3c2d1e0f',
+    created_at_utc_iso_ms: '2026-11-06T07:00:00.124Z',
+  },
+];
+
+test('parseAndMapBankUtrCsv maps both batch_code and batch_id with header detection', () => {
+  const csv = [
+    'batch_code,bank_utr',
+    'MUN-PAY-20261106-02,FDRL261107008812',
+    'BATCH-20261106-01,"SBIN000261107999"',
+  ].join('\n');
+
+  const res = parseAndMapBankUtrCsv(csv, MOCK_BATCHES);
+  assert.equal(res.readyCount, 2);
+  assert.equal(res.unmatchedCount, 0);
+  assert.equal(res.invalidUtrCount, 0);
+  assert.equal(res.rows.length, 2);
+  assert.equal(res.rows[0]?.matchedBatch?.batch_id, 'BATCH-20261106-02');
+  assert.equal(res.rows[0]?.bankUtr, 'FDRL261107008812');
+  assert.equal(res.rows[0]?.status, 'READY_TO_RECONCILE');
+  assert.equal(res.rows[1]?.matchedBatch?.batch_id, 'BATCH-20261106-01');
+  assert.equal(res.rows[1]?.bankUtr, 'SBIN000261107999');
+});
+
+test('parseAndMapBankUtrCsv flags unmatched batches and short UTRs accurately', () => {
+  const csv = [
+    'Batch Reference,Bank UTR Reference',
+    'MUN-PAY-99999999-99,FDRL261107111111',
+    'MUN-PAY-20261106-02,123',
+  ].join('\n');
+
+  const res = parseAndMapBankUtrCsv(csv, MOCK_BATCHES);
+  assert.equal(res.readyCount, 0);
+  assert.equal(res.unmatchedCount, 1);
+  assert.equal(res.invalidUtrCount, 1);
+  assert.equal(res.rows[0]?.status, 'UNMATCHED_BATCH');
+  assert.equal(res.rows[1]?.status, 'INVALID_UTR');
+});
+
+test('detectUtrStatusTransitions detects INVALID_UTR to READY_TO_RECONCILE transitions', () => {
+  const invalidCsv = generateInvalidSampleBankUtrCsv(MOCK_BATCHES);
+  const prevParsed = parseAndMapBankUtrCsv(invalidCsv, MOCK_BATCHES);
+  assert.equal(prevParsed.invalidUtrCount, 2);
+
+  const validCsv = generateSampleBankUtrCsv(MOCK_BATCHES);
+  const nextParsed = parseAndMapBankUtrCsv(validCsv, MOCK_BATCHES);
+  assert.equal(nextParsed.readyCount, 2);
+
+  const transitions = detectUtrStatusTransitions(prevParsed.rows, nextParsed.rows);
+  assert.equal(transitions['BATCH-20261106-01']?.from, 'INVALID_UTR');
+  assert.equal(transitions['BATCH-20261106-01']?.to, 'READY_TO_RECONCILE');
+  assert.equal(transitions['BATCH-20261106-02']?.from, 'INVALID_UTR');
+  assert.equal(transitions['BATCH-20261106-02']?.to, 'READY_TO_RECONCILE');
+});
+
+test('formatLedgerInspectorCsv exports ledger entries, payout batches, and reconciliation status', () => {
+  const entriesCsv = formatLedgerInspectorCsv({
+    scope: 'LEDGER_ENTRIES',
+    entries: MOCK_ENTRIES,
+    journals: MOCK_JOURNALS,
+    payoutBatches: MOCK_BATCHES,
+    dateStamp: '2026-11-08',
+  });
+  assert.equal(entriesCsv.filename, 'HarbourOS-Ledger-Entries-2026-11-08.csv');
+  assert.equal(entriesCsv.rowCount, 2);
+  assert.ok(entriesCsv.content.includes('entry_seq,journal_id,reference_type'));
+  assert.ok(entriesCsv.content.includes('ACC-BUYER-ESCROW-01,DEBIT,10000000'));
+  assert.ok(entriesCsv.content.includes('ACC-FISHER-PAYABLE-01,CREDIT,9500000'));
+
+  const batchesCsv = formatLedgerInspectorCsv({
+    scope: 'PAYOUT_BATCHES',
+    entries: MOCK_ENTRIES,
+    journals: MOCK_JOURNALS,
+    payoutBatches: MOCK_BATCHES,
+    dateStamp: '2026-11-08',
+  });
+  assert.equal(batchesCsv.filename, 'HarbourOS-Payout-Batches-2026-11-08.csv');
+  assert.equal(batchesCsv.rowCount, 2);
+  assert.ok(batchesCsv.content.includes('MUN-PAY-20261106-01,BATCH-20261106-01'));
+  assert.ok(batchesCsv.content.includes('HDFC000261106991'));
+
+  const parsedUtr = parseAndMapBankUtrCsv(generateSampleBankUtrCsv(MOCK_BATCHES), MOCK_BATCHES);
+  const reconCsv = formatLedgerInspectorCsv({
+    scope: 'RECONCILIATION_STATUS',
+    entries: MOCK_ENTRIES,
+    journals: MOCK_JOURNALS,
+    payoutBatches: MOCK_BATCHES,
+    mappedUtrRows: parsedUtr.rows,
+    dateStamp: '2026-11-08',
+  });
+  assert.equal(reconCsv.filename, 'HarbourOS-UTR-Reconciliation-Status-2026-11-08.csv');
+  assert.equal(reconCsv.rowCount, 2);
+  assert.ok(reconCsv.content.includes('reconciliation_status,transition_from,validation_reason'));
+  assert.ok(reconCsv.content.includes('READY_TO_RECONCILE'));
+});
+
+test('buildUtrImportHistory aggregates audit logs, reconciled batches, and session imports with filtering', () => {
+  const mockAudits: ReadonlyArray<AuditLogRow> = [
+    {
+      audit_id: 'AUD-BULK-UTR-100',
+      tenant_id: 'munambam-demo',
+      actor_user_id: 'USR-ACCT-01',
+      actor_name: 'Deepa Krishnan',
+      actor_role: 'ACCOUNTANT',
+      action_code: 'PAYOUT_BATCH_BULK_UTR_RECONCILED',
+      target_type: 'PAYOUT_BATCH',
+      target_id: 'BULK-2-BATCHES',
+      details_json: JSON.stringify({
+        actorName: 'Deepa Krishnan (HMS Chief Accountant)',
+        sourceLabel: 'FederalBank-Nodal-Evening-261105.csv',
+        reconciledCount: 2,
+        totalRowsParsed: 2,
+        invalidOrUnmatchedCount: 0,
+        reconciled: [
+          {
+            batchId: 'BATCH-20261105-02',
+            batchCode: 'MUN-PAY-20261105-02',
+            status: 'RECONCILED_UTR',
+            bankUtr: 'FDRL261105884201',
+          },
+          {
+            batchId: 'BATCH-20261105-03',
+            batchCode: 'MUN-PAY-20261105-03',
+            status: 'RECONCILED_UTR',
+            bankUtr: 'FDRL261105884202',
+          },
+        ],
+      }),
+      created_at: '2026-11-05T18:42:10.000Z',
+    },
+    {
+      audit_id: 'AUD-BULK-UTR-099',
+      tenant_id: 'munambam-demo',
+      actor_user_id: 'USR-ACCT-01',
+      actor_name: 'Deepa Krishnan',
+      actor_role: 'ACCOUNTANT',
+      action_code: 'PAYOUT_BATCH_BULK_UTR_RECONCILED',
+      target_type: 'PAYOUT_BATCH',
+      target_id: 'BULK-1-BATCHES',
+      details_json: JSON.stringify({
+        actorName: 'Deepa Krishnan (HMS Chief Accountant)',
+        sourceLabel: 'SBI-Nodal-Morning-261105.csv',
+        reconciledCount: 1,
+        totalRowsParsed: 2,
+        invalidOrUnmatchedCount: 1,
+        reconciled: [
+          {
+            batchId: 'BATCH-20261105-01',
+            batchCode: 'MUN-PAY-20261105-01',
+            status: 'RECONCILED_UTR',
+            bankUtr: 'SBIN000261105719',
+          },
+        ],
+        invalidItems: [
+          {
+            batchCode: 'MUN-PAY-20261105-02',
+            batchId: 'BATCH-20261105-02',
+            bankUtr: 'SB09',
+            status: 'INVALID_UTR',
+            reason: 'Bank UTR must be at least 6 characters (received 4 chars)',
+          },
+        ],
+      }),
+      created_at: '2026-11-05T11:20:45.000Z',
+    },
+  ];
+
+  const history = buildUtrImportHistory({
+    auditLogs: mockAudits,
+    payoutBatches: MOCK_BATCHES,
+  });
+
+  // Includes 2 audit logs + 1 uncovered RECONCILED_UTR batch from MOCK_BATCHES (BATCH-20261106-01)
+  assert.equal(history.length, 3);
+  assert.equal(history[0]?.importId, 'IMP-BATCH-BATCH-20261106-01');
+  assert.equal(history[0]?.batchesReconciledCount, 1);
+  assert.equal(history[0]?.status, 'RECONCILED');
+  assert.equal(history[0]?.mappedItems.length, 1);
+  assert.equal(history[0]?.mappedItems[0]?.bankUtr, 'HDFC000261106991');
+  assert.equal(history[0]?.invalidItems.length, 0);
+
+  assert.equal(history[1]?.importId, 'AUD-BULK-UTR-100');
+  assert.equal(history[1]?.batchesReconciledCount, 2);
+  assert.equal(history[1]?.sourceLabel, 'FederalBank-Nodal-Evening-261105.csv');
+  assert.equal(history[1]?.status, 'RECONCILED');
+  assert.equal(history[1]?.mappedItems.length, 2);
+  assert.equal(history[1]?.invalidItems.length, 0);
+
+  assert.equal(history[2]?.importId, 'AUD-BULK-UTR-099');
+  assert.equal(history[2]?.batchesReconciledCount, 1);
+  assert.equal(history[2]?.totalRowsParsed, 2);
+  assert.equal(history[2]?.status, 'PARTIAL_RECONCILED');
+  assert.equal(history[2]?.mappedItems.length, 1);
+  assert.equal(history[2]?.mappedItems[0]?.batchCode, 'MUN-PAY-20261105-01');
+  assert.equal(history[2]?.mappedItems[0]?.bankUtr, 'SBIN000261105719');
+  assert.equal(history[2]?.invalidItems.length, 1);
+  assert.equal(history[2]?.invalidItems[0]?.batchCode, 'MUN-PAY-20261105-02');
+  assert.equal(history[2]?.invalidItems[0]?.bankUtr, 'SB09');
+  assert.equal(history[2]?.invalidItems[0]?.status, 'INVALID_UTR');
+
+  const counts = countUtrImportHistoryByFilter(history);
+  assert.equal(counts.all, 3);
+  assert.equal(counts.successfullyMapped, 2);
+  assert.equal(counts.invalid, 1);
+
+  const mappedOnly = filterUtrImportHistory(history, 'SUCCESSFULLY_MAPPED');
+  assert.equal(mappedOnly.length, 2);
+
+  const invalidOnly = filterUtrImportHistory(history, 'INVALID');
+  assert.equal(invalidOnly.length, 1);
+  assert.equal(invalidOnly[0]?.importId, 'AUD-BULK-UTR-099');
+
+  const reconciledOnly = filterUtrImportHistory(history, 'RECONCILED');
+  assert.equal(reconciledOnly.length, 2);
+
+  const issuesOnly = filterUtrImportHistory(history, 'ISSUES');
+  assert.equal(issuesOnly.length, 1);
+  assert.equal(issuesOnly[0]?.importId, 'AUD-BULK-UTR-099');
+});
+
+test('validateAndNormalizeBankUtr and sanitizeBulkReconcilePayload enforce strict statutory guards and deduplication', () => {
+  const validRes = validateAndNormalizeBankUtr('  fdrl261108009911 ');
+  assert.equal(validRes.valid, true);
+  assert.equal(validRes.normalizedUtr, 'FDRL261108009911');
+
+  const shortRes = validateAndNormalizeBankUtr('SB09');
+  assert.equal(shortRes.valid, false);
+  assert.equal(shortRes.errorCode, 'UTR_TOO_SHORT');
+
+  const placeholderRes = validateAndNormalizeBankUtr('TEST123456');
+  assert.equal(placeholderRes.valid, false);
+  assert.equal(placeholderRes.errorCode, 'UTR_PLACEHOLDER_REJECTED');
+
+  const payload = sanitizeBulkReconcilePayload(
+    {
+      sourceLabel: 'FederalBank-Bulk-Test.csv',
+      items: [
+        { batchId: 'BATCH-20261106-01', bankUtr: 'FDRL261108001111' },
+        { batchId: 'BATCH-20261106-01', bankUtr: 'FDRL261108002222' }, // duplicate batchId
+        { batchId: 'BATCH-20261106-02', bankUtr: 'FDRL261108001111' }, // duplicate bankUtr
+        { batchId: 'BATCH-20261106-03', bankUtr: '123' }, // invalid short UTR
+      ],
+    },
+    'IDEM-KEY-001'
+  );
+  assert.equal(payload.idempotencyKey, 'IDEM-KEY-001');
+  assert.equal(payload.validItems.length, 1);
+  assert.equal(payload.duplicatesSkipped, 2);
+  assert.equal(payload.rejectedItems.length, 3);
+  assert.equal(payload.totalRowsParsed, 4);
+});
+
+test('buildCommandPaletteItems filters quick actions and workspaces cleanly', () => {
+  const allItems = buildCommandPaletteItems(null, '');
+  assert.ok(allItems.length >= 6);
+  const utrFiltered = buildCommandPaletteItems(null, 'UTR CSV');
+  assert.equal(utrFiltered.length, 1);
+  assert.equal(utrFiltered[0]?.id, 'act-utr-import');
+});
+

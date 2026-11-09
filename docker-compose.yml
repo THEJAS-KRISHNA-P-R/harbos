@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: harbour_owner
+      POSTGRES_PASSWORD: harbour_dev_password
+      POSTGRES_DB: harbouros
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harbour_owner -d harbouros"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  harbouros-app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://harbour_owner:harbour_dev_password@postgres:5432/harbouros
+      JWT_ACCESS_SECRET: replace-with-32-byte-production-access-secret-0001
+      JWT_REFRESH_SECRET: replace-with-32-byte-production-refresh-secret-0002
+      QR_HMAC_SECRET: replace-with-32-byte-production-qr-hmac-secret-0003
+      OTP_DEV_ECHO: "false"
+      DEMO_MODE: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy

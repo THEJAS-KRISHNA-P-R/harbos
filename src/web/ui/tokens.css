@@ -1,0 +1,157 @@
+/* HarbourOS §11.1 Design System Tokens — "Clean, Simple, Navy on Off-White" */
+:root {
+  /* Navy scale */
+  --navy-50: #F1F4F9;
+  --navy-100: #E2E8F2;
+  --navy-200: #C5D0E3;
+  --navy-300: #9AAECE;
+  --navy-400: #6B86B3;
+  --navy-500: #43609A;
+  --navy-600: #2D4A80;
+  --navy-700: #1F3866;
+  --navy-800: #162A4F;
+  --navy-900: #0F1F3D;
+  --navy-950: #0A1630;
+
+  /* Surfaces: off-white, not pure white */
+  --bg-app: #F6F6F3;      /* page */
+  --bg-sunken: #ECEDE8;   /* sidebar, table headers, input wells */
+  --bg-surface: #FFFFFF;  /* cards, drawers, modals */
+  --bg-tint: var(--navy-50);
+  --scrim: rgba(15, 31, 61, 0.40);
+
+  /* Text */
+  --text-primary: #0F1F3D;   /* 15.11:1 on bg-app */
+  --text-secondary: #3B4A66; /*  8.23:1 on bg-app */
+  --text-muted: #5A6882;     /*  5.19:1 on bg-app, 5.62:1 on surface. Min 14px. */
+
+  /* Lines */
+  --border-hair: #DDE2EA;    /* decorative dividers ONLY (1.2:1) */
+  --border-strong: #74829F;  /* inputs, outline buttons, focusable edges (3.57:1 on bg-app) */
+
+  /* Brand = navy */
+  --brand: #1F3866;          /* 11.57:1 with white text */
+  --brand-hover: #162A4F;    /* 14.21:1 */
+  --brand-fg: #FFFFFF;
+  --brand-soft: #E6EBF4;     /* secondary button / selected row, 11.88:1 with navy-800 text */
+  --brand-soft-fg: #162A4F;
+  --focus: #2D4A80;          /* 2px ring + 2px offset, 8.07:1 */
+
+  /* Semantic (no green anywhere) */
+  --danger: #B42318;
+  --danger-bg: #FDECEA;
+  --danger-fg: #8A1C13;      /* 6.57 / 8.14 */
+  --warning: #8A5300;
+  --warning-bg: #FFF4DB;     /* 5.79 */
+  --info: #1B5E92;
+  --info-bg: #E3F0FA;        /* 5.91 */
+  /* Success = navy check icon + the word "Settled/Done" on --brand-soft. No green. */
+
+  --radius-pill: 9999px;
+  --radius-card: 16px;
+  --radius-control: 10px;
+  --shadow-overlay: 0 16px 36px -8px rgba(15, 31, 61, 0.18); /* overlays only; cards are flat */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur: 160ms;
+
+  --font-sans: 'Inter', 'Noto Sans Malayalam', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Inter', 'Noto Sans Malayalam', system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular-nums,
+.font-mono-tabular,
+.font-mono-code,
+table td,
+table th {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.font-mono-code {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@keyframes harbouros-fade-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes harbouros-status-flip {
+  0% {
+    opacity: 0.35;
+    transform: scale(0.92);
+    box-shadow: 0 0 0 0 rgba(31, 56, 102, 0.38);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.05);
+    box-shadow: 0 0 0 6px rgba(31, 56, 102, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(31, 56, 102, 0);
+  }
+}
+
+.animate-utr-row-in {
+  animation: harbouros-fade-slide-in 260ms var(--ease) both;
+}
+
+.animate-utr-status-flip {
+  animation: harbouros-status-flip 420ms var(--ease) both;
+}
+
+.transition-utr-pill {
+  transition:
+    background-color 240ms var(--ease),
+    color 240ms var(--ease),
+    border-color 240ms var(--ease),
+    transform 240ms var(--ease),
+    opacity 240ms var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: var(--bg-surface);
+  }
+}
+

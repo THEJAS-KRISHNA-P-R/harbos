@@ -1,0 +1,1 @@
+import './web/main.tsx';

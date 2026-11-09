@@ -1,0 +1,6 @@
+{
+  "name": "HarbourOS - Multi-Tenant Cloud-Agnostic Fisheries Platform",
+  "description": "Enterprise cloud-agnostic fisheries SaaS with containerized decoupled services, Infrastructure as Code, CI/CD automated validation, real-time observability, and statutory financial clearing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

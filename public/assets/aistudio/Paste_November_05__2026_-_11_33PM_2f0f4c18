@@ -1,0 +1,1285 @@
+# MASTER ENGINEERING PROMPT — HARBOUROS
+## Complete SaaS Implementation, UI/UX, Backend, Database & Integration
+
+You are acting as the Principal Software Architect, Senior Full-Stack Engineer, UI/UX Designer, Database Engineer, Security Engineer, QA Lead and DevOps Engineer responsible for delivering HarbourOS as a complete, functional SaaS platform.
+
+Your task is to take the existing HarbourOS project, inspect its documentation and codebase, and build the entire platform systematically.
+
+**This is not a UI prototype task. This is not a landing-page task. This is not a frontend-only implementation.**
+
+The objective is to deliver a fully functional, properly wired, multi-tenant SaaS application with all required user workspaces, backend functionality, database persistence, authentication, authorization, operational workflows, financial functionality and administrative controls.
+
+Do not skip features simply because they are difficult.
+
+Do not create buttons that do nothing.
+
+Do not use mock data as a substitute for backend functionality.
+
+Do not claim that a feature is complete until its actual workflow has been implemented and tested.
+
+---
+
+# 1. FIRST: UNDERSTAND THE EXISTING PROJECT
+
+Before writing code:
+
+1. Inspect the entire existing repository.
+2. Read the complete HarbourOS architecture and requirements document.
+3. Read all existing README files and implementation documentation.
+4. Inspect the existing database schema and migrations.
+5. Inspect existing frontend components and routing.
+6. Inspect existing backend services, APIs and integrations.
+7. Identify unfinished implementations, broken features, duplicated functionality and architectural inconsistencies.
+8. Identify any existing working functionality that must be preserved.
+
+Create a comprehensive implementation inventory.
+
+Classify every requirement into:
+
+- Already implemented and verified.
+- Partially implemented.
+- Not implemented.
+- Implemented incorrectly.
+- Requires an external integration or approval.
+- Requires clarification or a business/legal decision.
+
+Do not blindly trust the architecture document. It contains assumptions that require validation, especially concerning statutory commission allocation, platform revenue, GST and payment-provider settlement.
+
+Preserve the product vision, but flag and resolve technical contradictions before implementing affected functionality.
+
+Create:
+
+- `IMPLEMENTATION_PLAN.md`
+- `REQUIREMENTS_TRACEABILITY.md`
+- `ARCHITECTURE.md`
+- `DATABASE_DESIGN.md`
+- `API_REFERENCE.md`
+- `SECURITY_REVIEW.md`
+- `TESTING_STRATEGY.md`
+- `IMPLEMENTATION_STATUS.md`
+
+Maintain these documents throughout development.
+
+---
+
+# 2. NON-NEGOTIABLE DESIGN SYSTEM
+
+The visual design is extremely important.
+
+HarbourOS must look like a polished, modern, enterprise-grade SaaS product.
+
+The interface should feel comparable in quality to well-designed products such as Linear, Stripe Dashboard, Vercel and modern enterprise administration platforms.
+
+Do not blindly copy their interfaces. Establish a consistent HarbourOS identity.
+
+## 2.1 Overall visual direction
+
+**Light theme ONLY.**
+
+The application must use:
+
+- White backgrounds.
+- Off-white backgrounds.
+- Very light neutral grey surfaces.
+- Dark navy primary actions.
+- Subtle grey borders.
+- Restrained shadows.
+- Clean typography.
+- Excellent spacing.
+- Clear visual hierarchy.
+
+Suggested palette:
+
+| Purpose | Colour |
+|---|---|
+| Main background | `#F8FAFC` |
+| Primary surface | `#FFFFFF` |
+| Secondary surface | `#F1F5F9` |
+| Primary text | `#0F172A` |
+| Secondary text | `#64748B` |
+| Primary navy | `#142D4E` |
+| Dark navy hover | `#0B1F38` |
+| Borders | `#E2E8F0` |
+| Success | `#15803D` |
+| Warning | `#D97706` |
+| Error | `#DC2626` |
+
+Use these as initial design tokens and refine them consistently.
+
+Never introduce a dark-mode interface.
+
+## 2.2 Buttons
+
+Primary buttons should use dark navy backgrounds with white text.
+
+Buttons should be:
+
+- Consistent in height.
+- Properly padded.
+- Clearly distinguishable.
+- Visually restrained.
+- Responsive to hover, active, loading and disabled states.
+
+**Critical rule: NEVER STACK TEXT ON BUTTONS.**
+
+Button labels must remain on one line.
+
+Never place a heading and subtitle inside a button.
+
+Never create tall buttons containing multiple lines of text.
+
+Use icons where appropriate, but ensure the button label remains readable.
+
+For icon-only buttons, provide tooltips and accessible labels.
+
+Avoid excessive rounded pill buttons. Use a consistent, professional radius.
+
+## 2.3 Typography
+
+Use a modern, highly readable font such as Inter.
+
+Establish consistent typography for:
+
+- Page titles.
+- Section headings.
+- Table headers.
+- Body text.
+- Secondary descriptions.
+- Form labels.
+- Financial figures.
+- Status labels.
+
+Avoid unnecessarily large headings.
+
+The interface should be information-dense without feeling cluttered.
+
+## 2.4 Language restrictions
+
+**English ONLY throughout the entire application.**
+
+Do not introduce Malayalam text anywhere.
+
+This includes:
+
+- UI labels.
+- Buttons.
+- Notifications.
+- Tooltips.
+- Empty states.
+- Error messages.
+- Sample data.
+- Seed records.
+- Documentation screenshots.
+- Demo content.
+
+Use English locale formatting.
+
+The architecture may retain the future capability for internationalization, but the implemented UI must use English only.
+
+Do not generate Malayalam placeholder text.
+
+---
+
+# 3. BRAND IDENTITY AND LOGO
+
+Create a clean, professional HarbourOS logo.
+
+The identity should communicate:
+
+- Harbour operations.
+- Maritime infrastructure.
+- Seafood commerce.
+- Technology.
+- Trust and financial reliability.
+
+Avoid generic AI-generated-looking logos.
+
+Design a minimal, recognizable symbol that works at small sizes.
+
+Requirements:
+
+1. Create a primary logo.
+2. Create a standalone icon/symbol.
+3. Create a monochrome version.
+4. Create an SVG version.
+5. Create an application favicon.
+6. Create a compact sidebar version.
+
+The logo must work against white and off-white backgrounds.
+
+## Sidebar logo treatment
+
+The sidebar must display the standalone logo symbol in a properly sized container.
+
+Mask/crop the logo carefully so that:
+
+- There is no unwanted whitespace.
+- The symbol is not stretched.
+- The symbol is not clipped.
+- Its proportions remain correct.
+- It remains visually balanced when the sidebar collapses.
+
+Do not simply place a large logo image inside a small container and let CSS crop it randomly.
+
+Use a purpose-designed compact logo asset.
+
+---
+
+# 4. APPLICATION SHELL AND NAVIGATION
+
+Build a consistent application shell for the entire SaaS.
+
+Every authenticated workspace should use the same underlying design system while maintaining its own navigation and permissions.
+
+## 4.1 Collapsible sidebar
+
+Implement a fully functional collapsible sidebar.
+
+Expanded state:
+
+- Logo and HarbourOS branding.
+- Workspace identification.
+- Navigation labels.
+- Navigation icons.
+- Expandable navigation groups where needed.
+- User/account section.
+
+Collapsed state:
+
+- Compact logo symbol.
+- Icons only.
+- Tooltips on hover.
+- No text overflow.
+- No broken alignment.
+
+The collapse/expand interaction must be smooth.
+
+The main content must resize correctly.
+
+Do not let the sidebar overlap the page content.
+
+On mobile, transform it into an appropriate navigation drawer.
+
+Use a consistent sidebar across all workspaces.
+
+## 4.2 Top navigation bar
+
+Build a professional top navigation bar containing:
+
+- Current page title or breadcrumb.
+- Current workspace identification.
+- Global search where relevant.
+- Notifications.
+- User profile menu.
+- Account settings.
+- A prominent **View As / User Views** control.
+
+## 4.3 View As — User Workspace Preview
+
+Add a dedicated button to the top navigation bar labelled:
+
+**View As**
+
+This is an important requirement.
+
+It must allow an authorized platform administrator to inspect how the application looks from the perspective of different user roles.
+
+Provide previews for all implemented user workspaces, including:
+
+- Super Admin.
+- Harbour Admin.
+- Harbour Management Society staff.
+- Auctioneer.
+- Weighing Operator.
+- Fisherman.
+- Wholesale Buyer.
+- Cooperative Society staff.
+- Accountant.
+
+When a workspace is selected, show the actual interface for that role.
+
+Do not create a separate collection of fake preview screens.
+
+The preview must use the same real components and routes as the actual user workspace.
+
+### Security requirements
+
+The View As feature must not become an authorization bypass.
+
+Implement it as a controlled preview mechanism:
+
+- Only authorized administrators can access it.
+- Clearly display a persistent preview-mode indicator.
+- Never grant permissions to the administrator simply because they are previewing another role.
+- Provide realistic seeded demo users and data.
+- Use read-only preview mode by default.
+- Do not silently impersonate real users.
+- If actual impersonation is ever implemented, require explicit authorization, auditing and clear session controls.
+
+Include an obvious option to return to the administrator's own workspace.
+
+This feature must work across the entire application, not just the dashboard.
+
+---
+
+# 5. KEEP ALL WORKSPACES SEPARATE
+
+This is a major architectural and UX requirement.
+
+HarbourOS is a multi-role platform.
+
+Do not dump every feature into one massive dashboard.
+
+Each role must have a dedicated workspace with its own:
+
+- Navigation.
+- Dashboard.
+- Available actions.
+- Data visibility.
+- Permissions.
+- Relevant reports.
+- Operational workflows.
+
+Use shared components and backend infrastructure where appropriate, but keep the actual user experiences distinct.
+
+## 5.1 Super Admin Workspace
+
+The Super Admin is responsible for the entire HarbourOS SaaS platform.
+
+Build:
+
+- Platform overview.
+- Tenant/harbour management.
+- Harbour onboarding.
+- Tenant activation and suspension.
+- Tenant configuration.
+- Subscription and billing management.
+- Platform-wide usage analytics.
+- Platform revenue reports.
+- User management.
+- Global role management.
+- Audit logs.
+- API/SDK partner management.
+- Integration configuration.
+- System health.
+- Background job monitoring.
+- Notification monitoring.
+- Platform settings.
+- Security and access management.
+
+Super Admin must be able to inspect tenant-level activity without automatically obtaining unrestricted access to every tenant's financial data.
+
+Implement explicit permissions and audit all privileged access.
+
+## 5.2 Harbour Admin Workspace
+
+Build:
+
+- Harbour dashboard.
+- Operational overview.
+- Daily auction activity.
+- Catch and lot overview.
+- Fisherman management.
+- Vessel management.
+- Buyer management.
+- Auctioneer management.
+- Licence verification.
+- Staff management.
+- Cooperative society management.
+- Basic floor price configuration.
+- Species management.
+- Commission policy configuration.
+- Auction management.
+- Sale management.
+- Financial overview.
+- Reports.
+- Notifications.
+- Harbour configuration.
+- Audit history.
+
+## 5.3 HMS / FLCMS Workspace
+
+Build a dedicated workspace for Harbour Management Society / Fish Landing Centre Management Society personnel.
+
+Include:
+
+- Society dashboard.
+- Harbour operations overview.
+- Auction monitoring.
+- Statutory allocation visibility.
+- Commission statements.
+- Fisherman bonus escrow visibility.
+- Society financial statements.
+- Reconciliation.
+- Institutional reports.
+- Transaction history.
+- Authorized configuration functions.
+
+Do not expose unrelated Super Admin functionality.
+
+## 5.4 Auctioneer Workspace
+
+Build:
+
+- Auctioneer dashboard.
+- Assigned auctions.
+- Auction schedules.
+- Lot listings.
+- Physical auction interface.
+- Bid entry.
+- Buyer identification.
+- Winning bid confirmation.
+- Sale confirmation.
+- Auction history.
+- Auction performance.
+- Licence status.
+- Relevant reports.
+
+The auction interface must be optimized for speed and usability during live morning auctions.
+
+Do not make the operator navigate through several screens to record a single bid.
+
+## 5.5 Weighing Operator Workspace
+
+Build:
+
+- Daily weighing dashboard.
+- Fishing trip registration.
+- Catch registration.
+- Lot creation.
+- Species selection.
+- Weight entry.
+- Tare deduction.
+- Quality grading.
+- QR generation.
+- Label printing.
+- Lot status.
+- Offline queue.
+- Synchronization status.
+- Conflict resolution.
+
+Design this interface for fast dockside operation.
+
+Support manual weighing as a fallback even when BLE scale integration is unavailable.
+
+## 5.6 Fisherman Workspace
+
+Build a dedicated, simplified workspace.
+
+Include:
+
+- Personal dashboard.
+- Registered vessels.
+- Fishing trips.
+- Catch history.
+- Lot history.
+- Auction results.
+- Sale details.
+- Earnings.
+- Commission breakdown.
+- Bonus escrow balance.
+- Payment status.
+- Settlement statements.
+- Notifications.
+- Profile management.
+
+Make financial information understandable without overwhelming the user.
+
+## 5.7 Wholesale Buyer Workspace
+
+Build:
+
+- Buyer dashboard.
+- Available auction lots.
+- Live auction access.
+- Lot information.
+- Bid history.
+- Winning lots.
+- Purchase history.
+- Invoices.
+- Outstanding balances.
+- Credit limits.
+- Payment history.
+- Payment references.
+- Statements.
+- Notifications.
+- Account settings.
+
+Implement buyer credit checks and reservation logic on the backend.
+
+Never rely exclusively on frontend checks.
+
+## 5.8 Cooperative Society Workspace
+
+Build:
+
+- Cooperative dashboard.
+- Member/fisherman visibility.
+- Vessel loan records.
+- Loan encumbrance information.
+- Relevant auction restrictions.
+- Statutory commission statements.
+- Society earnings.
+- Financial reconciliation.
+- Settlement history.
+- Reports.
+- Authorized administrative actions.
+
+## 5.9 Accountant Workspace
+
+Build:
+
+- Financial dashboard.
+- Journal entries.
+- Ledger explorer.
+- Debit/credit visibility.
+- Payment reconciliation.
+- Buyer outstanding balances.
+- Fisherman payable balances.
+- Settlement statements.
+- Commission allocation statements.
+- Reversal requests.
+- Approval workflows.
+- Financial exports.
+- Audit history.
+
+Financial operations must be carefully permissioned.
+
+---
+
+# 6. BUILD EVERY REQUIRED SCREEN
+
+Do not stop at the dashboard.
+
+Every workspace must be fully developed.
+
+Each major navigation item must lead to a properly implemented page.
+
+Every page should include relevant:
+
+- Loading states.
+- Empty states.
+- Error states.
+- Search.
+- Filters.
+- Pagination.
+- Forms.
+- Validation.
+- Confirmation dialogs.
+- Detail views.
+- Action menus.
+- Success feedback.
+
+For example, a fisherman management page must support:
+
+1. Viewing fishermen.
+2. Searching.
+3. Filtering.
+4. Opening a fisherman profile.
+5. Adding a fisherman.
+6. Editing permitted information.
+7. Viewing associated vessels.
+8. Viewing catch history.
+9. Viewing auction history.
+10. Viewing earnings.
+11. Viewing settlement records.
+12. Suspending/reactivating accounts where authorized.
+13. Viewing audit history.
+
+Apply the same completeness standard to all major entities.
+
+Use consistent tables, forms, drawers and detail pages.
+
+Avoid unnecessary full-page navigation when a drawer or modal is more efficient.
+
+---
+
+# 7. COMPLETE BACKEND IMPLEMENTATION
+
+The frontend must be connected to a real backend.
+
+Implement the actual business logic for every feature.
+
+The system must include:
+
+- Authentication.
+- Session management.
+- Authorization.
+- Multi-tenancy.
+- Role-based access control.
+- Database persistence.
+- Input validation.
+- Business rule validation.
+- Audit logging.
+- Transaction handling.
+- Background jobs.
+- Notifications.
+- File storage.
+- API documentation.
+- Error handling.
+
+Use the existing repository's technology stack where it is already functional.
+
+If a major architectural change is necessary, document the justification before making it.
+
+Prefer a modular monolith for the initial deployable platform, preserving domain boundaries so services can be extracted later.
+
+Do not introduce unnecessary distributed infrastructure just for architectural appearance.
+
+## 7.1 Authentication
+
+Implement:
+
+- Registration/invitation flows.
+- Login.
+- Secure password hashing.
+- Password reset.
+- OTP authentication where supported.
+- Session revocation.
+- Device/session management.
+- Account activation and suspension.
+- Role-based access.
+- Tenant membership management.
+
+Use secure, production-appropriate authentication.
+
+Never store passwords in plaintext.
+
+## 7.2 Multi-tenant architecture
+
+Every tenant-owned resource must be properly isolated.
+
+Implement:
+
+- Tenant identification.
+- Tenant membership.
+- Tenant-scoped queries.
+- PostgreSQL Row-Level Security.
+- Database privilege separation.
+- Tenant-aware audit logs.
+- Tenant-aware file access.
+- Cross-tenant isolation tests.
+
+Do not rely solely on frontend filtering.
+
+Do not assume that putting a `tenant_id` column in a table automatically guarantees isolation.
+
+## 7.3 Database
+
+Review and correct the supplied DDL.
+
+Create proper version-controlled migrations.
+
+Implement complete relationships, indexes, constraints and database-level protections.
+
+Include all required entities, such as:
+
+- Tenants.
+- Users.
+- Memberships.
+- Roles and permissions.
+- Harbours.
+- Societies.
+- Fishermen.
+- Vessels.
+- Buyers.
+- Auctioneers.
+- Licences.
+- Fishing trips.
+- Catch records.
+- Fish lots.
+- Auction sessions.
+- Bids.
+- Sale allocations.
+- Sales.
+- Payments.
+- Buyer credit.
+- Financial accounts.
+- Journals.
+- Ledger entries.
+- Settlement records.
+- Reversals.
+- Notifications.
+- Offline synchronization events.
+- API integrations.
+- Audit events.
+- Outbox events.
+
+The final schema must reflect actual workflows, not merely the list above.
+
+Implement proper foreign-key relationships and tenant-consistency constraints.
+
+## 7.4 Financial ledger
+
+Treat this as one of the highest-priority modules.
+
+Implement:
+
+- Double-entry accounting.
+- Integer-based monetary calculations.
+- Debit/credit conservation.
+- Append-only financial records.
+- Hash chaining.
+- Reversal journals.
+- Dual authorization where required.
+- Transactional integrity.
+- Idempotent financial operations.
+- Reconciliation.
+
+Use BigInt or an equivalent safe integer representation for monetary calculations.
+
+Never use floating-point arithmetic for money.
+
+Implement and test concurrency-safe hash chaining with a dedicated tenant-level chain-head mechanism.
+
+Ensure a failed financial transaction cannot leave partially committed financial records.
+
+Do not silently modify completed journals.
+
+## 7.5 Auction engine
+
+Implement the auction lifecycle properly.
+
+Support the required auction modes through clearly defined state machines.
+
+Implement:
+
+- Auction creation.
+- Lot assignment.
+- Auction scheduling.
+- Bid validation.
+- Bid ordering.
+- Buyer credit verification.
+- Credit reservations.
+- Winning bid identification.
+- Auction closure.
+- Sale confirmation.
+- Cancellation.
+- Audit history.
+
+For real-time bidding, use a clearly defined authoritative ordering mechanism.
+
+Do not use client timestamps as the authority for bid ordering.
+
+Handle concurrent bids, duplicate submissions, reconnects and server failures.
+
+Implement partial lot allocations if supported by the business workflow.
+
+Do not enforce one sale per lot if partial sales are permitted.
+
+## 7.6 Offline synchronization
+
+Implement offline functionality for actual dockside workflows.
+
+Use local encrypted storage where appropriate.
+
+Implement:
+
+- Local operation queues.
+- UUIDv7 identifiers.
+- Idempotency keys.
+- Sync status.
+- Retry logic.
+- Conflict detection.
+- Conflict resolution.
+- Supervisor review.
+- Synchronization audit logs.
+
+Do not allow offline devices to independently finalize conflicting financial settlements or authoritative remote auctions.
+
+Define exactly which operations are allowed offline.
+
+## 7.7 Payment integrations
+
+Implement a payment-provider abstraction.
+
+Do not assume Razorpay Route, Cashfree or Stripe Connect will approve every proposed settlement arrangement.
+
+Build:
+
+- Payment intent tracking.
+- Payment status.
+- Payment references.
+- Provider webhook handling.
+- Signature verification.
+- Idempotent webhook processing.
+- Reconciliation.
+- Refund/reversal workflows where supported.
+- Settlement tracking.
+
+Support manual payment and bank/UPI reconciliation as a fully functional alternative.
+
+Do not fabricate successful provider transactions.
+
+Keep statutory allocations and commercial platform fees configurable and versioned.
+
+Do not activate disputed or legally unverified revenue deductions.
+
+## 7.8 Notifications
+
+Implement:
+
+- In-app notifications.
+- Push notification infrastructure.
+- Email where configured.
+- SMS integration where configured.
+- WhatsApp integration where approved.
+
+All notification templates must be English-only.
+
+Use proper delivery status tracking, retry handling and provider abstraction.
+
+## 7.9 Reporting
+
+Build actual reports backed by database queries.
+
+Include:
+
+- Daily auction reports.
+- Monthly sales reports.
+- Fisherman earnings.
+- Buyer purchases.
+- Species-wise volume.
+- Historical prices.
+- Outstanding buyer credit.
+- Commission allocation.
+- Financial reconciliation.
+- Settlement statements.
+- Tenant-level operational analytics.
+
+Support PDF and Excel exports.
+
+Do not populate reports using static arrays.
+
+---
+
+# 8. COMPLETE API IMPLEMENTATION
+
+Implement all required backend endpoints.
+
+Maintain consistent API conventions.
+
+Every endpoint must have:
+
+- Input validation.
+- Authentication where required.
+- Permission checks.
+- Tenant isolation.
+- Appropriate response codes.
+- Error handling.
+- API documentation.
+- Tests.
+
+Use OpenAPI/Swagger.
+
+Implement WebSocket functionality for relevant live operational workflows.
+
+Implement rate limiting for sensitive endpoints.
+
+Implement webhook signature validation.
+
+Never expose secret keys in frontend code.
+
+---
+
+# 9. RESPONSIVE DESIGN
+
+The application must work on:
+
+- Desktop.
+- Laptop.
+- Tablet.
+- Mobile.
+
+Desktop is the primary experience for administrative and financial workspaces.
+
+Mobile is especially important for dockside operations and fisherman/buyer access.
+
+Ensure:
+
+- Tables remain usable.
+- Navigation adapts properly.
+- Forms fit smaller screens.
+- Modals do not overflow.
+- Sidebar becomes a proper mobile drawer.
+- Buttons remain single-line.
+- No horizontal overflow.
+- Touch targets are appropriate.
+
+Do not simply shrink the desktop interface to fit mobile.
+
+---
+
+# 10. DEMO DATA AND USER VIEW TESTING
+
+Create a reliable development seed system.
+
+Include separate demo accounts for all roles:
+
+- Super Admin.
+- Harbour Admin.
+- HMS Staff.
+- Auctioneer.
+- Weighing Operator.
+- Fisherman.
+- Wholesale Buyer.
+- Cooperative Society Staff.
+- Accountant.
+
+Create realistic English-only demo data.
+
+Use distinct tenants and demonstrate tenant isolation.
+
+Include enough records to test:
+
+- Tables.
+- Pagination.
+- Filters.
+- Dashboard metrics.
+- Auction workflows.
+- Financial statements.
+- Notifications.
+- Reports.
+
+Never mix demo data with production data.
+
+Document the development login credentials securely.
+
+The View As control must be able to preview every actual user workspace.
+
+---
+
+# 11. QUALITY ASSURANCE AND TESTING
+
+Do not consider the platform finished merely because it compiles.
+
+Implement:
+
+## Unit tests
+
+- Financial calculations.
+- Commission allocation.
+- Auction state transitions.
+- Bid validation.
+- Credit calculations.
+- Permission evaluation.
+- Input validation.
+- Idempotency.
+
+## Integration tests
+
+- Authentication.
+- Tenant isolation.
+- Database transactions.
+- Auction-to-sale workflows.
+- Sale-to-ledger workflows.
+- Payment reconciliation.
+- Notification delivery.
+- Offline synchronization.
+
+## End-to-end tests
+
+Test complete user journeys.
+
+At minimum:
+
+1. Super Admin creates a harbour.
+2. Harbour Admin configures the harbour.
+3. A fisherman is registered.
+4. A vessel is associated with the fisherman.
+5. A fishing trip is registered.
+6. Catch is recorded.
+7. A lot is weighed and generated.
+8. An auctioneer conducts an auction.
+9. A buyer wins a lot.
+10. The sale is confirmed.
+11. Financial journals are generated.
+12. The accountant reconciles the transaction.
+13. The fisherman can view their earnings.
+14. The buyer can view their purchase and outstanding balance.
+15. The administrator can inspect the audit trail.
+
+Test negative cases too:
+
+- Unauthorized access.
+- Cross-tenant access.
+- Duplicate bid submission.
+- Duplicate payment webhook.
+- Invalid commission.
+- Insufficient buyer credit.
+- Failed transaction.
+- Interrupted synchronization.
+- Attempted ledger modification.
+
+Implement browser-level tests for all major workspaces.
+
+---
+
+# 12. DEVOPS AND DEPLOYMENT
+
+Build a complete local development environment.
+
+Include:
+
+- Dockerfiles.
+- Docker Compose.
+- Database migrations.
+- Seed scripts.
+- Environment variable templates.
+- Health checks.
+- Logging.
+- Error monitoring integration points.
+- Backup procedures.
+- Restore procedures.
+- CI pipeline.
+- Production build configuration.
+
+Never commit production secrets.
+
+Include a `.env.example`.
+
+Provide clear setup instructions.
+
+A new developer should be able to clone the repository, configure environment variables, start the infrastructure, run migrations, seed demo data and launch the platform without manually fixing undocumented issues.
+
+Include production deployment documentation.
+
+Do not claim production readiness without actually testing deployment and restoration procedures.
+
+---
+
+# 13. DEVELOPMENT EXECUTION RULES
+
+This section is particularly important.
+
+Do not attempt to generate the entire application in one giant code-generation operation.
+
+Work systematically.
+
+## Step 1 — Audit
+
+Inspect the repository and produce the implementation inventory.
+
+## Step 2 — Architecture correction
+
+Resolve database, financial, tenancy and workflow contradictions.
+
+Record unresolved legal and external-provider dependencies.
+
+## Step 3 — Design system
+
+Implement the complete visual foundation:
+
+- Theme tokens.
+- Typography.
+- Buttons.
+- Inputs.
+- Tables.
+- Cards.
+- Drawers.
+- Modals.
+- Navigation.
+- Sidebar.
+- Top bar.
+- Logo.
+- Responsive layout.
+
+## Step 4 — Authentication and tenancy
+
+Implement secure authentication, roles, permissions and tenant isolation.
+
+## Step 5 — Core domain
+
+Implement harbour, users, fishermen, vessels, buyers, auctioneers, trips, catch and lots.
+
+## Step 6 — Auction operations
+
+Implement auction state machines, bidding, lot allocation and sale confirmation.
+
+## Step 7 — Financial infrastructure
+
+Implement the ledger, allocation calculations, reconciliation and settlement tracking.
+
+## Step 8 — Individual workspaces
+
+Complete each role's actual dashboard, navigation, screens and permissions.
+
+## Step 9 — Integrations
+
+Implement offline synchronization, notifications, payment adapters, reports and relevant external APIs.
+
+## Step 10 — Quality assurance
+
+Run the complete unit, integration, security and E2E test suites.
+
+## Step 11 — Polish
+
+Review every screen for:
+
+- Inconsistent spacing.
+- Broken layouts.
+- Empty pages.
+- Dead buttons.
+- Incorrect navigation.
+- Poor loading states.
+- Missing validation.
+- Unnecessary duplication.
+- Accessibility issues.
+- Mobile responsiveness.
+
+## Step 12 — Delivery
+
+Provide complete documentation and a verified implementation status report.
+
+---
+
+# 14. STRICT IMPLEMENTATION RULES
+
+1. Never leave TODO comments as a substitute for required functionality.
+2. Never create fake API responses to make the UI appear functional.
+3. Never use hardcoded dashboard metrics in production.
+4. Never create non-functional buttons.
+5. Never silently ignore errors.
+6. Never bypass authorization for convenience.
+7. Never mix tenant data.
+8. Never use floating-point arithmetic for money.
+9. Never mutate completed financial records.
+10. Never trust frontend validation alone.
+11. Never claim an integration works without testing it.
+12. Never claim a screen is complete if its underlying workflow is missing.
+13. Never remove existing working functionality without justification.
+14. Never use Malayalam text.
+15. Never introduce dark-mode UI.
+16. Never stack text inside buttons.
+17. Never merge distinct role workspaces into a single generic dashboard.
+18. Never skip tests because implementation is taking longer than expected.
+
+When an external service requires credentials or approval, implement the integration adapter, configuration interface, sandbox testing and documented activation procedure. Clearly identify what cannot be verified without those credentials.
+
+When a legal or business decision remains unresolved, do not invent an answer. Implement the underlying configurable mechanism safely and mark the decision as blocked.
+
+---
+
+# 15. FINAL ACCEPTANCE CRITERIA
+
+The project is not complete until all of the following are true.
+
+### Design
+
+- [ ] Consistent light theme.
+- [ ] White/off-white surfaces.
+- [ ] Dark navy primary buttons.
+- [ ] No stacked button labels.
+- [ ] English-only UI.
+- [ ] Professional HarbourOS logo.
+- [ ] Properly masked compact sidebar logo.
+- [ ] Functional collapsible sidebar.
+- [ ] Responsive application shell.
+- [ ] Consistent navigation across workspaces.
+
+### Workspaces
+
+- [ ] Super Admin.
+- [ ] Harbour Admin.
+- [ ] HMS/FLCMS.
+- [ ] Auctioneer.
+- [ ] Weighing Operator.
+- [ ] Fisherman.
+- [ ] Wholesale Buyer.
+- [ ] Cooperative Society.
+- [ ] Accountant.
+
+### Navigation
+
+- [ ] All navigation links work.
+- [ ] Every major screen is implemented.
+- [ ] View As button is functional.
+- [ ] Every workspace preview uses actual application components.
+- [ ] Permissions are enforced.
+
+### Backend
+
+- [ ] Authentication works.
+- [ ] Authorization works.
+- [ ] Tenant isolation works.
+- [ ] Database migrations work.
+- [ ] Business operations persist correctly.
+- [ ] API documentation exists.
+- [ ] Error handling is implemented.
+- [ ] Audit logging works.
+
+### Core functionality
+
+- [ ] Harbour management.
+- [ ] User management.
+- [ ] Fisherman and vessel management.
+- [ ] Catch registration.
+- [ ] Weighing and lot generation.
+- [ ] QR generation.
+- [ ] Auction operations.
+- [ ] Bid validation.
+- [ ] Sale confirmation.
+- [ ] Financial ledger.
+- [ ] Payment tracking.
+- [ ] Reconciliation.
+- [ ] Reporting.
+- [ ] Notifications.
+- [ ] Offline synchronization.
+
+### Quality
+
+- [ ] Unit tests pass.
+- [ ] Integration tests pass.
+- [ ] E2E tests pass.
+- [ ] Tenant isolation tests pass.
+- [ ] Financial invariants pass.
+- [ ] No critical security issues remain.
+- [ ] No major dead-end screens.
+- [ ] No unexplained console errors.
+- [ ] Local development setup is documented.
+- [ ] Production deployment procedure is documented.
+
+---
+
+# 16. FINAL DELIVERABLE
+
+At the end of the project, provide:
+
+1. A complete working HarbourOS SaaS codebase.
+2. Fully implemented frontend.
+3. Fully implemented backend.
+4. Complete database migrations.
+5. All role-specific workspaces.
+6. Working authentication and authorization.
+7. Functional View As interface.
+8. Fully integrated operational workflows.
+9. Financial ledger and reconciliation implementation.
+10. External integration adapters.
+11. Automated tests.
+12. Docker-based development environment.
+13. Deployment instructions.
+14. Updated architecture documentation.
+15. API documentation.
+16. Demo accounts and seeded data.
+17. A comprehensive implementation report.
+
+The final report must clearly identify:
+
+- What is fully implemented.
+- What has been tested.
+- What remains dependent on external credentials.
+- What requires legal approval.
+- What remains incomplete.
+- Any known technical limitations.
+
+Do not mark the project as complete simply because all pages have been generated.
+
+**The objective is a genuinely functional, coherent, maintainable HarbourOS SaaS platform—not a collection of attractive screens.**
+
+Work autonomously through the implementation phases. Make sensible engineering decisions, document them and continue until all verifiable requirements are complete.
+
+If the available context or execution budget is insufficient, preserve progress in the repository, update `IMPLEMENTATION_STATUS.md` and continue from the exact unfinished requirement in subsequent sessions.
+
+Prioritize correctness, usability, security, financial integrity and actual end-to-end functionality over superficial feature counts.
+
+**Build HarbourOS as a real product.**
