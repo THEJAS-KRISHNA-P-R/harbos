@@ -1424,6 +1424,7 @@ func (s *Server) Handler() http.Handler {
 			"backend-go/internal/scale/engine.go",
 			"backend-go/internal/scale/engine_test.go",
 			"backend-go/internal/httpapi/server.go",
+			"backend-go/internal/httpapi/reconcile_robust.go",
 			"backend-go/internal/auction/service.go",
 			"backend-go/internal/domain/settlement.go",
 			"backend-go/internal/domain/settlement_test.go",
@@ -1444,26 +1445,7 @@ func (s *Server) Handler() http.Handler {
 			}
 		}
 
-		nodePaths := []string{
-			"src/server/adapters/db-pg.ts",
-			"src/server/adapters/db-pglite.ts",
-			"scripts/migrate.ts",
-			"scripts/verify-ledger.ts",
-			"Dockerfile",
-			"docker-compose.yml",
-		}
 		var nodeBackendFiles []map[string]any
-		for _, rel := range nodePaths {
-			raw, err := os.ReadFile(filepath.Join(root, rel))
-			if err == nil {
-				code := string(raw)
-				nodeBackendFiles = append(nodeBackendFiles, map[string]any{
-					"path":      rel,
-					"lineCount": len(strings.Split(code, "\n")),
-					"code":      code,
-				})
-			}
-		}
 
 		tablesToCount := []string{
 			"core.schema_migrations",

@@ -1,6 +1,29 @@
+import {
+  recordCentralizedLog,
+  type ServiceComponentId,
+} from '@server/platform/observability.ts';
+
 export type LogLevel = 'info' | 'warn' | 'error';
 
 function writeLog(level: LogLevel, msg: string, meta?: Record<string, unknown>): void {
+  const service =
+    typeof meta?.service === 'string'
+      ? (meta.service as ServiceComponentId)
+      : 'harbouros-go-api';
+  const actionCode =
+    typeof meta?.actionCode === 'string' ? meta.actionCode : 'SERVER_EVENT';
+  const durationMs =
+    typeof meta?.durationMs === 'number' ? meta.durationMs : undefined;
+
+  recordCentralizedLog({
+    level,
+    service,
+    actionCode,
+    message: msg,
+    ...(durationMs !== undefined ? { durationMs } : {}),
+    ...(meta ? { meta } : {}),
+  });
+
   const entry = JSON.stringify({
     ts: new Date().toISOString(),
     level,

@@ -1,8 +1,10 @@
-import React from 'react';
-import { ChevronDown, ChevronUp, History } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ChevronDown, ChevronUp, History, Search } from 'lucide-react';
 import { Badge, Button } from '@web/ui/index.tsx';
 import {
   countUtrImportHistoryByFilter,
+  filterAuditLogsByActionOrTarget,
+  type AuditLogRow,
   type UtrImportHistoryEntry,
   type UtrImportHistoryFilter,
 } from '@web/lib/api.ts';
@@ -13,6 +15,7 @@ function formatUtcTimestampCompact(iso: string): string {
 }
 
 export interface UtrBulkHistoryTableProps {
+  auditLogs?: ReadonlyArray<AuditLogRow>;
   importHistoryEntries: ReadonlyArray<UtrImportHistoryEntry>;
   filteredHistoryEntries: ReadonlyArray<UtrImportHistoryEntry>;
   totalHistoricalBatchesReconciled: number;
@@ -23,6 +26,7 @@ export interface UtrBulkHistoryTableProps {
 }
 
 export const UtrBulkHistoryTable: React.FC<UtrBulkHistoryTableProps> = ({
+  auditLogs = [],
   importHistoryEntries,
   filteredHistoryEntries,
   totalHistoricalBatchesReconciled,
@@ -31,7 +35,13 @@ export const UtrBulkHistoryTable: React.FC<UtrBulkHistoryTableProps> = ({
   expandedHistoryId,
   onToggleExpand,
 }) => {
+  const [auditFilterText, setAuditFilterText] = useState('');
   const counts = countUtrImportHistoryByFilter(importHistoryEntries);
+
+  const filteredAuditLogs = useMemo(
+    () => filterAuditLogsByActionOrTarget(auditLogs, auditFilterText),
+    [auditLogs, auditFilterText]
+  );
 
   const filterTabs: ReadonlyArray<{
     id: UtrImportHistoryFilter;
@@ -46,7 +56,7 @@ export const UtrBulkHistoryTable: React.FC<UtrBulkHistoryTableProps> = ({
   ];
 
   return (
-    <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-3">
+    <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-3.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--brand)] flex items-center gap-1.5">
@@ -334,6 +344,67 @@ export const UtrBulkHistoryTable: React.FC<UtrBulkHistoryTableProps> = ({
           </table>
         </div>
       )}
+
+      {/* Real-Time Audit Log Filter by action_code or target_id */}
+      <div className="pt-3 border-t border-[var(--border-hair)] flex flex-col gap-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h5 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+              Real-Time Audit Log Filter (`action_code` / `target_id`)
+            </h5>
+            <p className="text-[11px] text-[var(--text-secondary)]">
+              Showing {filteredAuditLogs.length} of {auditLogs.length} statutory audit log entries
+            </p>
+          </div>
+          {auditFilterText.trim() && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAuditFilterText('')}
+            >
+              Clear Filter
+            </Button>
+          )}
+        </div>
+
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={auditFilterText}
+            onChange={(e) => setAuditFilterText(e.target.value)}
+            aria-label="Filter audit logs by action_code or target_id"
+            placeholder="Filter audit logs by action_code or target_id (e.g. PAYOUT_BATCH, LOT-2026)…"
+            className="w-full pl-8 pr-3 py-1.5 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-xs font-mono-code text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto pr-0.5">
+          {filteredAuditLogs.length === 0 ? (
+            <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-xs text-[var(--text-secondary)]">
+              No audit log entries match &ldquo;{auditFilterText}&rdquo;.
+            </div>
+          ) : (
+            filteredAuditLogs.slice(0, 8).map((log) => (
+              <div
+                key={log.audit_id}
+                className="p-2 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex items-center justify-between gap-2 text-xs"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="font-mono-code font-semibold text-[var(--text-primary)] truncate">
+                    {log.action_code}
+                  </div>
+                  <div className="text-[11px] text-[var(--text-secondary)] font-mono-code truncate">
+                    Target: {log.target_id} ({log.target_type}) ·{' '}
+                    {formatUtcTimestampCompact(log.created_at)}
+                  </div>
+                </div>
+                <Badge tone="info" label={log.actor_role} />
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 };

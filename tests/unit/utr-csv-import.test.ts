@@ -11,12 +11,18 @@ import {
   countUtrImportHistoryByFilter,
   validateAndNormalizeBankUtr,
   sanitizeBulkReconcilePayload,
+  filterAuditLogsByActionOrTarget,
   buildCommandPaletteItems,
   type AuditLogRow,
   type EntryRow,
   type JournalRow,
   type PayoutBatchRow,
 } from '../../src/web/lib/api.ts';
+import { executeWithStatementTimeout } from '../../src/server/adapters/db-pg.ts';
+import {
+  getSystemMetricsSnapshot,
+  simulateProductionIncident,
+} from '../../src/server/platform/observability.ts';
 
 const MOCK_BATCHES: ReadonlyArray<PayoutBatchRow> = [
   {
@@ -335,4 +341,83 @@ test('buildCommandPaletteItems filters quick actions and workspaces cleanly', ()
   assert.equal(utrFiltered.length, 1);
   assert.equal(utrFiltered[0]?.id, 'act-utr-import');
 });
+
+test('filterAuditLogsByActionOrTarget filters audit logs in real-time by action_code or target_id', () => {
+  const mockLogs: ReadonlyArray<AuditLogRow> = [
+    {
+      audit_id: 'AUD-01',
+      tenant_id: 'munambam-demo',
+      actor_user_id: 'USR-ACCT-01',
+      actor_name: 'Deepa Krishnan',
+      actor_role: 'ACCOUNTANT',
+      action_code: 'PAYOUT_BATCH_BULK_UTR_RECONCILED',
+      target_type: 'PAYOUT_BATCH',
+      target_id: 'BULK-2-BATCHES',
+      details_json: '{}',
+      created_at: '2026-11-08T10:00:00.000Z',
+    },
+    {
+      audit_id: 'AUD-02',
+      tenant_id: 'munambam-demo',
+      actor_user_id: 'USR-AUCT-01',
+      actor_name: 'K. V. Pavithran',
+      actor_role: 'AUCTIONEER',
+      action_code: 'LOT_HAMMER_ALLOCATED',
+      target_type: 'LOT',
+      target_id: 'LOT-20261106-01',
+      details_json: '{}',
+      created_at: '2026-11-08T09:30:00.000Z',
+    },
+  ];
+
+  assert.equal(filterAuditLogsByActionOrTarget(mockLogs, '').length, 2);
+  const byAction = filterAuditLogsByActionOrTarget(mockLogs, 'payout_batch_bulk');
+  assert.equal(byAction.length, 1);
+  assert.equal(byAction[0]?.audit_id, 'AUD-01');
+
+  const byTarget = filterAuditLogsByActionOrTarget(mockLogs, 'LOT-20261106-01');
+  assert.equal(byTarget.length, 1);
+  assert.equal(byTarget[0]?.audit_id, 'AUD-02');
+
+  const noMatch = filterAuditLogsByActionOrTarget(mockLogs, 'NON_EXISTENT_CODE');
+  assert.equal(noMatch.length, 0);
+});
+
+test('executeWithStatementTimeout enforces global statement timeout and aborts slow queries', async () => {
+  const fastResult = await executeWithStatementTimeout(
+    'SELECT 1',
+    200,
+    async () => ({ rows: [{ ok: 1 }] })
+  );
+  assert.equal(fastResult.rows[0]?.ok, 1);
+
+  await assert.rejects(
+    async () => {
+      await executeWithStatementTimeout('SELECT pg_sleep(10)', 25, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        return { rows: [] };
+      });
+    },
+    /Query exceeded global statement_timeout of 25ms/
+  );
+});
+
+test('getSystemMetricsSnapshot and simulateProductionIncident expose 3.24M+ user KPIs, query series, and alerts', () => {
+  const baseSnap = getSystemMetricsSnapshot();
+  assert.ok(baseSnap.scaleProfile.registeredUsers > 3_000_000);
+  assert.equal(baseSnap.dbProtection.statementTimeoutMs, 5000);
+  assert.ok(baseSnap.queryExecutionSeries.length >= 10);
+  assert.ok(baseSnap.alerts.length >= 4);
+  assert.ok(baseSnap.logs.length >= 4);
+
+  const slowGuardSnap = simulateProductionIncident('SLOW_QUERY_GUARD');
+  assert.ok(
+    slowGuardSnap.dbProtection.statementTimeoutsAborted >
+      baseSnap.dbProtection.statementTimeoutsAborted
+  );
+
+  const resetSnap = simulateProductionIncident('RESET_NOMINAL');
+  assert.equal(resetSnap.dbProtection.statementTimeoutMs, 5000);
+});
+
 

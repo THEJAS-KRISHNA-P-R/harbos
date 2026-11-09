@@ -1,8 +1,14 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { config } from '@server/config.ts';
 import type { DbPort } from '@server/ports/db.ts';
 import { AppError } from '@server/platform/errors.ts';
 import { logger } from '@server/platform/logger.ts';
+import {
+  getSystemMetricsSnapshot,
+  recordRateLimitEvent,
+  simulateProductionIncident,
+} from '@server/platform/observability.ts';
 import {
   issueOtpForPhone,
   verifyOtpForPhone,
@@ -39,15 +45,104 @@ export interface CatchAssistFn {
   }>;
 }
 
+export function createEdgeRateLimiters() {
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 25,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    handler: (req: Request, res: Response) => {
+      recordRateLimitEvent({
+        scope: 'AUTH',
+        allowed: false,
+        clientIp: req.ip ?? 'unknown',
+        path: req.originalUrl,
+      });
+      res.status(429).json({
+        error: {
+          code: 'RATE_LIMIT_EXCEEDED',
+          message:
+            'Too many authentication attempts from this IP. Please wait 15 minutes before retrying.',
+        },
+      });
+    },
+  });
+
+  const apiLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    limit: 600,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    handler: (req: Request, res: Response) => {
+      recordRateLimitEvent({
+        scope: 'API',
+        allowed: false,
+        clientIp: req.ip ?? 'unknown',
+        path: req.originalUrl,
+      });
+      res.status(429).json({
+        error: {
+          code: 'RATE_LIMIT_EXCEEDED',
+          message:
+            'High-traffic rate limit exceeded. Please throttle API requests.',
+        },
+      });
+    },
+  });
+
+  return { authLimiter, apiLimiter };
+}
+
 export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Express {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
+
+  const { authLimiter, apiLimiter } = createEdgeRateLimiters();
 
   // Security headers (§12 M3)
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     next();
+  });
+
+  // Protect authentication endpoints against brute-force attacks
+  app.use('/api/v1/auth/otp', (req: Request, _res: Response, next: NextFunction) => {
+    recordRateLimitEvent({
+      scope: 'AUTH',
+      allowed: true,
+      clientIp: req.ip ?? '127.0.0.1',
+      path: req.originalUrl,
+    });
+    next();
+  }, authLimiter);
+
+  // Protect all /api/v1/* endpoints against high-traffic abuse
+  app.use('/api/v1', (req: Request, _res: Response, next: NextFunction) => {
+    recordRateLimitEvent({
+      scope: 'API',
+      allowed: true,
+      clientIp: req.ip ?? '127.0.0.1',
+      path: req.originalUrl,
+    });
+    next();
+  }, apiLimiter);
+
+  // Centralized Observability, Query Execution Telemetry & 3M+ User Scale Metrics
+  app.get('/api/v1/system/metrics', (_req: Request, res: Response) => {
+    res.status(200).json(getSystemMetricsSnapshot());
+  });
+
+  app.post('/api/v1/system/metrics/simulate', (req: Request, res: Response) => {
+    const rawScenario = String(req.body?.scenario ?? 'TRAFFIC_SURGE_3M');
+    const scenario = (
+      ['SLOW_QUERY_GUARD', 'BRUTE_FORCE_WAVE', 'TRAFFIC_SURGE_3M', 'RESET_NOMINAL'].includes(
+        rawScenario
+      )
+        ? rawScenario
+        : 'TRAFFIC_SURGE_3M'
+    ) as 'SLOW_QUERY_GUARD' | 'BRUTE_FORCE_WAVE' | 'TRAFFIC_SURGE_3M' | 'RESET_NOMINAL';
+    res.status(200).json(simulateProductionIncident(scenario));
   });
 
   // Real /api/health endpoint (§3 P6 & §12 M11)

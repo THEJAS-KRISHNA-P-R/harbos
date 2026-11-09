@@ -36,6 +36,7 @@ import {
   type EntryRow,
 } from '@web/lib/api.ts';
 import type { CentreType, CommercialMode } from '@shared/ids.ts';
+import { PerformanceDashboard } from './PerformanceDashboard.tsx';
 
 interface SqlMigrationItem {
   fileName: string;
@@ -590,6 +591,8 @@ export const PlatformWorkspace: React.FC<{
       {/* TAB 0: HIGH-TRAFFIC & SCALABILITY ENGINE */}
       {activeTab === 'scalability' && (
         <div className="flex flex-col gap-6">
+          <PerformanceDashboard token={token} />
+
           <Card
             title="Live Go 1.23 High-Traffic & Concurrent Stress Benchmark (`/api/v1/system/load-test`)"
             subtitle="Spawns concurrent goroutine workers against Singleflight request coalescing, 32-shard write-through cache, SHA-256 ledger verification, and statutory 95/5 settlement math"
@@ -790,37 +793,6 @@ export const PlatformWorkspace: React.FC<{
                   </pre>
                 </div>
               )}
-            </div>
-          </Card>
-
-          <Card
-            title="PostgreSQL Adapter & CLI Verification Scripts (`src/server/adapters/db-pg.ts`, `scripts/migrate.ts`)"
-            subtitle="Portable PostgreSQL Pool adapter (`DATABASE_URL`) and CLI migration/verification runners"
-          >
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {(bundle?.nodeBackendFiles ?? []).slice(0, 4).map((nf) => (
-                <div
-                  key={nf.path}
-                  className="rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] overflow-hidden flex flex-col"
-                >
-                  <div className="px-4 py-2.5 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex items-center justify-between text-xs">
-                    <span className="font-bold font-mono-code text-[var(--text-primary)]">
-                      {nf.path}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={<FileDown className="w-3.5 h-3.5" />}
-                      onClick={() => downloadTextFile(nf.path.replace(/\//g, '_'), nf.code)}
-                    >
-                      Download
-                    </Button>
-                  </div>
-                  <pre className="p-3.5 text-xs font-mono-code text-[var(--text-primary)] overflow-x-auto max-h-[260px]">
-                    <code>{nf.code}</code>
-                  </pre>
-                </div>
-              ))}
             </div>
           </Card>
         </div>

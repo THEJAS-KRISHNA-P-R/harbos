@@ -37,6 +37,7 @@ export {
   countUtrImportHistoryByFilter,
   isSuccessfullyMappedImport,
   isInvalidImport,
+  filterAuditLogsByActionOrTarget,
   type BankUtrRowStatus,
   type BankUtrCsvMappedRow,
   type BankUtrCsvParseResult,

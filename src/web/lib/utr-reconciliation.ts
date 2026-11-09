@@ -735,4 +735,18 @@ export function countUtrImportHistoryByFilter(
   };
 }
 
+export function filterAuditLogsByActionOrTarget(
+  logs: ReadonlyArray<AuditLogRow>,
+  rawQuery: string
+): ReadonlyArray<AuditLogRow> {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return logs;
+  return logs.filter(
+    (log) =>
+      log.action_code.toLowerCase().includes(q) ||
+      log.target_id.toLowerCase().includes(q)
+  );
+}
+
+
 

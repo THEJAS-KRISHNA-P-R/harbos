@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
-import { createApiApp } from '@server/app.ts';
+import { createApiApp, createEdgeRateLimiters } from '@server/app.ts';
 import { config } from '@server/config.ts';
 import type { DbPort } from '@server/ports/db.ts';
 import { PGliteAdapter } from '@server/adapters/db-pglite.ts';
@@ -12,6 +12,11 @@ import { PgPoolAdapter } from '@server/adapters/db-pg.ts';
 import { runCatchPhotoAssist } from '@server/adapters/llm-gemini.ts';
 import { runMigrationsAndSeed } from '@server/platform/seed.ts';
 import { logger } from '@server/platform/logger.ts';
+import {
+  getSystemMetricsSnapshot,
+  recordRateLimitEvent,
+  simulateProductionIncident,
+} from '@server/platform/observability.ts';
 
 const PG_BRIDGE_PORT = 5433;
 const GO_BACKEND_PORT = 8080;
@@ -73,6 +78,22 @@ function startPostgresBridgeServer(db: DbPort): Promise<http.Server> {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+    });
+
+    bridgeApp.get('/internal/pg-metrics', (_req: Request, res: Response) => {
+      res.status(200).json(getSystemMetricsSnapshot());
+    });
+
+    bridgeApp.post('/internal/pg-metrics/simulate', (req: Request, res: Response) => {
+      const rawScenario = String(req.body?.scenario ?? 'TRAFFIC_SURGE_3M');
+      const scenario = (
+        ['SLOW_QUERY_GUARD', 'BRUTE_FORCE_WAVE', 'TRAFFIC_SURGE_3M', 'RESET_NOMINAL'].includes(
+          rawScenario
+        )
+          ? rawScenario
+          : 'TRAFFIC_SURGE_3M'
+      ) as 'SLOW_QUERY_GUARD' | 'BRUTE_FORCE_WAVE' | 'TRAFFIC_SURGE_3M' | 'RESET_NOMINAL';
+      res.status(200).json(simulateProductionIncident(scenario));
     });
 
     const srv = bridgeApp.listen(PG_BRIDGE_PORT, '127.0.0.1', () => {
@@ -168,6 +189,27 @@ export async function startServer(): Promise<void> {
 
   const fallbackApiApp = createApiApp(db, runCatchPhotoAssist);
   const app = express();
+  const { authLimiter, apiLimiter } = createEdgeRateLimiters();
+
+  app.use('/api/v1/auth/otp', (req, _res, next) => {
+    recordRateLimitEvent({
+      scope: 'AUTH',
+      allowed: true,
+      clientIp: req.ip ?? '127.0.0.1',
+      path: req.originalUrl,
+    });
+    next();
+  }, authLimiter);
+
+  app.use('/api/v1', (req, _res, next) => {
+    recordRateLimitEvent({
+      scope: 'API',
+      allowed: true,
+      clientIp: req.ip ?? '127.0.0.1',
+      path: req.originalUrl,
+    });
+    next();
+  }, apiLimiter);
 
   const goKeepAliveAgent = new http.Agent({
     keepAlive: true,
@@ -178,7 +220,11 @@ export async function startServer(): Promise<void> {
 
   // Proxy all /api/* requests to the live Go 1.23 backend when active
   app.use((req, res, next) => {
-    if (!req.url.startsWith('/api/') || !goProc) {
+    if (
+      !req.url.startsWith('/api/') ||
+      req.url.startsWith('/api/v1/system/metrics') ||
+      !goProc
+    ) {
       next();
       return;
     }

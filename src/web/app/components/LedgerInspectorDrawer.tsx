@@ -758,6 +758,7 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
 
             {/* Recent CSV Bulk Import History Table */}
             <UtrBulkHistoryTable
+              auditLogs={bootstrap.auditLogs ?? []}
               importHistoryEntries={importHistoryEntries}
               filteredHistoryEntries={filteredHistoryEntries}
               totalHistoricalBatchesReconciled={totalHistoricalBatchesReconciled}
