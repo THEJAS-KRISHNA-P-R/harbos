@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   Terminal,
   Users,
-  Zap,
 } from 'lucide-react';
 import { Badge, Button, Card } from '@web/ui/index.tsx';
 import {
@@ -29,7 +28,7 @@ import {
 } from '@web/lib/api.ts';
 
 export type ServiceComponentId =
-  | 'harbouros-go-api'
+  | 'harbouros-api'
   | 'db-pg-pool'
   | 'auth-rate-limiter'
   | 'statutory-ledger'
@@ -74,6 +73,17 @@ export interface KpiAlertItem {
 
 export interface SystemObservabilityMetrics {
   generatedAtIso?: string;
+  uptimeSeconds?: number;
+  totalRequests?: number;
+  inFlightRequests?: number;
+  rateLimitedRejected?: number;
+  cacheHits?: number;
+  cacheMisses?: number;
+  cacheHitRatioPct?: number;
+  p50LatencyMs?: number;
+  p95LatencyMs?: number;
+  p99LatencyMs?: number;
+  avgLatencyMs?: number;
   scaleProfile?: {
     registeredUsers: number;
     dailyActiveUsers: number;
@@ -114,7 +124,7 @@ export interface SystemObservabilityMetrics {
 
 const SERVICE_FILTER_OPTIONS: ReadonlyArray<{ id: 'ALL' | ServiceComponentId; label: string }> = [
   { id: 'ALL', label: 'All Services' },
-  { id: 'harbouros-go-api', label: 'harbouros-go-api' },
+  { id: 'harbouros-api', label: 'harbouros-api' },
   { id: 'db-pg-pool', label: 'db-pg-pool' },
   { id: 'auth-rate-limiter', label: 'auth-rate-limiter' },
   { id: 'statutory-ledger', label: 'statutory-ledger' },
@@ -128,48 +138,27 @@ export const PerformanceDashboard: React.FC<{
 }> = ({ token, onMetricsRefreshed }) => {
   const [metrics, setMetrics] = useState<SystemObservabilityMetrics | null>(null);
   const [loading, setLoading] = useState(false);
-  const [simulatingScenario, setSimulatingScenario] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<'ALL' | ServiceComponentId>('ALL');
   const [logSearchQuery, setLogSearchQuery] = useState('');
+
+  const onMetricsRefreshedRef = React.useRef(onMetricsRefreshed);
+  onMetricsRefreshedRef.current = onMetricsRefreshed;
 
   const fetchSystemMetrics = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
-      const res = await apiRequest<SystemObservabilityMetrics>('/api/v1/system/metrics', {
+      const res = await apiRequest<SystemObservabilityMetrics>('/api/v1/metrics', {
         method: 'GET',
         token,
       });
       setMetrics(res);
-      onMetricsRefreshed?.(res);
+      onMetricsRefreshedRef.current?.(res);
     } catch {
       // Keep last known snapshot on transient poll errors
     } finally {
       setLoading(false);
     }
-  }, [token, onMetricsRefreshed]);
-
-  const triggerScenario = useCallback(
-    async (
-      scenario: 'SLOW_QUERY_GUARD' | 'BRUTE_FORCE_WAVE' | 'TRAFFIC_SURGE_3M' | 'RESET_NOMINAL'
-    ): Promise<void> => {
-      setSimulatingScenario(scenario);
-      try {
-        const res = await apiRequest<SystemObservabilityMetrics>(
-          '/api/v1/system/metrics/simulate',
-          {
-            method: 'POST',
-            token,
-            body: { scenario },
-          }
-        );
-        setMetrics(res);
-        onMetricsRefreshed?.(res);
-      } finally {
-        setSimulatingScenario(null);
-      }
-    },
-    [token, onMetricsRefreshed]
-  );
+  }, [token]);
 
   useEffect(() => {
     void fetchSystemMetrics();
@@ -181,37 +170,13 @@ export const PerformanceDashboard: React.FC<{
     }
     return [
       {
-        bucketLabel: 'T-20s',
-        timestampIso: '2026-11-09T06:00:00.000Z',
-        p50Ms: 1.6,
-        p95Ms: 4.8,
-        p99Ms: 9.2,
-        avgMs: 2.1,
-        qps: 4120,
-        slowQueries: 0,
-        timeoutsAborted: 0,
-        statementTimeoutMs: 5000,
-      },
-      {
-        bucketLabel: 'T-10s',
-        timestampIso: '2026-11-09T06:00:10.000Z',
-        p50Ms: 1.8,
-        p95Ms: 5.4,
-        p99Ms: 10.6,
-        avgMs: 2.3,
-        qps: 4480,
-        slowQueries: 0,
-        timeoutsAborted: 0,
-        statementTimeoutMs: 5000,
-      },
-      {
         bucketLabel: 'Now',
-        timestampIso: '2026-11-09T06:00:20.000Z',
+        timestampIso: new Date().toISOString(),
         p50Ms: 1.5,
-        p95Ms: 4.7,
-        p99Ms: 9.1,
+        p95Ms: 4.2,
+        p99Ms: 7.8,
         avgMs: 2.0,
-        qps: 4650,
+        qps: 12,
         slowQueries: 0,
         timeoutsAborted: 0,
         statementTimeoutMs: 5000,
@@ -239,13 +204,13 @@ export const PerformanceDashboard: React.FC<{
   }, [metrics?.logs, selectedService, logSearchQuery]);
 
   const scale = metrics?.scaleProfile ?? {
-    registeredUsers: 3_248_500,
-    dailyActiveUsers: 612_400,
-    peakConcurrentUsers: 142_800,
-    activeHarbourTenants: 48,
-    edgePoPs: 12,
-    ledgerPartitions: 32,
-    availabilitySlaPct: 99.992,
+    registeredUsers: 11,
+    dailyActiveUsers: 11,
+    peakConcurrentUsers: 1,
+    activeHarbourTenants: 4,
+    edgePoPs: 1,
+    ledgerPartitions: 4,
+    availabilitySlaPct: 99.9,
   };
 
   const dbProt = metrics?.dbProtection ?? {
@@ -253,25 +218,25 @@ export const PerformanceDashboard: React.FC<{
     lockTimeoutMs: 3000,
     idleInTxTimeoutMs: 10000,
     poolMaxConnections: 20,
-    activePoolConnections: 3,
-    poolSaturationPct: 15,
-    totalQueriesTracked: 18_420,
-    slowQueriesFlagged: 14,
-    statementTimeoutsAborted: 2,
+    activePoolConnections: 1,
+    poolSaturationPct: 5,
+    totalQueriesTracked: 24,
+    slowQueriesFlagged: 0,
+    statementTimeoutsAborted: 0,
     latestQuerySql: 'SELECT * FROM core.audit_logs WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 25',
-    latestQueryDurationMs: 1.9,
+    latestQueryDurationMs: 1.5,
   };
 
   const rateLimit = metrics?.rateLimiting ?? {
-    engine: 'express-rate-limit v7 + Go 1.23 Token-Bucket Shield',
+    engine: 'express-rate-limit v8',
     authWindowSeconds: 900,
     authMaxRequestsPerWindow: 25,
     apiWindowSeconds: 60,
     apiMaxRequestsPerWindow: 600,
-    authRequestsAllowed: 42_190,
-    authBruteForceBlocked: 38,
-    apiRequestsAllowed: 1_284_900,
-    apiAbuseBlocked: 194,
+    authRequestsAllowed: 1,
+    authBruteForceBlocked: 0,
+    apiRequestsAllowed: 12,
+    apiAbuseBlocked: 0,
   };
 
   const alerts = metrics?.alerts ?? [];
@@ -300,10 +265,10 @@ export const PerformanceDashboard: React.FC<{
 
   return (
     <Card
-      title="Performance Dashboard"
+      title="Observability & Performance Dashboard"
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="ok" label="3.24M+ USERS" />
+          <Badge tone="ok" label={`${scale.activeHarbourTenants} TENANTS`} />
           <Badge tone="info" label={`STATEMENT TIMEOUT ${dbProt.statementTimeoutMs}MS`} />
           <Button
             variant="outline"
@@ -336,23 +301,23 @@ export const PerformanceDashboard: React.FC<{
       }
     >
       <div className="flex flex-col gap-5" data-testid="performance-dashboard-widget">
-        {/* 1. SaaS Scale, DB Statement Timeout & Rate-Limit Protection Banner */}
+        {/* 1. Observed Tenant Footprint, DB Statement Timeout & Rate-Limit Protection Banner */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
               <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]">
                 <Users className="w-3.5 h-3.5 text-[var(--brand)]" />
-                <span>SaaS Scale</span>
+                <span>Provisioned Footprint</span>
               </div>
-              <Badge tone="ok" label={`${scale.availabilitySlaPct}% SLA`} />
+              <Badge tone="ok" label={`${scale.availabilitySlaPct}% TARGET`} />
             </div>
             <div className="text-xl font-bold font-mono-code text-[var(--text-primary)]">
-              {scale.registeredUsers.toLocaleString()} Registered Users
+              {scale.registeredUsers.toLocaleString()} Active Operators
             </div>
             <div className="text-xs text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-hair)]">
-              <span>DAU: {scale.dailyActiveUsers.toLocaleString()}</span>
-              <span>Peak: {scale.peakConcurrentUsers.toLocaleString()}</span>
-              <span>{scale.activeHarbourTenants} Harbours</span>
+              <span>Tenants: {scale.activeHarbourTenants}</span>
+              <span>In-Flight: {scale.peakConcurrentUsers}</span>
+              <span>RLS Chains: {scale.ledgerPartitions}</span>
             </div>
           </div>
 
@@ -363,7 +328,7 @@ export const PerformanceDashboard: React.FC<{
                 <span>Statement Timeout Guard</span>
               </div>
               <Badge
-                tone={dbProt.statementTimeoutsAborted > 2 ? 'warn' : 'ok'}
+                tone={dbProt.statementTimeoutsAborted > 0 ? 'warn' : 'ok'}
                 label={`CUTOFF ${dbProt.statementTimeoutMs}MS`}
               />
             </div>
@@ -384,7 +349,7 @@ export const PerformanceDashboard: React.FC<{
                 <span>Edge Rate Limiting</span>
               </div>
               <Badge
-                tone={rateLimit.authBruteForceBlocked > 45 ? 'warn' : 'ok'}
+                tone={rateLimit.authBruteForceBlocked > 10 ? 'warn' : 'ok'}
                 label="EXPRESS-RATE-LIMIT"
               />
             </div>
@@ -398,55 +363,13 @@ export const PerformanceDashboard: React.FC<{
           </div>
         </div>
 
-        {/* 2. Real-World Production Incident & Scale Simulator */}
-        <div className="p-3 rounded-[var(--radius-card)] bg-[var(--bg-tint)] border border-[var(--border-hair)] flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
-            <Zap className="w-4 h-4 text-[var(--brand)] shrink-0" />
-            <span>Guardrail Drills</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={simulatingScenario === 'TRAFFIC_SURGE_3M'}
-              onClick={() => void triggerScenario('TRAFFIC_SURGE_3M')}
-            >
-              Simulate 3.2M User Surge
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={simulatingScenario === 'SLOW_QUERY_GUARD'}
-              onClick={() => void triggerScenario('SLOW_QUERY_GUARD')}
-            >
-              Simulate Slow Query (5000ms Cutoff)
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={simulatingScenario === 'BRUTE_FORCE_WAVE'}
-              onClick={() => void triggerScenario('BRUTE_FORCE_WAVE')}
-            >
-              Simulate Auth Brute-Force Wave
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              loading={simulatingScenario === 'RESET_NOMINAL'}
-              onClick={() => void triggerScenario('RESET_NOMINAL')}
-            >
-              Reset Nominal
-            </Button>
-          </div>
-        </div>
-
-        {/* 3. Recharts LineChart Visualizing Query Execution Times from /api/v1/system/metrics */}
+        {/* 2. Recharts LineChart Visualizing Query Execution Times from /api/v1/metrics */}
         <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-strong)] flex flex-col gap-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-[var(--brand)]" />
               <h3 className="text-sm font-bold text-[var(--text-primary)]">
-                Query Execution Latency (ms)
+                Observed SQL Query Execution Latency (ms)
               </h3>
             </div>
             {latestPoint && (
@@ -457,7 +380,7 @@ export const PerformanceDashboard: React.FC<{
                   tone={latestPoint.p99Ms > 25 ? 'warn' : 'ok'}
                   label={`p99: ${latestPoint.p99Ms} ms`}
                 />
-                <Badge tone="neutral" label={`${latestPoint.qps.toLocaleString()} QPS`} />
+                <Badge tone="neutral" label={`${latestPoint.qps.toLocaleString()} Queries`} />
               </div>
             )}
           </div>
@@ -527,7 +450,7 @@ export const PerformanceDashboard: React.FC<{
           </div>
         </div>
 
-        {/* 4. KPI Alerts */}
+        {/* 3. KPI Alerts */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {alerts.map((alert) => (
             <div
@@ -556,7 +479,7 @@ export const PerformanceDashboard: React.FC<{
           ))}
         </div>
 
-        {/* 5. Centralized Multi-Service Log Stream */}
+        {/* 4. Centralized Multi-Service Log Stream */}
         <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] flex flex-col gap-3">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="flex items-center gap-2">

@@ -92,9 +92,9 @@ export function buildCommandPaletteItems(
     {
       id: 'ws-platform',
       category: 'WORKSPACE',
-      title: 'Platform Governance, Go 1.23 Backend & Live SQL Console',
-      subtitle: 'Inspect Golang 1.23 source code, 001–005 SQL migrations & run live PostgreSQL 16 queries',
-      badgeLabel: 'GO 1.23 + PG 16',
+      title: 'Platform Governance, Telemetry & Schema Migrations',
+      subtitle: 'Inspect TypeScript/Node 22 observability metrics, 001–009 SQL migrations & provision harbour tenants',
+      badgeLabel: 'NODE 22 + PG 16',
       badgeTone: 'ok',
       actionType: 'OPEN_WORKSPACE',
       targetWorkspace: 'platform',

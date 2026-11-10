@@ -12,7 +12,6 @@ export class PGliteAdapter implements DbPort {
     statementTimeoutMs = DEFAULT_PG_STATEMENT_TIMEOUT_MS
   ) {
     this.statementTimeoutMs = statementTimeoutMs;
-    // Use in-memory PGlite by default for fast, zero-lock deterministic boot in AI Studio container
     this.pglite = dataDir && dataDir !== 'memory://' ? new PGlite(dataDir) : new PGlite();
   }
 
@@ -53,5 +52,9 @@ export class PGliteAdapter implements DbPort {
       };
       return fn(txPort);
     });
+  }
+
+  public async close(): Promise<void> {
+    await this.pglite.close();
   }
 }

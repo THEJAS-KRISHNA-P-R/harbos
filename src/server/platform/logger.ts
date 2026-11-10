@@ -9,7 +9,7 @@ function writeLog(level: LogLevel, msg: string, meta?: Record<string, unknown>):
   const service =
     typeof meta?.service === 'string'
       ? (meta.service as ServiceComponentId)
-      : 'harbouros-go-api';
+      : 'harbouros-api';
   const actionCode =
     typeof meta?.actionCode === 'string' ? meta.actionCode : 'SERVER_EVENT';
   const durationMs =

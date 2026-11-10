@@ -3,14 +3,12 @@ import {
   UserCheck,
   ArrowRight,
   KeyRound,
-  UserPlus,
   ShieldCheck,
 } from 'lucide-react';
 import {
   Button,
   Card,
   Badge,
-  Tabs,
   Input,
   Select,
   Toast,
@@ -27,8 +25,6 @@ import type { Role } from '@shared/contracts/rbac.ts';
 
 export interface LoginPortalScreenProps {
   user: SessionUser | null;
-  loginTab: 'otp' | 'register';
-  onChangeLoginTab: (tab: 'otp' | 'register') => void;
   phoneInput: string;
   onChangePhoneInput: (val: string) => void;
   otpInput: string;
@@ -40,23 +36,15 @@ export interface LoginPortalScreenProps {
   onDismissAuthSuccess: () => void;
   onRequestOtp: (e: React.FormEvent) => Promise<void>;
   onVerifyOtp: (e: React.FormEvent) => Promise<void>;
-  regFullName: string;
-  onChangeRegFullName: (val: string) => void;
-  regPhone: string;
-  onChangeRegPhone: (val: string) => void;
-  regRole: Role;
-  onChangeRegRole: (role: Role) => void;
-  regSubmitting: boolean;
-  onRegisterNewOperator: (e: React.FormEvent) => Promise<void>;
   displayedOperators: ReadonlyArray<OperatorRow>;
   onPersonaSwitch: (role: Role) => Promise<void>;
   onBackToWorkspace: () => void;
   onOpenActiveProfile: () => void;
 }
 
-const FALLBACK_OPERATORS: ReadonlyArray<OperatorRow> = [
+const DEMO_SANDBOX_PERSONAS: ReadonlyArray<OperatorRow> = [
   {
-    user_id: 'USR-ADM-01',
+    user_id: 'USR-HADMIN-01',
     tenant_id: 'munambam-demo',
     phone_e164: '+919447000006',
     full_name: 'Capt. Mathew Thomas',
@@ -66,7 +54,7 @@ const FALLBACK_OPERATORS: ReadonlyArray<OperatorRow> = [
     entity_summary: 'HMS Secretary & Statutory Custodian',
   },
   {
-    user_id: 'USR-ACC-01',
+    user_id: 'USR-ACCT-01',
     tenant_id: 'munambam-demo',
     phone_e164: '+919447000007',
     full_name: 'Deepa Krishnan',
@@ -76,7 +64,7 @@ const FALLBACK_OPERATORS: ReadonlyArray<OperatorRow> = [
     entity_summary: 'Chief Accountant · Dual-Key Authority',
   },
   {
-    user_id: 'USR-WGH-01',
+    user_id: 'USR-WEIGH-01',
     tenant_id: 'munambam-demo',
     phone_e164: '+919447000001',
     full_name: 'Sajeev K.',
@@ -86,17 +74,17 @@ const FALLBACK_OPERATORS: ReadonlyArray<OperatorRow> = [
     entity_summary: 'Dockside Scale & QR Terminal',
   },
   {
-    user_id: 'USR-AUC-01',
+    user_id: 'USR-AUCT-01',
     tenant_id: 'munambam-demo',
     phone_e164: '+919447000002',
     full_name: 'K. Balakrishnan Nair',
     role: 'LICENSED_AUCTIONEER',
     entity_ref_id: 'LIC-MUN-001',
     is_active: true,
-    entity_summary: 'Licence KL-EKM-AUC-2026-001 (ACTIVE)',
+    entity_summary: 'Licence KL-HMS-MUN-AUCT-2024-01 (ACTIVE)',
   },
   {
-    user_id: 'USR-BUY-01',
+    user_id: 'USR-BUYER-01',
     tenant_id: 'munambam-demo',
     phone_e164: '+919447000003',
     full_name: 'Ramesh Menon',
@@ -106,17 +94,17 @@ const FALLBACK_OPERATORS: ReadonlyArray<OperatorRow> = [
     entity_summary: 'Paddle #101 · Apex Marine Exports',
   },
   {
-    user_id: 'USR-FSH-01',
+    user_id: 'USR-FISHER-01',
     tenant_id: 'munambam-demo',
     phone_e164: '+919447000004',
     full_name: 'Antony Varghese',
     role: 'FISHERMAN_BOAT_OWNER',
     entity_ref_id: 'FSH-01',
     is_active: true,
-    entity_summary: 'Welfare #KL-FWB-2019-88412',
+    entity_summary: 'Welfare #KFWFB-EKM-8821',
   },
   {
-    user_id: 'USR-INS-01',
+    user_id: 'USR-INSP-01',
     tenant_id: 'munambam-demo',
     phone_e164: '+919447000005',
     full_name: 'Dr. Lekshmi R.',
@@ -126,7 +114,7 @@ const FALLBACK_OPERATORS: ReadonlyArray<OperatorRow> = [
     entity_summary: 'Act 16 s.21 Hygiene & Cold-Chain Authority',
   },
   {
-    user_id: 'USR-SUP-01',
+    user_id: 'USR-SUPER-01',
     tenant_id: 'munambam-demo',
     phone_e164: '+919447000008',
     full_name: 'Thejas R.',
@@ -139,8 +127,6 @@ const FALLBACK_OPERATORS: ReadonlyArray<OperatorRow> = [
 
 export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
   user,
-  loginTab,
-  onChangeLoginTab,
   phoneInput,
   onChangePhoneInput,
   otpInput,
@@ -152,20 +138,14 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
   onDismissAuthSuccess,
   onRequestOtp,
   onVerifyOtp,
-  regFullName,
-  onChangeRegFullName,
-  regPhone,
-  onChangeRegPhone,
-  regRole,
-  onChangeRegRole,
-  regSubmitting,
-  onRegisterNewOperator,
   displayedOperators,
   onPersonaSwitch,
   onBackToWorkspace,
   onOpenActiveProfile,
 }) => {
-  const operators = displayedOperators.length > 0 ? displayedOperators : FALLBACK_OPERATORS;
+  const isDevSandbox = !import.meta.env.PROD;
+  const operators =
+    displayedOperators.length > 0 ? displayedOperators : DEMO_SANDBOX_PERSONAS;
 
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] py-8 px-4 sm:px-6 lg:px-10 flex flex-col items-center justify-center">
@@ -176,12 +156,12 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight">
-                  HarbourOS Operator Identity & Sign-In Portal
+                  HarbourOS Operator Identity &amp; Sign-In Portal
                 </span>
                 <Badge tone="ok" label="HS256 JWT + RLS" />
               </div>
               <p className="text-xs text-[var(--text-secondary)]">
-                Kerala Fish Auctioning, Marketing and Maintenance of Quality Act, 2021 (Act 16 of 2021) · Go 1.23 + PostgreSQL 16
+                Kerala Fish Auctioning, Marketing and Maintenance of Quality Act, 2021 (Act 16 of 2021) · Node.js 22 + PostgreSQL 16
               </p>
             </div>
           </div>
@@ -208,7 +188,7 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-6 flex flex-col gap-5">
+          <div className={isDevSandbox ? 'lg:col-span-6 flex flex-col gap-5' : 'lg:col-span-8 lg:col-start-3 flex flex-col gap-5'}>
             <div className="p-4 rounded-[var(--radius-card)] border border-[var(--border-hair)] bg-[var(--bg-surface)] flex items-start gap-3.5">
               <HarbourQuayDawnSvgDecor size={48} />
               <div className="flex flex-col gap-1 min-w-0">
@@ -216,23 +196,12 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
                   Munambam Fishing Harbour (HMS)
                 </div>
                 <div className="text-sm font-bold text-[var(--text-primary)]">
-                  Passwordless Mobile OTP & Role-Scoped Access
+                  Passwordless Mobile OTP &amp; Role-Scoped Access
                 </div>
                 <p className="text-xs text-[var(--text-secondary)]">
                   Every operator token carries cryptographically signed <code>tenantId</code>, <code>role</code>, and <code>entityRefId</code> claims enforced by PostgreSQL Row-Level Security.
                 </p>
               </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <Tabs
-                items={[
-                  { id: 'otp', label: 'Mobile OTP Sign-In', badge: '2-Step' },
-                  { id: 'register', label: 'Register New Operator', badge: 'core.users' },
-                ]}
-                activeId={loginTab}
-                onChange={(id) => onChangeLoginTab(id as 'otp' | 'register')}
-              />
             </div>
 
             {authError && (
@@ -253,18 +222,18 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
               />
             )}
 
-            {loginTab === 'otp' ? (
-              <Card
-                stepBadge="ADR-003"
-                kicker="Passwordless Operator Authentication"
-                title="Sign In via Registered Mobile OTP"
-                subtitle="Select a harbour operator phone or enter any E.164 phone registered in core.users"
-                icon={<KeyRound className="w-5 h-5" />}
-              >
-                <div className="flex flex-col gap-5">
-                  <form onSubmit={(e) => void onRequestOtp(e)} className="flex flex-col gap-3.5">
+            <Card
+              stepBadge="ADR-003"
+              kicker="Passwordless Operator Authentication"
+              title="Sign In via Registered Mobile OTP"
+              subtitle="Enter your registered E.164 mobile number to receive a single-use 6-digit OTP challenge"
+              icon={<KeyRound className="w-5 h-5" />}
+            >
+              <div className="flex flex-col gap-5">
+                <form onSubmit={(e) => void onRequestOtp(e)} className="flex flex-col gap-3.5">
+                  {isDevSandbox && (
                     <Select
-                      label="Step 1: Select Registered Harbour Operator Phone"
+                      label="Step 1: Select Sandbox Harbour Operator Phone"
                       value={phoneInput}
                       onChange={(e) => onChangePhoneInput(e.target.value)}
                       options={[
@@ -278,183 +247,128 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
                         { value: '+919447000008', label: '+91 94470 00008 — Thejas R. (SUPER_ADMIN)' },
                       ]}
                     />
-                    <Input
-                      label="Or Enter E.164 Mobile Number Directly"
-                      mono
-                      value={phoneInput}
-                      onChange={(e) => onChangePhoneInput(e.target.value)}
-                      hint="Matches core.users.phone_e164 in PostgreSQL 16"
-                    />
-                    <Button type="submit" variant="secondary" className="w-full">
-                      1. Request 6-Digit OTP via Notify Port
-                    </Button>
-                  </form>
-
-                  {devEchoOtp && (
-                    <div className="p-4 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase text-[var(--info)]">
-                          OTP_DEV_ECHO Active (Sandbox Mode)
-                        </span>
-                        <Badge tone="info" label={`CODE: ${devEchoOtp}`} />
-                      </div>
-                      <p className="text-xs text-[var(--text-secondary)]">
-                        Generated 6-digit OTP code auto-filled below. In production, the Go server refuses to boot if <code>OTP_DEV_ECHO=true</code>.
-                      </p>
-                    </div>
                   )}
-
-                  <form
-                    onSubmit={(e) => void onVerifyOtp(e)}
-                    className="flex flex-col gap-3.5 pt-4 border-t border-[var(--border-hair)]"
-                  >
-                    <Input
-                      label="Step 2: Enter 6-Digit OTP Code (or Demo Code 202100)"
-                      mono
-                      value={otpInput}
-                      onChange={(e) => onChangeOtpInput(e.target.value)}
-                    />
-                    <Button type="submit" variant="primary" className="w-full">
-                      Verify OTP & Sign In with HS256 JWT
-                    </Button>
-                  </form>
-                </div>
-              </Card>
-            ) : (
-              <Card
-                stepBadge="NEW OPERATOR"
-                kicker="PostgreSQL core.users Provisioning"
-                title="Register New Harbour Operator Account"
-                subtitle="Creates a persistent operator row in core.users, logs to core.audit_logs, and signs you in immediately"
-                icon={<UserPlus className="w-5 h-5" />}
-              >
-                <form onSubmit={(e) => void onRegisterNewOperator(e)} className="flex flex-col gap-4">
                   <Input
-                    label="Operator Full Name (English / Honorific)"
-                    placeholder="e.g. Capt. Rajesh Soja"
-                    value={regFullName}
-                    onChange={(e) => onChangeRegFullName(e.target.value)}
-                    required
-                  />
-                  <Input
-                    label="Mobile Phone Number (E.164 Format)"
+                    label="Registered E.164 Mobile Number"
                     mono
-                    placeholder="+919447000099"
-                    value={regPhone}
-                    onChange={(e) => onChangeRegPhone(e.target.value)}
-                    hint="Used for passwordless OTP login challenges"
-                    required
+                    value={phoneInput}
+                    onChange={(e) => onChangePhoneInput(e.target.value)}
+                    hint="Format: +91XXXXXXXXXX (verified against core.otp_challenges)"
                   />
-                  <Select
-                    label="Assigned Statutory Role (Act 16 of 2021 RBAC)"
-                    value={regRole}
-                    onChange={(e) => onChangeRegRole(e.target.value as Role)}
-                    options={[
-                      { value: 'HARBOUR_ADMIN', label: 'HARBOUR_ADMIN — HMS Secretary & Custodian' },
-                      { value: 'ACCOUNTANT', label: 'ACCOUNTANT — Chief Accountant (Dual-Key 1)' },
-                      { value: 'WEIGHING_OPERATOR', label: 'WEIGHING_OPERATOR — Dockside Scale & QR' },
-                      { value: 'LICENSED_AUCTIONEER', label: 'LICENSED_AUCTIONEER — Pit Auctioneer (s.5)' },
-                      { value: 'WHOLESALE_BUYER', label: 'WHOLESALE_BUYER — Wholesale Buyer Clearing' },
-                      { value: 'FISHERMAN_BOAT_OWNER', label: 'FISHERMAN_BOAT_OWNER — Vessel Owner Passbook' },
-                      { value: 'AUTHORIZED_INSPECTOR', label: 'AUTHORIZED_INSPECTOR — Quality Inspector (s.21)' },
-                      { value: 'SUPER_ADMIN', label: 'SUPER_ADMIN — Multi-Harbour Platform Admin' },
-                    ]}
-                  />
-                  <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-xs text-[var(--text-secondary)]">
-                    <div className="font-bold text-[var(--text-primary)] mb-1">
-                      Role Authority Preview: {getRoleDisplayMeta(regRole).titleEn}
-                    </div>
-                    <p>{getRoleDisplayMeta(regRole).description}</p>
-                  </div>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    loading={regSubmitting}
-                    icon={<UserPlus className="w-4 h-4" />}
-                    className="w-full"
-                  >
-                    Register Operator in PostgreSQL & Sign In
+                  <Button type="submit" variant="secondary" className="w-full">
+                    1. Request 6-Digit OTP Challenge
                   </Button>
                 </form>
-              </Card>
-            )}
-          </div>
 
-          <div className="lg:col-span-6 flex flex-col gap-4">
-            <Card
-              stepBadge="LIVE DIRECTORY"
-              kicker="core.users · Instant Role Switch"
-              title="Registered Harbour Operators & Statutory Personas"
-              subtitle="Click any operator card to sign in immediately or pre-fill their phone for OTP verification"
-              icon={<ShieldCheck className="w-5 h-5" />}
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {operators.map((op) => {
-                  const meta = getRoleDisplayMeta(op.role);
-                  const isCurrent = user?.userId === op.user_id || user?.role === op.role;
-                  return (
-                    <div
-                      key={op.user_id}
-                      className={`p-4 rounded-[var(--radius-card)] border flex flex-col justify-between gap-3 transition-all ${
-                        isCurrent
-                          ? 'bg-[var(--brand-soft)] border-[var(--brand)]'
-                          : 'bg-[var(--bg-sunken)]/70 border-[var(--border-hair)] hover:border-[var(--border-strong)]'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="w-9 h-9 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-xs font-bold font-mono-code inline-flex items-center justify-center shrink-0">
-                            {formatOperatorInitials(op.full_name)}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="text-sm font-bold text-[var(--text-primary)] truncate">
-                              {op.full_name}
-                            </div>
-                            <div className="text-xs font-mono-code text-[var(--text-secondary)]">
-                              {op.phone_e164}
-                            </div>
-                          </div>
-                        </div>
-                        <span className="px-2 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] border border-[var(--border-hair)] text-[10px] font-bold font-mono-code text-[var(--brand)] whitespace-nowrap shrink-0 leading-none">
-                          {meta.shortBadge}
-                        </span>
-                      </div>
-
-                      <div className="text-xs text-[var(--text-secondary)]">
-                        <div className="font-semibold text-[var(--text-primary)]">
-                          {op.entity_summary ?? meta.statutoryRef}
-                        </div>
-                        <div className="text-[11px] text-[var(--text-muted)] mt-0.5 line-clamp-2">
-                          {meta.description}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-1">
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => void onPersonaSwitch(op.role)}
-                          className="flex-1"
-                        >
-                          Sign In Now
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            onChangeLoginTab('otp');
-                            onChangePhoneInput(op.phone_e164);
-                          }}
-                        >
-                          Use Phone
-                        </Button>
-                      </div>
+                {devEchoOtp && isDevSandbox && (
+                  <div className="p-4 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase text-[var(--info)]">
+                        OTP_DEV_ECHO Active (Sandbox Mode)
+                      </span>
+                      <Badge tone="info" label={`CODE: ${devEchoOtp}`} />
                     </div>
-                  );
-                })}
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      Single-use CSPRNG 6-digit OTP code auto-filled below. Production builds refuse to boot if <code>OTP_DEV_ECHO=true</code>.
+                    </p>
+                  </div>
+                )}
+
+                <form
+                  onSubmit={(e) => void onVerifyOtp(e)}
+                  className="flex flex-col gap-3.5 pt-4 border-t border-[var(--border-hair)]"
+                >
+                  <Input
+                    label="Step 2: Enter 6-Digit OTP Code"
+                    mono
+                    placeholder="Enter 6-digit OTP"
+                    value={otpInput}
+                    onChange={(e) => onChangeOtpInput(e.target.value)}
+                  />
+                  <Button type="submit" variant="primary" className="w-full">
+                    2. Verify OTP &amp; Sign In with HS256 JWT
+                  </Button>
+                </form>
               </div>
             </Card>
           </div>
+
+          {isDevSandbox && (
+            <div className="lg:col-span-6 flex flex-col gap-4">
+              <Card
+                stepBadge="SANDBOX PERSONAS"
+                kicker="Development Demo Mode"
+                title="Statutory Harbour Operator Personas"
+                subtitle="Switch between the 8 statutory Act 16 roles in development mode or pre-fill their phone for OTP verification"
+                icon={<ShieldCheck className="w-5 h-5" />}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {operators.map((op) => {
+                    const meta = getRoleDisplayMeta(op.role);
+                    const isCurrent = user?.userId === op.user_id || user?.role === op.role;
+                    return (
+                      <div
+                        key={op.user_id}
+                        className={`p-4 rounded-[var(--radius-card)] border flex flex-col justify-between gap-3 transition-all ${
+                          isCurrent
+                            ? 'bg-[var(--brand-soft)] border-[var(--brand)]'
+                            : 'bg-[var(--bg-sunken)]/70 border-[var(--border-hair)] hover:border-[var(--border-strong)]'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-9 h-9 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-xs font-bold font-mono-code inline-flex items-center justify-center shrink-0">
+                              {formatOperatorInitials(op.full_name)}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-[var(--text-primary)] truncate">
+                                {op.full_name}
+                              </div>
+                              <div className="text-xs font-mono-code text-[var(--text-secondary)]">
+                                {op.phone_e164}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] border border-[var(--border-hair)] text-[10px] font-bold font-mono-code text-[var(--brand)] whitespace-nowrap shrink-0 leading-none">
+                            {meta.shortBadge}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-[var(--text-secondary)]">
+                          <div className="font-semibold text-[var(--text-primary)]">
+                            {op.entity_summary ?? meta.statutoryRef}
+                          </div>
+                          <div className="text-[11px] text-[var(--text-muted)] mt-0.5 line-clamp-2">
+                            {meta.description}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => void onPersonaSwitch(op.role)}
+                            className="flex-1"
+                          >
+                            Switch Role
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              onChangePhoneInput(op.phone_e164);
+                            }}
+                          >
+                            Use Phone
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
     </div>

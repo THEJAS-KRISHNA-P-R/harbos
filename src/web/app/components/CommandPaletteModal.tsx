@@ -35,12 +35,11 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     <Modal
       open={open}
       onClose={onClose}
-      title="HarbourOS Universal Command & Entity Search (⌘K)"
-      description="Search across live PostgreSQL landed catch lots, nodal payout batches, SHA-256 journals, buyers, and statutory workspaces"
+      title="Command Palette (⌘K)"
       footer={
-        <div className="w-full flex items-center justify-between text-xs text-[var(--text-secondary)]">
-          <span>
-            Showing <strong>{items.length}</strong> indexed harbour entities & actions
+        <div className="w-full flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-secondary)]">
+          <span className="font-mono-code">
+            ↑↓ Navigate · ↵ Run · 1–7 Workspaces · L Ledger
           </span>
           <Button variant="secondary" size="sm" onClick={onClose}>
             Close (Esc)

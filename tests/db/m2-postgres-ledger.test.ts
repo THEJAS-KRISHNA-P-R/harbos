@@ -166,5 +166,62 @@ describe('M2, M6 & M7 Real PostgreSQL (PGlite) — Statutory Checks, Append-Only
     // 10. Re-verify SHA-256 hash chain after compensating reversal journal
     const postRevVerify = await verifyTenantLedgerChain(db, DEMO_TENANT_ID);
     assert.equal(postRevVerify.verified, true);
+
+    // 11. Fail-closed RLS policy helper: when app.rls_strict = 'on' and app.tenant_id is unset or mismatched, core.tenant_access_allowed returns false
+    const rlsCheck = await db.transaction(async (tx) => {
+      await tx.query(`SELECT set_config('app.rls_strict', 'on', true), set_config('app.tenant_id', '', true)`);
+      const unsetRes = await tx.query<{ allowed: boolean }>(
+        `SELECT core.tenant_access_allowed($1) AS allowed`,
+        [DEMO_TENANT_ID]
+      );
+      await tx.query(`SELECT set_config('app.tenant_id', 'other-tenant', true)`);
+      const mismatchRes = await tx.query<{ allowed: boolean }>(
+        `SELECT core.tenant_access_allowed($1) AS allowed`,
+        [DEMO_TENANT_ID]
+      );
+      await tx.query(`SELECT set_config('app.tenant_id', $1, true)`, [DEMO_TENANT_ID]);
+      const matchRes = await tx.query<{ allowed: boolean }>(
+        `SELECT core.tenant_access_allowed($1) AS allowed`,
+        [DEMO_TENANT_ID]
+      );
+      return {
+        unsetAllowed: unsetRes.rows[0]?.allowed,
+        mismatchAllowed: mismatchRes.rows[0]?.allowed,
+        matchAllowed: matchRes.rows[0]?.allowed,
+      };
+    });
+    assert.equal(rlsCheck.unsetAllowed, false);
+    assert.equal(rlsCheck.mismatchAllowed, false);
+    assert.equal(rlsCheck.matchAllowed, true);
+
+    // 12. Deferred database constraint trigger trg_enforce_journal_balance rejects unbalanced ledger.entries on COMMIT
+    await assert.rejects(
+      async () => {
+        await db.transaction(async (tx) => {
+          await tx.query(
+            `INSERT INTO ledger.journals (
+              journal_id, tenant_id, reference_type, reference_id, description,
+              total_amount_paise, created_at
+            ) VALUES ('JRN-UNBAL-TEST', $1, 'SALE_ALLOCATION', 'REF-UNBAL', 'Unbalanced test journal', 1000, '2026-11-06T07:00:00.000Z')`,
+            [DEMO_TENANT_ID]
+          );
+          await tx.query(
+            `INSERT INTO ledger.entries (
+              entry_seq, tenant_id, journal_id, account_id, direction,
+              amount_paise, prev_row_hash, row_hash, created_at_utc_iso_ms
+            ) VALUES (
+              99999, $1, 'JRN-UNBAL-TEST', 'ACC-HMS-MUN', 'D',
+              1000, '0000000000000000000000000000000000000000000000000000000000000000',
+              '1111111111111111111111111111111111111111111111111111111111111111',
+              '2026-11-06T07:00:00.000Z'
+            )`,
+            [DEMO_TENANT_ID]
+          );
+        });
+      },
+      /UNBALANCED_(LEDGER_)?JOURNAL/
+    );
+
+    await db.close();
   });
 });

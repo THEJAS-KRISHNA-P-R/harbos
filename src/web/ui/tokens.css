@@ -43,14 +43,17 @@
   --danger-fg: #8A1C13;      /* 6.57 / 8.14 */
   --warning: #8A5300;
   --warning-bg: #FFF4DB;     /* 5.79 */
+  --amber-500: #B86E00;
+  --status-warn-bg: #FFF4DB;
+  --status-warn-fg: #8A5300;
   --info: #1B5E92;
   --info-bg: #E3F0FA;        /* 5.91 */
   /* Success = navy check icon + the word "Settled/Done" on --brand-soft. No green. */
 
   --radius-pill: 9999px;
-  --radius-card: 16px;
+  --radius-card: 14px;
   --radius-control: 10px;
-  --shadow-overlay: 0 16px 36px -8px rgba(15, 31, 61, 0.18); /* overlays only; cards are flat */
+  --shadow-overlay: 0 20px 44px -10px rgba(15, 31, 61, 0.22); /* overlays only; cards are flat */
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --dur: 160ms;
 
@@ -68,8 +71,28 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Crisp custom scrollbars for tables, code blocks, and drawers */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--navy-200);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--navy-400);
 }
 
 .tabular-nums,
@@ -94,11 +117,22 @@ table th {
 @keyframes harbouros-fade-slide-in {
   0% {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes harbouros-drawer-slide-in {
+  0% {
+    opacity: 0.6;
+    transform: translateX(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 
@@ -121,7 +155,11 @@ table th {
 }
 
 .animate-utr-row-in {
-  animation: harbouros-fade-slide-in 260ms var(--ease) both;
+  animation: harbouros-fade-slide-in 220ms var(--ease) both;
+}
+
+.animate-drawer-in {
+  animation: harbouros-drawer-slide-in 200ms var(--ease) both;
 }
 
 .animate-utr-status-flip {
@@ -130,11 +168,11 @@ table th {
 
 .transition-utr-pill {
   transition:
-    background-color 240ms var(--ease),
-    color 240ms var(--ease),
-    border-color 240ms var(--ease),
-    transform 240ms var(--ease),
-    opacity 240ms var(--ease);
+    background-color 200ms var(--ease),
+    color 200ms var(--ease),
+    border-color 200ms var(--ease),
+    transform 200ms var(--ease),
+    opacity 200ms var(--ease);
 }
 
 @media (prefers-reduced-motion: reduce) {

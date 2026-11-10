@@ -16,6 +16,12 @@ import {
   formatCentralizedLogsCsv,
   formatObservabilityBundleJson,
   resolveGlobalKeyboardShortcut,
+  signBankNodalWebhookPayload,
+  verifyBankNodalWebhookSignature,
+  generateDeterministicIdempotencyKey,
+  computeSdkBackoffMs,
+  buildStatutorySettlementVoucher,
+  computeCrossHarbourBenchmarks,
   type AuditLogRow,
   type EntryRow,
   type JournalRow,
@@ -23,14 +29,18 @@ import {
 } from '../../src/web/lib/api.ts';
 import { executeWithStatementTimeout } from '../../src/server/adapters/db-pg.ts';
 import {
-  getSystemMetricsSnapshot,
-  simulateProductionIncident,
+  formatPrometheusMetrics,
+  getObservabilitySnapshot,
+  recordQueryExecution,
+  recordRateLimitEvent,
 } from '../../src/server/platform/observability.ts';
 import {
   SimpleLruCache,
   queryAllImportAuditLogsWithLruCache,
   invalidateLedgerAuditSqlLruCache,
+  resolveClientIp,
 } from '../../src/server/app.ts';
+import type { Request } from 'express';
 import type { DbPort } from '../../src/server/ports/db.ts';
 
 const MOCK_BATCHES: ReadonlyArray<PayoutBatchRow> = [
@@ -411,22 +421,30 @@ test('executeWithStatementTimeout enforces global statement timeout and aborts s
   );
 });
 
-test('getSystemMetricsSnapshot and simulateProductionIncident expose 3.24M+ user KPIs, query series, and alerts', () => {
-  const baseSnap = getSystemMetricsSnapshot();
-  assert.ok(baseSnap.scaleProfile.registeredUsers > 3_000_000);
+test('getObservabilitySnapshot and formatPrometheusMetrics expose real SQL query and rate-limit counters', () => {
+  recordQueryExecution({ sql: 'SELECT 1', durationMs: 1.5, timedOut: false });
+  recordRateLimitEvent({ scope: 'API', allowed: true, clientIp: '127.0.0.1', path: '/api/v1/bootstrap' });
+  const baseSnap = getObservabilitySnapshot();
+  assert.ok(baseSnap.scaleProfile.registeredUsers >= 1);
   assert.equal(baseSnap.dbProtection.statementTimeoutMs, 5000);
-  assert.ok(baseSnap.queryExecutionSeries.length >= 10);
-  assert.ok(baseSnap.alerts.length >= 4);
-  assert.ok(baseSnap.logs.length >= 4);
+  assert.ok(baseSnap.queryExecutionSeries.length >= 1);
+  assert.ok(baseSnap.alerts.length >= 3);
 
-  const slowGuardSnap = simulateProductionIncident('SLOW_QUERY_GUARD');
+  recordQueryExecution({
+    sql: 'SELECT pg_sleep(10)',
+    durationMs: 5000,
+    timedOut: true,
+    error: 'statement_timeout',
+  });
+  const afterTimeoutSnap = getObservabilitySnapshot();
   assert.ok(
-    slowGuardSnap.dbProtection.statementTimeoutsAborted >
+    afterTimeoutSnap.dbProtection.statementTimeoutsAborted >
       baseSnap.dbProtection.statementTimeoutsAborted
   );
 
-  const resetSnap = simulateProductionIncident('RESET_NOMINAL');
-  assert.equal(resetSnap.dbProtection.statementTimeoutMs, 5000);
+  const promText = formatPrometheusMetrics();
+  assert.ok(promText.includes('harbouros_sql_queries_total'));
+  assert.ok(promText.includes('harbouros_sql_statement_timeouts_total'));
 });
 
 test('SimpleLruCache and queryAllImportAuditLogsWithLruCache cache All import view SQL queries and evict LRU entries', async () => {
@@ -502,7 +520,7 @@ test('formatCentralizedLogsCsv, formatObservabilityBundleJson, and resolveGlobal
   assert.ok(csv.includes('LOG-01,2026-11-09T09:00:00.000Z,info,db-pg-pool,SQL_STATEMENT_TIMEOUT_SET,1.8,trc-001,"Configured statement_timeout=5000ms, pool=20"'));
 
   const bundleJson = formatObservabilityBundleJson(
-    { registeredUsers: 3_248_500 },
+    { registeredUsers: 8 },
     '2026-11-09T09:30:00.000Z'
   );
   const parsed = JSON.parse(bundleJson) as {
@@ -512,7 +530,7 @@ test('formatCentralizedLogsCsv, formatObservabilityBundleJson, and resolveGlobal
   };
   assert.equal(parsed.bundleVersion, 'harbouros-observability-v1');
   assert.equal(parsed.exportedAtIso, '2026-11-09T09:30:00.000Z');
-  assert.equal(parsed.registeredUsers, 3_248_500);
+  assert.equal(parsed.registeredUsers, 8);
 
   // Global keyboard shortcuts
   assert.deepEqual(
@@ -548,3 +566,115 @@ test('formatCentralizedLogsCsv, formatObservabilityBundleJson, and resolveGlobal
     { type: 'SWITCH_WORKSPACE', workspaceIndex: 1 }
   );
 });
+
+test('resolveClientIp extracts client IP from RFC 7239 Forwarded, X-Forwarded-For, or fallback ip', () => {
+  const reqForwarded = {
+    headers: {
+      forwarded: 'for=203.0.113.195;proto=https;by=203.0.113.43',
+      'x-forwarded-for': '198.51.100.17',
+    },
+    ip: '127.0.0.1',
+  } as unknown as Request;
+  assert.equal(resolveClientIp(reqForwarded), '203.0.113.195');
+
+  const reqXff = {
+    headers: {
+      'x-forwarded-for': '198.51.100.17, 70.41.3.18',
+    },
+    ip: '127.0.0.1',
+  } as unknown as Request;
+  assert.equal(resolveClientIp(reqXff), '198.51.100.17');
+
+  const reqDirect = {
+    headers: {},
+    ip: '10.0.0.8',
+  } as unknown as Request;
+  assert.equal(resolveClientIp(reqDirect), '10.0.0.8');
+});
+
+test('@harbouros/sdk signs & verifies Bank Nodal Webhooks, builds settlement vouchers, and computes benchmarks', () => {
+  const secret = 'statutory-nodal-secret-2026';
+  const nowSec = 1762680000;
+  const envelope = signBankNodalWebhookPayload(
+    {
+      eventId: 'EVT-NODAL-001',
+      bankCode: 'FDRL-NODAL-KOCHI',
+      tenantId: 'munambam-demo',
+      timestampSec: nowSec,
+      settlements: [
+        {
+          batchCodeOrId: 'MUN-PAY-20261106-01',
+          bankUtr: 'FDRL261109998877',
+          channel: 'ISO20022_CAMT054',
+        },
+      ],
+    },
+    secret
+  );
+
+  assert.equal(envelope.signatureHex.length, 64);
+  const validCheck = verifyBankNodalWebhookSignature({
+    payload: envelope.payload,
+    signatureHeader: envelope.headers['X-HarbourOS-Webhook-Signature'],
+    timestampHeader: envelope.headers['X-HarbourOS-Webhook-Timestamp'],
+    webhookSecret: secret,
+    nowSec: nowSec + 15,
+  });
+  assert.equal(validCheck.valid, true);
+
+  // Replay window protection rejects expired timestamps (> 300s)
+  const expiredCheck = verifyBankNodalWebhookSignature({
+    payload: envelope.payload,
+    signatureHeader: envelope.headers['X-HarbourOS-Webhook-Signature'],
+    timestampHeader: envelope.headers['X-HarbourOS-Webhook-Timestamp'],
+    webhookSecret: secret,
+    nowSec: nowSec + 900,
+  });
+  assert.equal(expiredCheck.valid, false);
+
+  // Tampered secret is rejected
+  const tamperedCheck = verifyBankNodalWebhookSignature({
+    payload: envelope.payload,
+    signatureHeader: envelope.headers['X-HarbourOS-Webhook-Signature'],
+    timestampHeader: envelope.headers['X-HarbourOS-Webhook-Timestamp'],
+    webhookSecret: 'wrong-secret',
+    nowSec,
+  });
+  assert.equal(tamperedCheck.valid, false);
+
+  const idemKey = generateDeterministicIdempotencyKey({
+    tenantId: 'munambam-demo',
+    operation: 'WEBHOOK',
+    resourceId: 'EVT-NODAL-001',
+    payloadSummary: envelope.signatureHex,
+  });
+  assert.ok(idemKey.startsWith('IDEM-'));
+  assert.equal(computeSdkBackoffMs(0, 150, 4000), 150);
+  assert.equal(computeSdkBackoffMs(2, 150, 4000), 600);
+
+  const voucher = buildStatutorySettlementVoucher({
+    tenantId: 'munambam-demo',
+    tenantNameEn: 'Munambam Fishing Harbour (HMS)',
+    chainHeadHash: 'a'.repeat(64),
+    chainVerified: true,
+    entryCount: 16,
+    batches: MOCK_BATCHES,
+    issuedAtIso: '2026-11-09T10:00:00.000Z',
+  });
+  assert.ok(voucher.voucherId.startsWith('VCH-'));
+  assert.equal(voucher.voucherProofSha256.length, 64);
+  assert.equal(voucher.reconciledBatchesCount, 1);
+  assert.equal(voucher.pendingBatchesCount, 1);
+
+  const benchmarks = computeCrossHarbourBenchmarks([
+    {
+      tenant_id: 'custom-harbour-01',
+      name_en: 'Custom Coastal Harbour',
+      centre_type: 'KERALA_HARBOUR',
+    },
+  ]);
+  assert.equal(benchmarks.length, 7);
+  assert.equal(benchmarks[6]?.tenantId, 'custom-harbour-01');
+});
+
+

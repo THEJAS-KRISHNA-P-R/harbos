@@ -67,8 +67,7 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
     <Drawer
       open={open}
       onClose={onClose}
-      title="Operator Profile & Statutory Session"
-      subtitle="Manage your PostgreSQL core.users identity, RBAC capabilities, and active HS256 JWT session"
+      title="Operator Profile & Session"
       footer={
         <>
           <Button

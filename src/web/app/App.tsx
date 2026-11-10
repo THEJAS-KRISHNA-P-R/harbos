@@ -1,11 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Globe,
-  Layers,
-  LogOut,
   CheckCircle2,
   BookOpen,
-  Code2,
   Search,
 } from 'lucide-react';
 import {
@@ -129,20 +126,12 @@ export const App: React.FC = () => {
   });
   const [docksideMobileLayout, setDocksideMobileLayout] = useState(false);
 
-  // OTP Login & Operator Registration states
-  const [loginTab, setLoginTab] = useState<'otp' | 'register'>('otp');
+  // OTP Login states
   const [phoneInput, setPhoneInput] = useState('+919447000006');
-  const [otpInput, setOtpInput] = useState('202100');
+  const [otpInput, setOtpInput] = useState('');
   const [devEchoOtp, setDevEchoOtp] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
-  const [operatorsList, setOperatorsList] = useState<ReadonlyArray<OperatorRow>>([]);
-
-  // New Operator Registration Form states
-  const [regFullName, setRegFullName] = useState('');
-  const [regPhone, setRegPhone] = useState('+919447000099');
-  const [regRole, setRegRole] = useState<Role>('HARBOUR_ADMIN');
-  const [regSubmitting, setRegSubmitting] = useState(false);
 
   // Drawers & Modals: Ledger Inspector, Operator Profile, Command Palette (⌘K)
   const [ledgerDrawerOpen, setLedgerDrawerOpen] = useState(false);
@@ -167,18 +156,6 @@ export const App: React.FC = () => {
       token: jwt,
     });
     setBootstrap(data);
-  }, []);
-
-  const loadOperatorsDirectory = useCallback(async (): Promise<void> => {
-    try {
-      const res = await apiRequest<{ operators: ReadonlyArray<OperatorRow> }>(
-        '/api/v1/auth/operators',
-        { method: 'GET' }
-      );
-      setOperatorsList(res.operators);
-    } catch {
-      // Fallback to bootstrap.users if available
-    }
   }, []);
 
   const loadOperatorProfile = useCallback(async (jwt: string): Promise<void> => {
@@ -222,17 +199,20 @@ export const App: React.FC = () => {
         await Promise.all([
           loadBootstrap(res.accessToken),
           loadOperatorProfile(res.accessToken),
-          loadOperatorsDirectory(),
         ]);
       } catch (err) {
         setAuthError(err instanceof Error ? err.message : 'Failed to switch persona');
       }
     },
-    [loadBootstrap, loadOperatorProfile, loadOperatorsDirectory]
+    [loadBootstrap, loadOperatorProfile]
   );
 
   useEffect(() => {
-    void handlePersonaSwitch('HARBOUR_ADMIN');
+    if (!import.meta.env.PROD) {
+      void handlePersonaSwitch('HARBOUR_ADMIN');
+    } else {
+      setScreenMode('login');
+    }
   }, [handlePersonaSwitch]);
 
   // Global keyboard shortcuts: ⌘K (Command Palette), L (Ledger Drawer), / or F (Focus Audit Filter), 1-7 (Switch Workspace)
@@ -267,7 +247,12 @@ export const App: React.FC = () => {
           '[aria-label="Filter audit logs by action_code or target_id"]'
         );
         filterEl?.focus();
-      } else if (intent.type === 'SWITCH_WORKSPACE' && !ledgerDrawerOpen && !commandPaletteOpen && !profileDrawerOpen) {
+      } else if (
+        intent.type === 'SWITCH_WORKSPACE' &&
+        !ledgerDrawerOpen &&
+        !commandPaletteOpen &&
+        !profileDrawerOpen
+      ) {
         const ws = WORKSPACES[intent.workspaceIndex];
         if (ws) {
           e.preventDefault();
@@ -290,7 +275,7 @@ export const App: React.FC = () => {
     try {
       const res = await apiRequest<{
         status: string;
-        phoneE164: string;
+        message: string;
         devOtpEcho?: string;
       }>('/api/v1/auth/otp/request', {
         method: 'POST',
@@ -300,7 +285,7 @@ export const App: React.FC = () => {
         setDevEchoOtp(res.devOtpEcho);
         setOtpInput(res.devOtpEcho);
       }
-      setAuthSuccess(`6-digit OTP dispatched to ${res.phoneE164}`);
+      setAuthSuccess(res.message || 'If this phone number is registered, a 6-digit OTP has been dispatched.');
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'OTP request failed');
     }
@@ -326,46 +311,9 @@ export const App: React.FC = () => {
       await Promise.all([
         loadBootstrap(res.accessToken),
         loadOperatorProfile(res.accessToken),
-        loadOperatorsDirectory(),
       ]);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'OTP verification failed');
-    }
-  };
-
-  const handleRegisterNewOperator = async (e: React.FormEvent): Promise<void> => {
-    e.preventDefault();
-    setAuthError(null);
-    setRegSubmitting(true);
-    try {
-      const res = await apiRequest<{ accessToken: string; user: SessionUser }>(
-        '/api/v1/auth/register-operator',
-        {
-          method: 'POST',
-          body: {
-            fullName: regFullName,
-            phoneE164: regPhone,
-            role: regRole,
-            tenantId: bootstrap?.tenant?.tenant_id ?? 'munambam-demo',
-          },
-        }
-      );
-      setToken(res.accessToken);
-      setUser(res.user);
-      setEditFullName(res.user.fullName);
-      setEditPhoneE164(res.user.phoneE164);
-      setActiveWorkspace(ROLE_DEFAULT_WORKSPACE[res.user.role]);
-      setScreenMode('workspace');
-      setRegFullName('');
-      await Promise.all([
-        loadBootstrap(res.accessToken),
-        loadOperatorProfile(res.accessToken),
-        loadOperatorsDirectory(),
-      ]);
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Operator registration failed');
-    } finally {
-      setRegSubmitting(false);
     }
   };
 
@@ -391,7 +339,6 @@ export const App: React.FC = () => {
       await Promise.all([
         loadBootstrap(res.accessToken),
         loadOperatorProfile(res.accessToken),
-        loadOperatorsDirectory(),
       ]);
       setProfileFeedback({
         tone: 'ok',
@@ -428,7 +375,7 @@ export const App: React.FC = () => {
       ).length;
       return pendingRev > 0 ? `${pendingRev} key` : 'OK';
     }
-    if (wsId === 'platform') return 'Go+PG';
+    if (wsId === 'platform') return 'TS+PG';
     return undefined;
   };
 
@@ -463,7 +410,6 @@ export const App: React.FC = () => {
       setProfileDrawerOpen(true);
       if (token) void loadOperatorProfile(token);
     } else if (item.actionType === 'OPEN_LOGIN') {
-      void loadOperatorsDirectory();
       setScreenMode('login');
     } else if (item.actionType === 'OPEN_UI_KIT') {
       setScreenMode('gallery');
@@ -485,28 +431,30 @@ export const App: React.FC = () => {
         ⌘K
       </Button>
 
-      <div className="hidden sm:block shrink-0">
-        <Select
-          label=""
-          pill
-          aria-label="Switch Role Persona (Demo Mode)"
-          value={user?.role ?? 'HARBOUR_ADMIN'}
-          onChange={(e) => {
-            const nextRole = e.target.value as Role;
-            void handlePersonaSwitch(nextRole);
-          }}
-          options={[
-            { value: 'HARBOUR_ADMIN', label: 'Role: HMS Admin' },
-            { value: 'ACCOUNTANT', label: 'Role: Accountant' },
-            { value: 'WEIGHING_OPERATOR', label: 'Role: Weighing' },
-            { value: 'LICENSED_AUCTIONEER', label: 'Role: Auctioneer' },
-            { value: 'WHOLESALE_BUYER', label: 'Role: Buyer #101' },
-            { value: 'FISHERMAN_BOAT_OWNER', label: 'Role: Vessel Owner' },
-            { value: 'AUTHORIZED_INSPECTOR', label: 'Role: Inspector s.21' },
-            { value: 'SUPER_ADMIN', label: 'Role: Super Admin' },
-          ]}
-        />
-      </div>
+      {!import.meta.env.PROD && (
+        <div className="hidden sm:block shrink-0">
+          <Select
+            label=""
+            pill
+            aria-label="Switch Role Persona (Demo Mode)"
+            value={user?.role ?? 'HARBOUR_ADMIN'}
+            onChange={(e) => {
+              const nextRole = e.target.value as Role;
+              void handlePersonaSwitch(nextRole);
+            }}
+            options={[
+              { value: 'HARBOUR_ADMIN', label: 'Role: HMS Admin' },
+              { value: 'ACCOUNTANT', label: 'Role: Accountant' },
+              { value: 'WEIGHING_OPERATOR', label: 'Role: Weighing' },
+              { value: 'LICENSED_AUCTIONEER', label: 'Role: Auctioneer' },
+              { value: 'WHOLESALE_BUYER', label: 'Role: Buyer #101' },
+              { value: 'FISHERMAN_BOAT_OWNER', label: 'Role: Vessel Owner' },
+              { value: 'AUTHORIZED_INSPECTOR', label: 'Role: Inspector s.21' },
+              { value: 'SUPER_ADMIN', label: 'Role: Super Admin' },
+            ]}
+          />
+        </div>
+      )}
 
       <Button
         variant="primary"
@@ -549,19 +497,12 @@ export const App: React.FC = () => {
     </>
   );
 
-  const displayedOperators: ReadonlyArray<OperatorRow> =
-    operatorsList.length > 0 ? operatorsList : bootstrap?.users ?? [];
+  const displayedOperators: ReadonlyArray<OperatorRow> = bootstrap?.users ?? [];
 
   if (screenMode === 'login') {
     return (
       <LoginPortalScreen
         user={user}
-        loginTab={loginTab}
-        onChangeLoginTab={(tab) => {
-          setAuthError(null);
-          setAuthSuccess(null);
-          setLoginTab(tab);
-        }}
         phoneInput={phoneInput}
         onChangePhoneInput={setPhoneInput}
         otpInput={otpInput}
@@ -573,14 +514,6 @@ export const App: React.FC = () => {
         onDismissAuthSuccess={() => setAuthSuccess(null)}
         onRequestOtp={handleRequestOtp}
         onVerifyOtp={handleVerifyOtp}
-        regFullName={regFullName}
-        onChangeRegFullName={setRegFullName}
-        regPhone={regPhone}
-        onChangeRegPhone={setRegPhone}
-        regRole={regRole}
-        onChangeRegRole={setRegRole}
-        regSubmitting={regSubmitting}
-        onRegisterNewOperator={handleRegisterNewOperator}
         displayedOperators={displayedOperators}
         onPersonaSwitch={handlePersonaSwitch}
         onBackToWorkspace={() => setScreenMode('workspace')}
@@ -625,7 +558,7 @@ export const App: React.FC = () => {
       ) : !bootstrap || !token ? (
         <EmptyState
           title="Loading HarbourOS Statutory Clearing Engine…"
-          description="Initializing Go 1.23 + PostgreSQL 16 and verifying SHA-256 ledger hash chain."
+          description="Initializing Node.js 22 + PostgreSQL 16 and verifying SHA-256 ledger hash chain."
         />
       ) : (
         <>
@@ -694,7 +627,6 @@ export const App: React.FC = () => {
         onSelectWorkspace={handleSelectWorkspace}
         onOpenFullLoginPortal={() => {
           setProfileDrawerOpen(false);
-          void loadOperatorsDirectory();
           setScreenMode('login');
           if (typeof window !== 'undefined') {
             window.history.replaceState({}, '', '/login');

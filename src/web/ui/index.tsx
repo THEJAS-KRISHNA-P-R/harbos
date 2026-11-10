@@ -106,7 +106,7 @@ export const Button: React.FC<ButtonProps> = ({
     <button
       type={type}
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 font-semibold whitespace-nowrap transition-all duration-[160ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 font-semibold whitespace-nowrap transition-all duration-[160ms] active:scale-[0.985] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
       {...rest}
     >
       {loading ? <Loader2 className="w-4 h-4 animate-spin shrink-0" aria-hidden="true" /> : icon}
@@ -661,17 +661,17 @@ export const Drawer: React.FC<DrawerProps> = ({
       aria-labelledby="drawer-title"
     >
       <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
-      <aside className="relative z-10 w-full max-w-[560px] h-full bg-[var(--bg-surface)] border-l border-[var(--border-hair)] shadow-[var(--shadow-overlay)] flex flex-col justify-between overflow-hidden">
-        <header className="px-4 sm:px-6 py-4 sm:py-5 bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] flex items-start justify-between gap-3">
+      <aside className="relative z-10 w-full max-w-[640px] h-full bg-[var(--bg-surface)] border-l border-[var(--border-hair)] shadow-[var(--shadow-overlay)] flex flex-col justify-between overflow-hidden animate-drawer-in">
+        <header className="px-4 sm:px-6 py-3.5 sm:py-4 bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2
               id="drawer-title"
-              className="text-base sm:text-lg font-semibold text-[var(--text-primary)] tracking-tight"
+              className="text-base font-bold text-[var(--text-primary)] tracking-tight truncate"
             >
               {title}
             </h2>
             {subtitle && (
-              <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">{subtitle}</p>
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5 truncate">{subtitle}</p>
             )}
           </div>
           <Button
@@ -684,9 +684,9 @@ export const Drawer: React.FC<DrawerProps> = ({
             Close
           </Button>
         </header>
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1">{children}</div>
+        <div className="p-4 sm:p-5 overflow-y-auto flex-1">{children}</div>
         {footer && (
-          <footer className="px-4 sm:px-6 py-3.5 sm:py-4 bg-[var(--bg-sunken)] border-t border-[var(--border-hair)] flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+          <footer className="px-4 sm:px-6 py-3 bg-[var(--bg-sunken)] border-t border-[var(--border-hair)] flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             {footer}
           </footer>
         )}
@@ -1372,8 +1372,8 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
 
       {/* Main Workspace Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="min-h-[54px] px-4 sm:px-6 lg:px-8 py-2 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex items-center justify-between gap-4 no-print">
-          <div className="flex items-center gap-2 min-w-0 shrink-0">
+        <header className="sticky top-0 z-30 min-h-[54px] px-4 sm:px-6 lg:px-8 py-2 bg-[var(--bg-surface)]/95 backdrop-blur-sm border-b border-[var(--border-hair)] flex items-center justify-between gap-4 no-print">
+          <div className="flex items-center gap-2.5 min-w-0 shrink-0">
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
@@ -1384,6 +1384,9 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
             </button>
             <span className="text-sm font-bold text-[var(--text-primary)] truncate">
               {activeItem?.labelEn ?? 'Workspace'}
+            </span>
+            <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-[11px] font-mono-code text-[var(--text-muted)] whitespace-nowrap">
+              1–7 Workspaces · L Ledger · ⌘K Search
             </span>
           </div>
           <div className="flex items-center gap-2 overflow-x-auto max-w-full py-0.5">

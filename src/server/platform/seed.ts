@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { DbPort } from '@server/ports/db.ts';
 import { config } from '@server/config.ts';
 import { GENESIS_PREV_HASH, sha256HexUtf8 } from '@shared/domain/ledger-hash.ts';
+import { hashSupervisorPin } from '@server/platform/auth.ts';
 import { allocateLotSale, signLotQrPayload } from '@server/platform/ledger-service.ts';
 
 export const DEMO_TENANT_ID = 'munambam-demo';
@@ -53,7 +54,13 @@ export async function runSqlMigrations(
 
 export async function runMigrationsAndSeed(db: DbPort): Promise<void> {
   await runSqlMigrations(db);
+  if (config.NODE_ENV === 'production' && !config.DEMO_MODE) {
+    return;
+  }
+  await seedDemoData(db);
+}
 
+export async function seedDemoData(db: DbPort): Promise<void> {
   // Check if demo tenant is already seeded
   const tenantCheck = await db.query<{ tenant_id: string }>(
     `SELECT tenant_id FROM core.tenants WHERE tenant_id = $1`,
@@ -107,6 +114,7 @@ export async function runMigrationsAndSeed(db: DbPort): Promise<void> {
     ['ACC-COOP-MUN', 'COOP_SOCIETY_FUND', '2200-COOP', 'Primary Co-op Societies 20% Pool', 'SOC-MUN-01'],
     ['ACC-REV-HOS', 'HARBOUROS_REVENUE', '4000-HOS', 'HarbourOS Platform Revenue Account', 'HARBOUROS'],
     ['ACC-GST-HOS', 'GST_PAYABLE', '2400-GST', 'Output GST Payable (18% on Buyer Fee)', 'TAX-GST'],
+    ['ACC-BANK-MUN', 'BANK_CLEARING', '1100-BANK', 'Munambam HMS Nodal Bank Clearing Account', 'HMS-MUN'],
   ] as const;
 
   for (const [accId, kind, code, name, owner] of institutionalAccounts) {
@@ -130,10 +138,11 @@ export async function runMigrationsAndSeed(db: DbPort): Promise<void> {
   ] as const;
 
   for (const [uId, phone, name, role, pin, refId] of users) {
+    const pinHash = hashSupervisorPin(pin, 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
     await db.query(
-      `INSERT INTO core.users (user_id, tenant_id, phone_e164, full_name, role, pin_code, entity_ref_id, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true)`,
-      [uId, tId, phone, name, role, pin, refId]
+      `INSERT INTO core.users (user_id, tenant_id, phone_e164, full_name, role, pin_code, supervisor_pin_hash, entity_ref_id, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)`,
+      [uId, tId, phone, name, role, pin, pinHash, refId]
     );
   }
 

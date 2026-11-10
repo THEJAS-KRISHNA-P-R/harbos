@@ -23,6 +23,7 @@ import {
   detectUtrStatusTransitions,
   buildUtrImportHistory,
   filterUtrImportHistory,
+  buildStatutorySettlementVoucher,
   type BankUtrCsvMappedRow,
   type UtrStatusTransition,
   type LedgerCsvExportScope,
@@ -420,12 +421,75 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
     });
   };
 
+  const handleExportSettlementVoucher = (): void => {
+    if (!bootstrap) return;
+    const voucher = buildStatutorySettlementVoucher({
+      tenantId: bootstrap.tenant?.tenant_id ?? 'munambam-demo',
+      tenantNameEn: bootstrap.tenant?.name_en ?? 'Munambam Fishing Harbour (HMS)',
+      chainHeadHash: bootstrap.ledgerVerification.headHash,
+      chainVerified: bootstrap.ledgerVerification.verified,
+      entryCount: bootstrap.ledgerVerification.entryCount,
+      batches: bootstrap.payoutBatches,
+    });
+    downloadTextFile(
+      `${voucher.voucherId}-Settlement-Statement.json`,
+      JSON.stringify(voucher, null, 2),
+      'application/json;charset=utf-8;'
+    );
+    setUtrFeedback({
+      tone: 'ok',
+      title: `Exported Statutory Settlement Voucher (${voucher.voucherId})`,
+      msg: `Signed with SHA-256 proof ${voucher.voucherProofSha256.slice(0, 16)}… across ${voucher.batches.length} payout batches.`,
+    });
+  };
+
+  const handleSimulateSignedBankWebhook = async (): Promise<void> => {
+    if (!bootstrap || !token) return;
+    setUtrReconciling(true);
+    setUtrFeedback(null);
+    try {
+      const res = await apiRequest<{
+        eventId: string;
+        bankCode: string;
+        signatureHex: string;
+        reconciledCount: number;
+        reconciled: ReadonlyArray<{
+          batchId: string;
+          batchCode: string;
+          status: string;
+          bankUtr: string;
+        }>;
+      }>('/api/v1/webhooks/bank-nodal', {
+        method: 'POST',
+        token,
+        body: {
+          simulateSigned: true,
+          bankCode: 'FDRL-NODAL-ISO20022',
+          tenantId: bootstrap.tenant?.tenant_id ?? 'munambam-demo',
+        },
+      });
+      await onRefresh();
+      setUtrFeedback({
+        tone: 'ok',
+        title: `Bank Nodal Webhook Verified (${res.bankCode})`,
+        msg: `HMAC-SHA256 (${res.signatureHex.slice(0, 16)}…) verified & auto-reconciled ${res.reconciledCount} batch(es).`,
+      });
+    } catch (err) {
+      setUtrFeedback({
+        tone: 'danger',
+        title: 'Bank Nodal Webhook Rejected',
+        msg: err instanceof Error ? err.message : 'Webhook callback failed',
+      });
+    } finally {
+      setUtrReconciling(false);
+    }
+  };
+
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      title="Statutory Ledger & Golden Vectors Inspector"
-      subtitle="Real-time SHA-256 hash chain, Nodal Bank UTR CSV Reconciliation & Act 16 of 2021 verification"
+      title="Statutory Ledger & UTR Inspector"
       footer={
         <div className="w-full flex flex-wrap items-center justify-between gap-2">
           <div
@@ -459,8 +523,28 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
+              variant="outline"
+              size="sm"
+              data-testid="simulate-bank-webhook-btn"
+              disabled={!bootstrap || utrReconciling}
+              onClick={() => void handleSimulateSignedBankWebhook()}
+            >
+              Webhook Sync
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="export-settlement-voucher-btn"
+              icon={<FileDown className="w-3.5 h-3.5" />}
+              disabled={!bootstrap}
+              onClick={handleExportSettlementVoucher}
+            >
+              Voucher
+            </Button>
+            <Button
               variant="secondary"
-              icon={<FileUp className="w-4 h-4" />}
+              size="sm"
+              icon={<FileUp className="w-3.5 h-3.5" />}
               disabled={!bootstrap}
               onClick={() => handleOpenUtrCsvImport(true)}
             >
@@ -468,14 +552,15 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
             </Button>
             <Button
               variant="secondary"
-              icon={<FileDown className="w-4 h-4" />}
+              size="sm"
+              icon={<FileDown className="w-3.5 h-3.5" />}
               disabled={!bootstrap}
               onClick={() => handleDownloadCsv()}
             >
               Download CSV
             </Button>
-            <Button variant="primary" onClick={onClose}>
-              Close Inspector
+            <Button variant="primary" size="sm" onClick={onClose}>
+              Close
             </Button>
           </div>
         </div>

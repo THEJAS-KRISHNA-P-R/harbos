@@ -334,6 +334,26 @@ export interface SessionUser {
   entityRefId?: string | null;
 }
 
+export {
+  HARBOUROS_SDK_VERSION,
+  hmacSha256HexUtf8,
+  constantTimeEqualHex,
+  signBankNodalWebhookPayload,
+  verifyBankNodalWebhookSignature,
+  generateDeterministicIdempotencyKey,
+  computeSdkBackoffMs,
+  buildStatutorySettlementVoucher,
+  computeCrossHarbourBenchmarks,
+  generateExternalSdkStarterCode,
+  type BankNodalSettlementItem,
+  type BankNodalWebhookPayload,
+  type SignedBankNodalWebhookEnvelope,
+  type StatutorySettlementVoucher,
+  type CrossHarbourBenchmarkRow,
+} from '@shared/sdk/harbouros-sdk.ts';
+
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
+
 export async function apiRequest<T>(
   path: string,
   options: {
@@ -343,27 +363,50 @@ export async function apiRequest<T>(
     idempotencyKey?: string;
   } = {}
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+  const method = options.method ?? 'GET';
+  const coalesceKey = method === 'GET' ? `${options.token ?? 'anon'}:${path}` : null;
+
+  if (coalesceKey) {
+    const existing = inFlightGetRequests.get(coalesceKey);
+    if (existing) {
+      return existing as Promise<T>;
+    }
+  }
+
+  const executeFetch = async (): Promise<T> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-HarbourOS-SDK-Version': '2.4.0-statutory',
+    };
+    if (options.token) {
+      headers['Authorization'] = `Bearer ${options.token}`;
+    }
+    if (options.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+
+    const res = await fetch(path, {
+      method,
+      headers,
+      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+    });
+
+    const data = (await res.json()) as T & { error?: { code?: string; message?: string } };
+    if (!res.ok) {
+      throw new Error(data.error?.message ?? `Request failed (${res.status})`);
+    }
+    return data;
   };
-  if (options.token) {
-    headers['Authorization'] = `Bearer ${options.token}`;
-  }
-  if (options.idempotencyKey) {
-    headers['Idempotency-Key'] = options.idempotencyKey;
+
+  if (!coalesceKey) {
+    return executeFetch();
   }
 
-  const res = await fetch(path, {
-    method: options.method ?? 'GET',
-    headers,
-    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+  const promise = executeFetch().finally(() => {
+    inFlightGetRequests.delete(coalesceKey);
   });
-
-  const data = (await res.json()) as T & { error?: { code?: string; message?: string } };
-  if (!res.ok) {
-    throw new Error(data.error?.message ?? `Request failed (${res.status})`);
-  }
-  return data;
+  inFlightGetRequests.set(coalesceKey, promise);
+  return promise;
 }
 
 export function downloadTextFile(

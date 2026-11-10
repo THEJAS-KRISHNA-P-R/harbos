@@ -12,20 +12,36 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
 
   harbouros-app:
     build: .
     ports:
       - "3000:3000"
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: 3000
       DATABASE_URL: postgres://harbour_owner:harbour_dev_password@postgres:5432/harbouros
-      JWT_ACCESS_SECRET: replace-with-32-byte-production-access-secret-0001
-      JWT_REFRESH_SECRET: replace-with-32-byte-production-refresh-secret-0002
-      QR_HMAC_SECRET: replace-with-32-byte-production-qr-hmac-secret-0003
-      OTP_DEV_ECHO: "false"
-      DEMO_MODE: "false"
+      JWT_ACCESS_SECRET: dev-compose-access-secret-32bytes-minimum-key-9901
+      JWT_REFRESH_SECRET: dev-compose-refresh-secret-32bytes-minimum-key-9902
+      QR_HMAC_SECRET: dev-compose-qr-hmac-secret-32bytes-minimum-key-9903
+      OTP_DEV_ECHO: "true"
+      DEMO_MODE: "true"
+      SMS_PROVIDER: "console"
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M

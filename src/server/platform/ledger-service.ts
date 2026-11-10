@@ -6,6 +6,7 @@ import { computeSaleSettlement, type CommissionPolicyConfig } from '@shared/doma
 import { computeBoxAllocation } from '@shared/domain/allocate.ts';
 import {
   GENESIS_PREV_HASH,
+  sha256HexUtf8,
   computeLedgerEntryHash,
   buildSaleJournalEntries,
   buildReversalJournalEntries,
@@ -13,7 +14,12 @@ import {
 } from '@shared/domain/ledger-hash.ts';
 import type { AuctionMode, CommercialMode, FloorEnforcement } from '@shared/ids.ts';
 
-export function signLotQrPayload(lotId: string, vesselId: string, netGrams: bigint, secret: string): string {
+export function signLotQrPayload(
+  lotId: string,
+  vesselId: string,
+  netGrams: bigint,
+  secret: string
+): string {
   return crypto
     .createHmac('sha256', secret)
     .update(`${lotId}|${vesselId}|${netGrams.toString()}`)
@@ -26,7 +32,12 @@ export async function postJournalInTx(
   params: {
     tenantId: string;
     journalId: string;
-    referenceType: 'SALE_ALLOCATION' | 'REVERSAL' | 'PAYOUT_BATCH' | 'BONUS_RELEASE';
+    referenceType:
+      | 'SALE_ALLOCATION'
+      | 'REVERSAL'
+      | 'PAYOUT_BATCH'
+      | 'BONUS_RELEASE'
+      | 'BUYER_RECEIPT';
     referenceId: string;
     description: string;
     entries: ReadonlyArray<JournalEntryDraft>;
@@ -130,7 +141,6 @@ export async function postJournalInTx(
       ]
     );
 
-    // Update account running balance (Credit increases payable/fund, Debit increases buyer receivable)
     const acctRes = await tx.query<{ kind: string; balance_paise: string | number }>(
       `SELECT kind, balance_paise FROM ledger.accounts WHERE account_id = $1 AND tenant_id = $2`,
       [entry.accountId, params.tenantId]
@@ -138,7 +148,7 @@ export async function postJournalInTx(
     const acct = acctRes.rows[0];
     if (acct) {
       const curBal = BigInt(acct.balance_paise);
-      const isDebitNormal = acct.kind === 'BUYER_RECEIVABLE';
+      const isDebitNormal = acct.kind === 'BUYER_RECEIVABLE' || acct.kind === 'BANK_CLEARING';
       const delta =
         (isDebitNormal && entry.direction === 'D') || (!isDebitNormal && entry.direction === 'C')
           ? entry.amountPaise
@@ -179,6 +189,20 @@ export interface AllocateLotSaleInput {
   readonly nowIso: string;
 }
 
+export function computeAllocationRequestHash(input: {
+  lotId: string;
+  sessionId: string;
+  auctionMode: AuctionMode;
+  auctioneerLicenceId: string;
+  buyerId: string;
+  boxesRequested: number;
+  pricePerKgPaise: bigint;
+}): string {
+  return sha256HexUtf8(
+    `${input.lotId}|${input.sessionId}|${input.auctionMode}|${input.auctioneerLicenceId}|${input.buyerId}|${input.boxesRequested}|${input.pricePerKgPaise.toString()}`
+  );
+}
+
 export async function allocateLotSale(
   db: DbPort,
   input: AllocateLotSaleInput
@@ -196,9 +220,10 @@ export async function allocateLotSale(
   idempotentReplay: boolean;
 }> {
   const startMs = Date.now();
+  const requestHash = computeAllocationRequestHash(input);
 
   return db.transaction(async (tx) => {
-    // §7 Check 7: Idempotency key unique; replay returns original result
+    // §7 Check 7: Tenant-scoped Idempotency key with canonical request hash verification
     const existingRes = await tx.query<{
       allocation_id: string;
       journal_id: string;
@@ -208,17 +233,28 @@ export async function allocateLotSale(
       bonus_escrow_paise: string;
       floor_warning_triggered: boolean;
       server_latency_ms: number;
+      request_hash: string | null;
     }>(
       `SELECT allocation_id, journal_id, hammer_paise, buyer_payable_paise,
-              fisherman_net_paise, bonus_escrow_paise, floor_warning_triggered, server_latency_ms
-       FROM auction.sale_allocations WHERE idempotency_key = $1`,
-      [input.idempotencyKey]
+              fisherman_net_paise, bonus_escrow_paise, floor_warning_triggered,
+              server_latency_ms, request_hash
+       FROM auction.sale_allocations
+       WHERE tenant_id = $1 AND idempotency_key = $2`,
+      [input.tenantId, input.idempotencyKey]
     );
     const existing = existingRes.rows[0];
     if (existing) {
+      if (existing.request_hash && existing.request_hash !== requestHash) {
+        throw new AppError(
+          'IDEMPOTENCY_KEY_REUSED',
+          'Idempotency-Key was already used with different allocation parameters.',
+          422
+        );
+      }
+
       const lotSnap = await tx.query<{ available_boxes: number; available_grams: string }>(
-        `SELECT available_boxes, available_grams FROM auction.lots WHERE lot_id = $1`,
-        [input.lotId]
+        `SELECT available_boxes, available_grams FROM auction.lots WHERE lot_id = $1 AND tenant_id = $2`,
+        [input.lotId, input.tenantId]
       );
       return {
         allocationId: existing.allocation_id,
@@ -308,7 +344,7 @@ export async function allocateLotSale(
       available_boxes: number;
       net_grams: string;
       available_grams: string;
-      inspection_grade: string;
+      inspection_grade: string | null;
       status: string;
     }>(
       `SELECT lot_id, lot_code, vessel_id, fisherman_id, species_id,
@@ -322,11 +358,16 @@ export async function allocateLotSale(
       throw new AppError('NOT_FOUND', 'Lot not found', 404);
     }
 
-    // §7 Check 3: Lot is not REJECTED_UNFIT (s.21 inspection result)
-    if (lot.inspection_grade === 'REJECTED_UNFIT' || lot.status === 'BLOCKED_UNFIT') {
+    // §7 Check 3: Lot must have passed s.21 inspection (not null, not REJECTED_UNFIT, not WEIGHED_PENDING_INSPECTION)
+    if (
+      !lot.inspection_grade ||
+      lot.inspection_grade === 'REJECTED_UNFIT' ||
+      lot.status === 'BLOCKED_UNFIT' ||
+      lot.status === 'WEIGHED_PENDING_INSPECTION'
+    ) {
       throw new AppError(
         'FORBIDDEN',
-        `Statutory quality block (Act 16 s.21): Lot ${lot.lot_code} is graded REJECTED_UNFIT and cannot be auctioned.`,
+        `Statutory quality block (Act 16 s.21): Lot ${lot.lot_code} is graded ${String(lot.inspection_grade ?? 'UNINSPECTED')} (${lot.status}) and cannot be auctioned.`,
         422
       );
     }
@@ -575,7 +616,7 @@ export async function allocateLotSale(
         price_per_kg_paise, hammer_paise, buyer_payable_paise, fisherman_net_paise,
         bonus_escrow_paise, auctioneer_paise, hms_net_paise, coop_net_paise,
         harbouros_revenue_paise, gst_paise, floor_warning_triggered,
-        government_permission_ref, idempotency_key, fencing_token, journal_id,
+        government_permission_ref, idempotency_key, request_hash, fencing_token, journal_id,
         server_latency_ms, created_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
@@ -583,8 +624,8 @@ export async function allocateLotSale(
         $12, $13, $14, $15,
         $16, $17, $18, $19,
         $20, $21, $22,
-        $23, $24, $25, $26,
-        $27, $28
+        $23, $24, $25, $26, $27,
+        $28, $29
       )`,
       [
         allocationId,
@@ -611,6 +652,7 @@ export async function allocateLotSale(
         floorWarningTriggered,
         input.governmentPermissionRef ?? null,
         input.idempotencyKey,
+        requestHash,
         input.fencingToken,
         journalId,
         serverLatencyMs,
@@ -618,7 +660,6 @@ export async function allocateLotSale(
       ]
     );
 
-    // Emit outbox notification for fisherman passbook & buyer invoice (§10 M8)
     await tx.query(
       `INSERT INTO sync.outbox_events (event_id, tenant_id, channel, recipient, template_code, payload_json, status, created_at)
        VALUES ($1, $2, 'SMS', $3, 'SALE_SETTLED_ML', $4, 'DISPATCHED_CONSOLE', $5)`,

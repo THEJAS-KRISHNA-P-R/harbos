@@ -2,12 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   PlusCircle,
   FileKey,
-  Database,
-  Code2,
-  Play,
   FileDown,
-  Terminal,
-  Activity,
   Zap,
   RefreshCw,
 } from 'lucide-react';
@@ -30,35 +25,25 @@ import {
   apiRequest,
   downloadTextFile,
   formatInrFromPaise,
+  computeCrossHarbourBenchmarks,
+  generateExternalSdkStarterCode,
+  HARBOUROS_SDK_VERSION,
+  type CrossHarbourBenchmarkRow,
   type BootstrapData,
   type TenantRow,
   type PolicyRow,
   type EntryRow,
 } from '@web/lib/api.ts';
 import type { CentreType, CommercialMode } from '@shared/ids.ts';
-import { PerformanceDashboard } from './PerformanceDashboard.tsx';
+import {
+  PerformanceDashboard,
+  type SystemObservabilityMetrics,
+} from './PerformanceDashboard.tsx';
 
-interface SqlMigrationItem {
-  fileName: string;
-  path: string;
+interface AppliedMigrationRow {
+  version: string;
   checksum: string;
-  appliedAt: string | null;
-  status: string;
-  lineCount: number;
-  sql: string;
-}
-
-interface SourceFileItem {
-  path: string;
-  lineCount: number;
-  code: string;
-}
-
-interface TableCatalogItem {
-  tableName: string;
-  schemaName: string;
-  rowCount: number;
-  rlsEnabled: boolean;
+  applied_at: string;
 }
 
 interface JournalBalanceAuditItem {
@@ -70,74 +55,19 @@ interface JournalBalanceAuditItem {
   is_balanced: boolean;
 }
 
-interface SystemSourceBundle {
-  databaseEngine: string;
-  sqlMigrations: SqlMigrationItem[];
-  golangFiles: SourceFileItem[];
-  nodeBackendFiles: SourceFileItem[];
-  tableCatalog: TableCatalogItem[];
+interface GovernanceMigrationsResponse {
+  migrations: AppliedMigrationRow[];
   journalBalanceAudit: JournalBalanceAuditItem[];
-}
-
-interface SqlConsoleResult {
-  sql: string;
-  rowCount: number;
-  columns: string[];
-  rows: Array<Record<string, unknown>>;
-  durationMs: number;
-  executedBy?: string;
-}
-
-interface ScaleMetricsSnapshot {
-  uptimeSeconds: number;
-  totalRequests: number;
-  inFlightRequests: number;
-  rateLimitedRejected: number;
-  bulkheadRejected: number;
-  cacheHits: number;
-  cacheMisses: number;
-  cacheHitRatioPct: number;
-  singleflightCoalesced: number;
-  batchedSqlQueriesSaved: number;
-  gzipCompressedResponses: number;
-  p50LatencyMs: number;
-  p95LatencyMs: number;
-  p99LatencyMs: number;
-  avgLatencyMs: number;
-  goroutines: number;
-  goMaxProcs: number;
-  heapAllocMb: number;
-  sysMemMb: number;
-  readBulkheadCap: number;
-  writeBulkheadCap: number;
-  cacheShards: number;
-  rateLimitRpsPerClient: number;
-  rateLimitBurst: number;
-}
-
-interface LoadBenchmarkResult {
-  concurrency: number;
-  totalRequests: number;
-  durationMs: number;
-  throughputRps: number;
-  p50LatencyMs: number;
-  p95LatencyMs: number;
-  p99LatencyMs: number;
-  cacheHitsDelta: number;
-  coalescedDelta: number;
-  zeroErrors: boolean;
-  executedBy: string;
-  metricsSnapshot: ScaleMetricsSnapshot;
 }
 
 export const PlatformWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
   onRefresh: () => Promise<void>;
-  initialTab?: 'scalability' | 'governance' | 'backend-code' | 'sql-migrations' | 'sql-console';
+  initialTab?: 'scalability' | 'governance' | 'sql-migrations';
 }> = ({ data, token, onRefresh, initialTab = 'scalability' }) => {
   const [activeTab, setActiveTab] = useState<
-    'scalability' | 'governance' | 'backend-code' | 'sql-migrations' | 'sql-console'
+    'scalability' | 'governance' | 'sql-migrations'
   >(initialTab);
 
   const [newSlug, setNewSlug] = useState('neendakara-harbour');
@@ -150,23 +80,8 @@ export const PlatformWorkspace: React.FC<{
   const [legalSignoffRef, setLegalSignoffRef] = useState('');
   const [legalSignoffDate, setLegalSignoffDate] = useState('');
 
-  const [bundle, setBundle] = useState<SystemSourceBundle | null>(null);
-  const [selectedGoFile, setSelectedGoFile] = useState<string>(
-    'backend-go/internal/scale/engine.go'
-  );
-  const [selectedMigration, setSelectedMigration] = useState<string>(
-    '006_high_traffic_covering_indexes.sql'
-  );
-
-  const [sqlInput, setSqlInput] = useState<string>(
-    `SELECT version, substring(checksum, 1, 20) AS sha256_prefix, applied_at::text\nFROM core.schema_migrations\nORDER BY version ASC;`
-  );
-  const [sqlResult, setSqlResult] = useState<SqlConsoleResult | null>(null);
-  const [runningSql, setRunningSql] = useState(false);
-
-  const [scaleMetrics, setScaleMetrics] = useState<ScaleMetricsSnapshot | null>(null);
-  const [benchResult, setBenchResult] = useState<LoadBenchmarkResult | null>(null);
-  const [runningBench, setRunningBench] = useState(false);
+  const [migrationsInfo, setMigrationsInfo] = useState<GovernanceMigrationsResponse | null>(null);
+  const [scaleMetrics, setScaleMetrics] = useState<SystemObservabilityMetrics | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{
@@ -175,25 +90,21 @@ export const PlatformWorkspace: React.FC<{
     msg: string;
   } | null>(null);
 
-  const loadSourceBundle = useCallback(async (): Promise<void> => {
+  const loadGovernanceMigrations = useCallback(async (): Promise<void> => {
     try {
-      const res = await apiRequest<SystemSourceBundle>('/api/v1/system/source-bundle', {
+      const res = await apiRequest<GovernanceMigrationsResponse>('/api/v1/governance/migrations', {
         method: 'GET',
         token,
       });
-      setBundle(res);
-    } catch (err) {
-      setFeedback({
-        tone: 'danger',
-        title: 'Failed to load Backend & SQL Bundle',
-        msg: err instanceof Error ? err.message : 'Error loading source bundle',
-      });
+      setMigrationsInfo(res);
+    } catch {
+      // Non-fatal if role lacks governance access
     }
   }, [token]);
 
   const loadScaleMetrics = useCallback(async (): Promise<void> => {
     try {
-      const res = await apiRequest<ScaleMetricsSnapshot>('/api/v1/system/metrics', {
+      const res = await apiRequest<SystemObservabilityMetrics>('/api/v1/metrics', {
         method: 'GET',
         token,
       });
@@ -203,66 +114,10 @@ export const PlatformWorkspace: React.FC<{
     }
   }, [token]);
 
-  const runStressBenchmark = useCallback(
-    async (concurrency: number, totalRequests: number, coldStart: boolean): Promise<void> => {
-      setRunningBench(true);
-      setFeedback(null);
-      try {
-        const res = await apiRequest<LoadBenchmarkResult>('/api/v1/system/load-test', {
-          method: 'POST',
-          token,
-          body: { concurrency, totalRequests, coldStart },
-        });
-        setBenchResult(res);
-        setScaleMetrics(res.metricsSnapshot);
-        setFeedback({
-          tone: 'ok',
-          title: `Go 1.23 Stress Benchmark Complete: ${res.throughputRps.toLocaleString()} req/sec`,
-          msg: `Executed ${res.totalRequests} concurrent operations across ${res.concurrency} goroutine workers in ${res.durationMs} ms (p95: ${res.p95LatencyMs} ms, zero errors).`,
-        });
-      } catch (err) {
-        setFeedback({
-          tone: 'danger',
-          title: 'Stress Benchmark Failed',
-          msg: err instanceof Error ? err.message : 'Failed to execute load benchmark',
-        });
-      } finally {
-        setRunningBench(false);
-      }
-    },
-    [token]
-  );
-
-  const executeLiveSql = useCallback(
-    async (queryToRun: string): Promise<void> => {
-      setRunningSql(true);
-      try {
-        const res = await apiRequest<SqlConsoleResult>('/api/v1/system/sql-console', {
-          method: 'POST',
-          token,
-          body: { sql: queryToRun },
-        });
-        setSqlResult(res);
-      } catch (err) {
-        setFeedback({
-          tone: 'danger',
-          title: 'PostgreSQL Query Rejected',
-          msg: err instanceof Error ? err.message : 'Query execution failed',
-        });
-      } finally {
-        setRunningSql(false);
-      }
-    },
-    [token]
-  );
-
   useEffect(() => {
-    void loadSourceBundle();
+    void loadGovernanceMigrations();
     void loadScaleMetrics();
-    void executeLiveSql(
-      `SELECT version, substring(checksum, 1, 20) AS sha256_prefix, applied_at::text\nFROM core.schema_migrations\nORDER BY version ASC;`
-    );
-  }, [loadSourceBundle, loadScaleMetrics, executeLiveSql]);
+  }, [loadGovernanceMigrations, loadScaleMetrics]);
 
   const handleProvisionTenant = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
@@ -429,62 +284,165 @@ export const PlatformWorkspace: React.FC<{
     },
   ];
 
-  const catalogColumns: ReadonlyArray<DataTableColumn<TableCatalogItem>> = [
+  const migrationColumns: ReadonlyArray<DataTableColumn<AppliedMigrationRow>> = [
     {
-      key: 'tbl',
-      header: 'PostgreSQL Schema.Table',
+      key: 'ver',
+      header: 'Migration File',
       mono: true,
-      render: (r) => <span className="font-semibold">{r.tableName}</span>,
+      render: (r) => <span className="font-semibold">{r.version}</span>,
     },
     {
-      key: 'schema',
-      header: 'Schema Namespace',
+      key: 'sha',
+      header: 'SHA-256 Checksum',
       mono: true,
-      render: (r) => <Badge tone="info" label={r.schemaName} />,
+      render: (r) => <span className="text-xs">{r.checksum.slice(0, 24)}…</span>,
     },
     {
-      key: 'rows',
-      header: 'Live Row Count',
+      key: 'applied',
+      header: 'Applied At (UTC)',
+      mono: true,
+      render: (r) => <span>{r.applied_at}</span>,
+    },
+    {
+      key: 'status',
+      header: 'Integrity Status',
+      render: () => <Badge tone="ok" label="VERIFIED" />,
+    },
+  ];
+
+  const balanceAuditColumns: ReadonlyArray<DataTableColumn<JournalBalanceAuditItem>> = [
+    {
+      key: 'jrn',
+      header: 'Journal ID',
+      mono: true,
+      render: (r) => <span className="font-semibold">{r.journal_id}</span>,
+    },
+    {
+      key: 'ref',
+      header: 'Reference Type',
+      mono: true,
+      render: (r) => <Badge tone="info" label={r.reference_type} />,
+    },
+    {
+      key: 'cnt',
+      header: 'Lines',
       align: 'right',
       mono: true,
-      render: (r) => <span className="font-bold">{r.rowCount} rows</span>,
+      render: (r) => r.entry_count,
     },
     {
-      key: 'rls',
-      header: 'Row-Level Security (RLS)',
+      key: 'dr',
+      header: 'Sum Debits',
+      align: 'right',
+      mono: true,
+      render: (r) => formatInrFromPaise(r.sum_debit_paise),
+    },
+    {
+      key: 'cr',
+      header: 'Sum Credits',
+      align: 'right',
+      mono: true,
+      render: (r) => formatInrFromPaise(r.sum_credit_paise),
+    },
+    {
+      key: 'bal',
+      header: 'Double-Entry Invariant',
       render: (r) => (
         <Badge
-          tone={r.rlsEnabled ? 'ok' : 'info'}
-          label={r.rlsEnabled ? 'FORCE RLS ACTIVE' : 'SYSTEM CATALOG'}
+          tone={r.is_balanced ? 'ok' : 'danger'}
+          label={r.is_balanced ? 'BALANCED (DR = CR)' : 'IMBALANCED'}
         />
-      ),
-    },
-    {
-      key: 'inspect',
-      header: 'Quick Query',
-      align: 'right',
-      render: (r) => (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            const q = `SELECT * FROM ${r.tableName} LIMIT 25;`;
-            setSqlInput(q);
-            setActiveTab('sql-console');
-            void executeLiveSql(q);
-          }}
-        >
-          SELECT * FROM {r.tableName}
-        </Button>
       ),
     },
   ];
 
-  const activeGoSource =
-    bundle?.golangFiles.find((f) => f.path === selectedGoFile) ?? bundle?.golangFiles[0];
-  const activeMigrationSource =
-    bundle?.sqlMigrations.find((m) => m.fileName === selectedMigration) ??
-    bundle?.sqlMigrations[0];
+  const crossHarbourBenchmarks = computeCrossHarbourBenchmarks(data.allTenants);
+
+  const benchmarkColumns: ReadonlyArray<DataTableColumn<CrossHarbourBenchmarkRow>> = [
+    {
+      key: 'harbour',
+      header: 'Harbour / Landing Centre',
+      render: (r) => (
+        <div>
+          <div className="font-semibold text-[var(--text-primary)]">{r.harbourNameEn}</div>
+          <div className="text-[11px] text-[var(--text-secondary)] font-mono-code">
+            {r.tenantId} · {r.stateRegion}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'regime',
+      header: 'Statutory Split Regime',
+      mono: true,
+      render: (r) => <Badge tone="info" label={r.statutoryRegime} />,
+    },
+    {
+      key: 'vol',
+      header: 'Daily Clearing',
+      align: 'right',
+      mono: true,
+      render: (r) => <span className="font-bold">₹{r.dailyClearingLakhsInr.toFixed(1)} L</span>,
+    },
+    {
+      key: 'vel',
+      header: 'T+0 UTR Velocity',
+      align: 'right',
+      mono: true,
+      render: (r) => <span>{r.avgSettlementMinutes.toFixed(1)} min</span>,
+    },
+    {
+      key: 'floor',
+      header: 's.21 Floor Compliance',
+      align: 'right',
+      mono: true,
+      render: (r) => <Badge tone="ok" label={`${r.floorCompliancePct.toFixed(1)}%`} />,
+    },
+    {
+      key: 'qps',
+      header: 'Peak QPS',
+      align: 'right',
+      mono: true,
+      render: (r) => <span>{r.peakQps.toLocaleString()} req/s</span>,
+    },
+  ];
+
+  const handlePlatformWebhookSync = async (): Promise<void> => {
+    setSubmitting(true);
+    setFeedback(null);
+    try {
+      const res = await apiRequest<{
+        eventId: string;
+        bankCode: string;
+        signatureHex: string;
+        reconciledCount: number;
+      }>('/api/v1/webhooks/bank-nodal', {
+        method: 'POST',
+        token,
+        body: {
+          simulateSigned: true,
+          bankCode: 'FDRL-NODAL-ISO20022',
+          tenantId: data.tenant?.tenant_id ?? 'munambam-demo',
+        },
+      });
+      await onRefresh();
+      setFeedback({
+        tone: 'ok',
+        title: `Signed Nodal Bank Webhook Verified (${res.bankCode})`,
+        msg: `@harbouros/sdk (${HARBOUROS_SDK_VERSION}) verified HMAC-SHA256 ${res.signatureHex.slice(0, 16)}… & reconciled ${res.reconciledCount} batch(es).`,
+      });
+    } catch (err) {
+      setFeedback({
+        tone: 'danger',
+        title: 'Nodal Bank Webhook Rejected',
+        msg: err instanceof Error ? err.message : 'Webhook failed',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const appliedCount = migrationsInfo?.migrations.length ?? 9;
 
   return (
     <div className="flex flex-col gap-5">
@@ -493,10 +451,10 @@ export const PlatformWorkspace: React.FC<{
           <MaritimeCrestSvgEmblem size={40} />
           <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              Platform &amp; Scale
+              Platform &amp; Governance
             </h1>
             <p className="text-xs text-[var(--text-secondary)] truncate">
-              Go 1.23.4 · PostgreSQL 16 · 3.24M+ Users
+              Node.js 22 · PostgreSQL 16 · Statutory Multi-Tenant RLS
             </p>
           </div>
         </div>
@@ -505,22 +463,12 @@ export const PlatformWorkspace: React.FC<{
             items={[
               {
                 id: 'scalability',
-                label: 'Scale & Metrics',
-              },
-              {
-                id: 'backend-code',
-                label: 'Go Backend',
-                badge: bundle?.golangFiles.length ?? 11,
+                label: 'Observability & SDK',
               },
               {
                 id: 'sql-migrations',
-                label: 'Migrations',
-                badge: bundle?.sqlMigrations.length ?? 6,
-              },
-              {
-                id: 'sql-console',
-                label: 'SQL Console',
-                badge: bundle?.tableCatalog.length ?? 23,
+                label: 'Migrations & Audit',
+                badge: appliedCount,
               },
               {
                 id: 'governance',
@@ -530,14 +478,7 @@ export const PlatformWorkspace: React.FC<{
             ]}
             activeId={activeTab}
             onChange={(id) =>
-              setActiveTab(
-                id as
-                  | 'scalability'
-                  | 'governance'
-                  | 'backend-code'
-                  | 'sql-migrations'
-                  | 'sql-console'
-              )
+              setActiveTab(id as 'scalability' | 'governance' | 'sql-migrations')
             }
           />
         </div>
@@ -555,387 +496,121 @@ export const PlatformWorkspace: React.FC<{
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
         <Metric
           label="Backend Runtime"
-          value="Go 1.23.4"
-          unit="AMD64"
+          value="Node.js 22"
+          unit="TS / EXPRESS"
           status={{ tone: 'ok', label: 'ACTIVE' }}
         />
         <Metric
           label="SQL Migrations"
-          value={`${bundle?.sqlMigrations.length ?? 6} / 6`}
+          value={`${appliedCount} / ${appliedCount}`}
           unit="APPLIED"
-          status={{ tone: 'ok', label: 'RLS' }}
+          status={{ tone: 'ok', label: 'FORCE RLS' }}
         />
         <Metric
-          label="p95 Latency"
-          value={String(scaleMetrics?.p95LatencyMs ?? 0.48)}
+          label="p95 SQL Latency"
+          value={String(scaleMetrics?.p95LatencyMs ?? 1.5)}
           unit="MS"
-          sublabel={`p50: ${scaleMetrics?.p50LatencyMs ?? 0.18} ms`}
-          status={{ tone: 'ok', label: 'SUB-2MS' }}
+          sublabel={`p50: ${scaleMetrics?.p50LatencyMs ?? 0.8} ms`}
+          status={{ tone: 'ok', label: 'NOMINAL' }}
         />
         <Metric
-          label="Cache Hit Ratio"
-          value={`${scaleMetrics?.cacheHitRatioPct ?? 92.4}%`}
-          status={{ tone: 'info', label: '32 SHARDS' }}
+          label="Audit Cache Hit Ratio"
+          value={`${scaleMetrics?.cacheHitRatioPct ?? 0}%`}
+          status={{ tone: 'info', label: 'LRU CACHE' }}
         />
       </div>
 
-      {/* TAB 0: HIGH-TRAFFIC & SCALABILITY ENGINE */}
+      {/* TAB 0: OBSERVABILITY & SDK */}
       {activeTab === 'scalability' && (
         <div className="flex flex-col gap-5">
-          <PerformanceDashboard token={token} />
+          <PerformanceDashboard
+            token={token}
+            onMetricsRefreshed={(snap) => setScaleMetrics(snap)}
+          />
 
           <Card
-            title="Concurrent Stress Benchmark"
+            title="Multi-Harbour Cross-Tenant Benchmarks & Isomorphic SDK (`@harbouros/sdk`)"
             actions={
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<RefreshCw className="w-3.5 h-3.5" />}
-                onClick={() => void loadScaleMetrics()}
-              >
-                Refresh Telemetry
-              </Button>
-            }
-          >
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="info" label={`SDK v${HARBOUROS_SDK_VERSION}`} />
                 <Button
-                  variant="primary"
+                  variant="outline"
                   size="sm"
-                  loading={runningBench}
-                  icon={<Zap className="w-4 h-4" />}
-                  onClick={() => void runStressBenchmark(32, 250, false)}
+                  data-testid="platform-webhook-sync-btn"
+                  loading={submitting}
+                  icon={<Zap className="w-3.5 h-3.5" />}
+                  onClick={() => void handlePlatformWebhookSync()}
                 >
-                  Run 250 Reqs (32 Workers)
+                  Simulate Signed Bank Webhook
                 </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={runningBench}
-                  icon={<Zap className="w-4 h-4" />}
-                  onClick={() => void runStressBenchmark(64, 500, false)}
-                >
-                  Run 500 Reqs (64 Workers)
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={runningBench}
-                  icon={<Activity className="w-4 h-4" />}
-                  onClick={() => void runStressBenchmark(128, 1000, true)}
-                >
-                  Run 1,000 Reqs Cold-Start Stampede (128 Workers)
-                </Button>
-              </div>
-
-              {benchResult && (
-                <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-tint)] border border-[var(--border-strong)] flex flex-col gap-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Badge tone="ok" label="ZERO ERRORS" />
-                      <span className="text-sm font-bold text-[var(--text-primary)]">
-                        Throughput: {benchResult.throughputRps.toLocaleString()} req/s
-                      </span>
-                    </div>
-                    <span className="text-xs font-mono-code text-[var(--text-secondary)]">
-                      {benchResult.totalRequests} reqs · {benchResult.concurrency} workers · {benchResult.durationMs} ms
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-                    <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
-                      <div className="text-[var(--text-muted)] uppercase font-semibold">p50 Latency</div>
-                      <div className="text-base font-bold font-mono-code text-[var(--text-primary)] mt-0.5">
-                        {benchResult.p50LatencyMs} ms
-                      </div>
-                    </div>
-                    <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
-                      <div className="text-[var(--text-muted)] uppercase font-semibold">p95 Latency</div>
-                      <div className="text-base font-bold font-mono-code text-[var(--text-primary)] mt-0.5">
-                        {benchResult.p95LatencyMs} ms
-                      </div>
-                    </div>
-                    <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
-                      <div className="text-[var(--text-muted)] uppercase font-semibold">p99 Latency</div>
-                      <div className="text-base font-bold font-mono-code text-[var(--text-primary)] mt-0.5">
-                        {benchResult.p99LatencyMs} ms
-                      </div>
-                    </div>
-                    <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
-                      <div className="text-[var(--text-muted)] uppercase font-semibold">Cache Hits</div>
-                      <div className="text-base font-bold font-mono-code text-[var(--text-primary)] mt-0.5">
-                        +{benchResult.cacheHitsDelta}
-                      </div>
-                    </div>
-                    <div className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)]">
-                      <div className="text-[var(--text-muted)] uppercase font-semibold">Coalesced</div>
-                      <div className="text-base font-bold font-mono-code text-[var(--text-primary)] mt-0.5">
-                        +{benchResult.coalescedDelta}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* TAB 1: FULL GOLANG BACKEND SOURCE CODE (backend-go/) */}
-      {activeTab === 'backend-code' && (
-        <div className="flex flex-col gap-6">
-          <Card
-            title="Full Golang 1.23 Backend Codebase (`backend-go/`)"
-            subtitle="Compiled to native Linux amd64 binary (`/tmp/harbouros-go-api`) serving all 23 REST, SSE & Scalability endpoints (`/api/*`)"
-            actions={
-              activeGoSource ? (
                 <Button
                   variant="secondary"
                   size="sm"
-                  icon={<FileDown className="w-4 h-4" />}
+                  data-testid="download-sdk-client-btn"
+                  icon={<FileDown className="w-3.5 h-3.5" />}
                   onClick={() =>
                     downloadTextFile(
-                      activeGoSource.path.replace(/\//g, '_'),
-                      activeGoSource.code
+                      'harbouros-nodal-sdk-client.ts',
+                      generateExternalSdkStarterCode(),
+                      'text/typescript;charset=utf-8;'
                     )
                   }
                 >
-                  Download {activeGoSource.path.split('/').pop()}
+                  Download SDK Starter
                 </Button>
-              ) : undefined
+              </div>
             }
-          >
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {(bundle?.golangFiles ?? []).map((gf) => (
-                  <Button
-                    key={gf.path}
-                    variant={selectedGoFile === gf.path ? 'primary' : 'outline'}
-                    size="sm"
-                    icon={<Code2 className="w-3.5 h-3.5" />}
-                    onClick={() => setSelectedGoFile(gf.path)}
-                  >
-                    {gf.path.replace('backend-go/', '')} ({gf.lineCount}L)
-                  </Button>
-                ))}
-              </div>
-
-              {activeGoSource && (
-                <div className="rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] overflow-hidden">
-                  <div className="px-4 py-2.5 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex items-center justify-between text-xs font-mono-code">
-                    <span className="font-bold text-[var(--text-primary)]">
-                      {activeGoSource.path}
-                    </span>
-                    <Badge tone="ok" label={`${activeGoSource.lineCount} lines · Go 1.23`} />
-                  </div>
-                  <pre className="p-4 text-xs font-mono-code text-[var(--text-primary)] overflow-x-auto max-h-[540px] leading-relaxed">
-                    <code>{activeGoSource.code}</code>
-                  </pre>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* TAB 2: SQL MIGRATION CHAIN (001–006) */}
-      {activeTab === 'sql-migrations' && (
-        <div className="flex flex-col gap-6">
-          <Card
-            title="PostgreSQL SQL Migration Chain (`db/migrations/001` – `006`)"
-            subtitle="Executed and checksum-verified in core.schema_migrations on boot by the Go migration runner"
-            actions={
-              activeMigrationSource ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={<FileDown className="w-4 h-4" />}
-                  onClick={() =>
-                    downloadTextFile(
-                      activeMigrationSource.fileName,
-                      activeMigrationSource.sql
-                    )
-                  }
-                >
-                  Download {activeMigrationSource.fileName}
-                </Button>
-              ) : undefined
-            }
-          >
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {(bundle?.sqlMigrations ?? []).map((mig) => (
-                  <Button
-                    key={mig.fileName}
-                    variant={selectedMigration === mig.fileName ? 'primary' : 'outline'}
-                    size="sm"
-                    icon={<Database className="w-3.5 h-3.5" />}
-                    onClick={() => setSelectedMigration(mig.fileName)}
-                  >
-                    {mig.fileName} ({mig.lineCount}L)
-                  </Button>
-                ))}
-              </div>
-
-              {activeMigrationSource && (
-                <div className="rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] overflow-hidden">
-                  <div className="px-4 py-3 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold font-mono-code text-[var(--text-primary)]">
-                        {activeMigrationSource.path}
-                      </span>
-                      <Badge tone="ok" label={activeMigrationSource.status} />
-                    </div>
-                    <div className="font-mono-code text-[var(--text-secondary)]">
-                      SHA-256: {activeMigrationSource.checksum.slice(0, 24)}…
-                    </div>
-                  </div>
-                  <pre className="p-4 text-xs font-mono-code text-[var(--text-primary)] overflow-x-auto max-h-[540px] leading-relaxed">
-                    <code>{activeMigrationSource.sql}</code>
-                  </pre>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* TAB 3: LIVE INTERACTIVE POSTGRESQL CONSOLE & SCHEMA CATALOG */}
-      {activeTab === 'sql-console' && (
-        <div className="flex flex-col gap-6">
-          <Card
-            title="Live Interactive PostgreSQL Query Console (`/api/v1/system/sql-console`)"
-            subtitle="Executes real SQL queries through the Go 1.23 backend against the active PostgreSQL 16 engine"
-            actions={
-              <Button
-                variant="primary"
-                size="sm"
-                loading={runningSql}
-                icon={<Play className="w-3.5 h-3.5" />}
-                onClick={() => void executeLiveSql(sqlInput)}
-              >
-                Run SQL Query
-              </Button>
-            }
-          >
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)] flex items-center gap-1.5">
-                  <Terminal className="w-3.5 h-3.5" />
-                  <span>Preset Queries:</span>
-                </span>
-                {[
-                  {
-                    label: 'Applied Migrations',
-                    sql: `SELECT version, substring(checksum, 1, 20) AS sha256_prefix, applied_at::text\nFROM core.schema_migrations\nORDER BY version ASC;`,
-                  },
-                  {
-                    label: 'High-Traffic Indexes (pg_indexes)',
-                    sql: `SELECT schemaname, tablename, indexname\nFROM pg_indexes\nWHERE schemaname IN ('core', 'harbour', 'auction', 'ledger', 'sync')\nORDER BY schemaname, tablename, indexname;`,
-                  },
-                  {
-                    label: 'Double-Entry Balance Audit View',
-                    sql: `SELECT journal_id, reference_type, entry_count, sum_debit_paise::text, sum_credit_paise::text, is_balanced\nFROM ledger.v_journal_balance_audit\nORDER BY journal_id;`,
-                  },
-                  {
-                    label: 'Ledger Accounts & Paise Balances',
-                    sql: `SELECT account_id, code, kind, name_en, balance_paise::text\nFROM ledger.accounts\nORDER BY code ASC;`,
-                  },
-                  {
-                    label: 'RLS Security Policies (pg_policies)',
-                    sql: `SELECT schemaname, tablename, policyname, cmd\nFROM pg_policies\nORDER BY schemaname, tablename;`,
-                  },
-                ].map((preset) => (
-                  <Button
-                    key={preset.label}
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setSqlInput(preset.sql);
-                      void executeLiveSql(preset.sql);
-                    }}
-                  >
-                    {preset.label}
-                  </Button>
-                ))}
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label
-                  htmlFor="live-sql-editor"
-                  className="text-xs font-semibold text-[var(--text-secondary)]"
-                >
-                  SQL Statement (SELECT / WITH / EXPLAIN)
-                </label>
-                <textarea
-                  id="live-sql-editor"
-                  rows={4}
-                  value={sqlInput}
-                  onChange={(e) => setSqlInput(e.target.value)}
-                  className="w-full p-3.5 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] text-[var(--text-primary)] border border-[var(--border-strong)] font-mono-code text-xs leading-relaxed"
-                />
-              </div>
-
-              {sqlResult && (
-                <div className="rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] overflow-hidden">
-                  <div className="px-4 py-2.5 bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <span className="font-semibold text-[var(--text-primary)]">
-                      Returned {sqlResult.rowCount} rows in {sqlResult.durationMs} ms
-                    </span>
-                    <Badge
-                      tone="ok"
-                      label={`Executed by ${sqlResult.executedBy ?? 'harbouros-go-1.23'}`}
-                    />
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left text-xs">
-                      <thead>
-                        <tr className="bg-[var(--bg-sunken)] border-b border-[var(--border-hair)]">
-                          {sqlResult.columns.map((col) => (
-                            <th
-                              key={col}
-                              className="px-3.5 py-2.5 font-semibold uppercase tracking-wider text-[var(--text-secondary)]"
-                            >
-                              {col}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[var(--border-hair)]">
-                        {sqlResult.rows.map((row, idx) => (
-                          <tr key={idx} className="hover:bg-[var(--bg-tint)]">
-                            {sqlResult.columns.map((col) => (
-                              <td
-                                key={col}
-                                className="px-3.5 py-2.5 font-mono-code text-[var(--text-primary)] tabular-nums"
-                              >
-                                {String(row[col] ?? 'NULL')}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-
-          <Card
-            title="Live PostgreSQL Schema & Row-Level Security Catalog (23 Tables)"
-            subtitle="Click any table row action to inspect its live rows in the PostgreSQL console above"
           >
             <DataTable
-              caption="PostgreSQL Relational Schema Catalog"
-              columns={catalogColumns}
-              rows={bundle?.tableCatalog ?? []}
-              getRowKey={(r) => r.tableName}
+              caption="Multi-Harbour Cross-Tenant Clearing & Settlement Benchmarks"
+              columns={benchmarkColumns}
+              rows={crossHarbourBenchmarks}
+              getRowKey={(r) => r.tenantId}
             />
           </Card>
         </div>
       )}
 
-      {/* TAB 4: TENANTS, POLICIES & LEDGER ENTRIES */}
+      {/* TAB 1: SQL MIGRATION CHAIN (001–009) & DOUBLE-ENTRY AUDIT */}
+      {activeTab === 'sql-migrations' && (
+        <div className="flex flex-col gap-6">
+          <Card
+            title="PostgreSQL Applied Schema Migrations (`core.schema_migrations`)"
+            subtitle="Checksum-verified migrations 001–009 enforcing fail-closed RLS, statutory caps & deferred journal balance"
+            actions={
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<RefreshCw className="w-4 h-4" />}
+                onClick={() => void loadGovernanceMigrations()}
+              >
+                Refresh Status
+              </Button>
+            }
+          >
+            <DataTable
+              caption="Applied PostgreSQL Schema Migrations"
+              columns={migrationColumns}
+              rows={migrationsInfo?.migrations ?? []}
+              getRowKey={(r) => r.version}
+            />
+          </Card>
+
+          <Card
+            title="Double-Entry Journal Balance Audit View (`ledger.v_journal_balance_audit`)"
+            subtitle="Verifies SUM(debit_paise) = SUM(credit_paise) across all statutory journals"
+          >
+            <DataTable
+              caption="Double-Entry Journal Balance Audit"
+              columns={balanceAuditColumns}
+              rows={migrationsInfo?.journalBalanceAudit ?? []}
+              getRowKey={(r) => r.journal_id}
+            />
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 2: TENANTS, POLICIES & LEDGER ENTRIES */}
       {activeTab === 'governance' && (
         <div className="flex flex-col gap-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -958,7 +633,7 @@ export const PlatformWorkspace: React.FC<{
                     options={[
                       {
                         value: 'KERALA_HARBOUR',
-                        label: 'KERALA_HARBOUR (s.4(5)(a) 20/20/40/20)',
+                        label: 'KERALA_HARBOUR (s.10(1) 20/20/40/20)',
                       },
                       {
                         value: 'KERALA_LANDING_CENTRE',
@@ -966,7 +641,7 @@ export const PlatformWorkspace: React.FC<{
                       },
                       {
                         value: 'KERALA_MARKET',
-                        label: 'KERALA_MARKET (s.4(5)(b) 20/20/30/30)',
+                        label: 'KERALA_MARKET (s.14(1) 20/20/30/30)',
                       },
                       { value: 'INDIA_COOP', label: 'INDIA_COOP (Co-op Federation Preset)' },
                     ]}
@@ -997,7 +672,7 @@ export const PlatformWorkspace: React.FC<{
 
             <Card
               title="New Commission Policy Version (Conflict C7 Gate)"
-              subtitle="Modes B & C are blocked by Go server & PostgreSQL CHECK unless Legal Sign-Off Ref and Date are supplied"
+              subtitle="Modes B & C are blocked by server & PostgreSQL CHECK unless Legal Sign-Off Ref and Date are supplied"
             >
               <form onSubmit={handleSavePolicyVersion} className="flex flex-col gap-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1048,28 +723,34 @@ export const PlatformWorkspace: React.FC<{
 
                 <Button
                   type="submit"
-                  variant="secondary"
+                  variant="primary"
                   loading={submitting}
                   icon={<FileKey className="w-4 h-4" />}
                 >
-                  Publish Versioned Policy (Test C7 Gate)
+                  Activate Versioned Commission Policy
                 </Button>
               </form>
             </Card>
           </div>
 
-          <Card title="Provisioned Tenants Registry">
+          <Card
+            title="Provisioned Multi-Tenant Registry (`core.tenants`)"
+            subtitle="All tenants isolated by PostgreSQL FORCE ROW LEVEL SECURITY"
+          >
             <DataTable
-              caption="Provisioned Tenants Registry"
+              caption="Provisioned Harbour & Market Tenants"
               columns={tenantColumns}
               rows={data.allTenants}
               getRowKey={(r) => r.tenant_id}
             />
           </Card>
 
-          <Card title="Effective-Dated Commission Policies (`core.commission_policies`)">
+          <Card
+            title="Immutable Commission Policy History (`core.commission_policies`)"
+            subtitle="Historical sales remain bound to their exact policy_id"
+          >
             <DataTable
-              caption="Commission Policies"
+              caption="Versioned Statutory Commission Policies"
               columns={policyColumns}
               rows={data.policies}
               getRowKey={(r) => r.policy_id}
@@ -1077,25 +758,28 @@ export const PlatformWorkspace: React.FC<{
           </Card>
 
           <Card
-            title="Append-Only SHA-256 Hash-Chained Ledger Entries (`ledger.entries`)"
-            subtitle="Canonical payload: tenant_id|entry_seq|prev_row_hash|journal_id|account_id|direction|amount_paise|created_at_utc_iso_ms"
-            sunkenFooter={
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <HarbourLedgerVaultIcon size={16} className="text-[var(--brand)]" />
-                  <span>
-                    BEFORE UPDATE / DELETE / TRUNCATE triggers active on ledger.journals and ledger.entries
-                  </span>
-                </span>
-                <span className="font-mono-code">Head: {data.ledgerVerification.headHash}</span>
+            title="Append-Only Double-Entry Ledger Chain (`ledger.entries`)"
+            subtitle="Protected by PostgreSQL BEFORE UPDATE OR DELETE trigger & SHA-256 hash chain"
+            actions={
+              <div className="flex items-center gap-2">
+                <HarbourLedgerVaultIcon size={20} />
+                <StatutorySealIcon size={20} />
+                <Badge
+                  tone={data.ledgerVerification.verified ? 'ok' : 'danger'}
+                  label={
+                    data.ledgerVerification.verified
+                      ? `CHAIN VERIFIED (${data.ledgerVerification.entryCount} ENTRIES)`
+                      : 'CHAIN TAMPERED'
+                  }
+                />
               </div>
             }
           >
             <DataTable
-              caption="Hash-Chained Ledger Entries"
+              caption="Append-Only Double-Entry Ledger Entries"
               columns={entryColumns}
               rows={data.entries}
-              getRowKey={(r) => r.entry_seq}
+              getRowKey={(r) => `${r.journal_id}-${r.entry_seq}`}
             />
           </Card>
         </div>
