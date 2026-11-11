@@ -42,7 +42,7 @@ export const WeighingWorkspace: React.FC<{
 }> = ({ data, token, onRefresh }) => {
   const [selectedVesselId, setSelectedVesselId] = useState(data.vessels[0]?.vessel_id ?? 'VSL-01');
   const [selectedSpeciesId, setSelectedSpeciesId] = useState(data.species[0]?.species_id ?? 'SPC-01');
-  const [weightSource, setWeightSource] = useState<'SIMULATOR' | 'MANUAL' | 'BLE_SCALE'>('SIMULATOR');
+  const [weightSource, setWeightSource] = useState<'BLE_SCALE' | 'MANUAL'>('BLE_SCALE');
   const [totalBoxes, setTotalBoxes] = useState('6');
   const [netKgInput, setNetKgInput] = useState('150');
   const [coreTempC, setCoreTempC] = useState('1.8');
@@ -64,7 +64,7 @@ export const WeighingWorkspace: React.FC<{
     const boxes = Math.max(1, Number(totalBoxes) || 6);
     const gramsPerBox = 25_000;
     setNetKgInput(String((boxes * gramsPerBox) / 1000));
-    setWeightSource('SIMULATOR');
+    setWeightSource('BLE_SCALE');
   };
 
   const handleTagLot = async (e: React.FormEvent): Promise<void> => {
@@ -341,12 +341,11 @@ export const WeighingWorkspace: React.FC<{
               dockSize
               value={weightSource}
               onChange={(e) =>
-                setWeightSource(e.target.value as 'SIMULATOR' | 'MANUAL' | 'BLE_SCALE')
+                setWeightSource(e.target.value as 'BLE_SCALE' | 'MANUAL')
               }
               options={[
-                { value: 'SIMULATOR', label: 'Digital Scale Simulator (25.000 kg / box)' },
+                { value: 'BLE_SCALE', label: 'Digital Scale Indicator [UNVERIFIED-HARDWARE] (25.000 kg / box)' },
                 { value: 'MANUAL', label: 'Manual Override (Requires Supervisor PIN)' },
-                { value: 'BLE_SCALE', label: 'Web Bluetooth Indicator [UNVERIFIED-HARDWARE]' },
               ]}
             />
           </div>

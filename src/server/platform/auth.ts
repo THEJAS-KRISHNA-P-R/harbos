@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import type { Request, Response, NextFunction } from 'express';
 import { config } from '@server/config.ts';
-import { createTenantBoundDb, withPlatform, type DbPort } from '@server/ports/db.ts';
+import { createTenantBoundDb, withPlatform, withTenant, type DbPort } from '@server/ports/db.ts';
 import { AppError } from '@server/platform/errors.ts';
 import type { Role } from '@shared/contracts/rbac.ts';
 
@@ -45,7 +45,7 @@ export function clearAuthUserCache(userId?: string): void {
   }
 }
 
-function hashOtpWithSalt(code: string, saltHex: string): string {
+export function hashOtpWithSalt(code: string, saltHex: string): string {
   return crypto
     .createHash('sha256')
     .update(`${saltHex}:${code.trim()}`)
@@ -525,15 +525,17 @@ export interface AuthenticatedRequest extends Request {
 
 async function resolveUserActiveStatus(
   baseDb: DbPort,
+  tenantId: string,
   userId: string
 ): Promise<CachedUserStatus> {
+  const cacheKey = `${tenantId}:${userId}`;
   const nowMs = Date.now();
-  const cached = authUserCache.get(userId);
+  const cached = authUserCache.get(cacheKey);
   if (cached && cached.expiresAtMs > nowMs) {
     return cached;
   }
 
-  const row = await withPlatform(baseDb, async (tx) => {
+  const row = await withTenant(baseDb, tenantId, async (tx) => {
     const res = await tx.query<{
       user_id: string;
       tenant_id: string;
@@ -542,9 +544,9 @@ async function resolveUserActiveStatus(
     }>(
       `SELECT user_id, tenant_id, role, is_active
        FROM core.users
-       WHERE user_id = $1
+       WHERE user_id = $1 AND tenant_id = $2
        LIMIT 1`,
-      [userId]
+      [userId, tenantId]
     );
     return res.rows[0] ?? null;
   });
@@ -565,7 +567,7 @@ async function resolveUserActiveStatus(
         expiresAtMs: nowMs + USER_STATUS_CACHE_TTL_MS,
       };
 
-  authUserCache.set(userId, status);
+  authUserCache.set(cacheKey, status);
   return status;
 }
 
@@ -581,7 +583,7 @@ export function requireAuth(allowedRoles?: ReadonlyArray<Role>) {
 
       const baseDb = req.app?.locals?.db as DbPort | undefined;
       if (baseDb) {
-        const userStatus = await resolveUserActiveStatus(baseDb, claims.sub);
+        const userStatus = await resolveUserActiveStatus(baseDb, claims.tenantId, claims.sub);
         if (userStatus.exists) {
           if (!userStatus.isActive) {
             throw new AppError('UNAUTHORIZED', 'Operator account is deactivated', 401);

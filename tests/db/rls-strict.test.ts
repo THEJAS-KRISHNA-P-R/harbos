@@ -1,23 +1,58 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PGliteAdapter } from '../../src/server/adapters/db-pglite.ts';
 import { PgPoolAdapter } from '../../src/server/adapters/db-pg.ts';
 import { runMigrationsAndSeed, DEMO_TENANT_ID } from '../../src/server/platform/seed.ts';
 import type { DbPort } from '../../src/server/ports/db.ts';
 
-async function createTestDb(): Promise<DbPort> {
-  const testUrl = process.env['DATABASE_URL_TEST'];
-  if (testUrl && testUrl.startsWith('postgres')) {
-    return new PgPoolAdapter(testUrl);
-  }
-  return new PGliteAdapter('memory://');
-}
+describe('Phase A1 & C2 — Strict Fail-Closed PostgreSQL Row-Level Security (010 & 011)', () => {
+  let db: DbPort;
+  let isPg = false;
 
-describe('Phase A1 — Strict Fail-Closed PostgreSQL Row-Level Security (010_rls_strict.sql)', () => {
+  before(async () => {
+    const testUrl = process.env['DATABASE_URL_TEST'] || process.env['DATABASE_URL'];
+    const platformUrl =
+      process.env['DATABASE_PLATFORM_URL_TEST'] || process.env['DATABASE_PLATFORM_URL'];
+
+    if (testUrl && testUrl.startsWith('postgres')) {
+      isPg = true;
+      db = new PgPoolAdapter(testUrl);
+
+      // C2 guard: assert test is connected as harbour_app with rolsuper=false and rolbypassrls=false
+      const roleRes = await db.query<{
+        current_user: string;
+        rolsuper: boolean;
+        rolbypassrls: boolean;
+      }>(
+        `SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`
+      );
+      assert.deepEqual(roleRes.rows[0], {
+        current_user: 'harbour_app',
+        rolsuper: false,
+        rolbypassrls: false,
+      });
+
+      if (platformUrl && platformUrl.startsWith('postgres')) {
+        const platDb = new PgPoolAdapter(platformUrl);
+        try {
+          await runMigrationsAndSeed(platDb);
+        } catch {
+          // Already migrated and seeded by migrate.ts
+        } finally {
+          await platDb.close();
+        }
+      }
+    } else {
+      db = new PGliteAdapter('memory://');
+      await runMigrationsAndSeed(db);
+    }
+  });
+
+  after(async () => {
+    await db.close?.();
+  });
+
   it('returns 0 rows on every tenant-scoped table when connected as harbour_app with no tenant context', async () => {
-    const db = await createTestDb();
-    await runMigrationsAndSeed(db);
-
     const policiesRes = await db.query<{ schemaname: string; tablename: string }>(
       `SELECT DISTINCT schemaname, tablename
        FROM pg_policies
@@ -25,10 +60,15 @@ describe('Phase A1 — Strict Fail-Closed PostgreSQL Row-Level Security (010_rls
        ORDER BY schemaname, tablename`
     );
 
-    assert.ok(policiesRes.rows.length >= 19, `Expected >= 19 RLS tables, got ${policiesRes.rows.length}`);
+    assert.ok(
+      policiesRes.rows.length >= 27,
+      `Expected >= 27 RLS tables, got ${policiesRes.rows.length}`
+    );
 
     await db.transaction(async (tx) => {
-      await tx.exec(`SET LOCAL ROLE harbour_app`);
+      if (!isPg) {
+        await tx.exec(`SET LOCAL ROLE harbour_app`);
+      }
       await tx.query(
         `SELECT set_config('app.tenant_id', '', true), set_config('app.platform', '', true)`
       );
@@ -44,18 +84,15 @@ describe('Phase A1 — Strict Fail-Closed PostgreSQL Row-Level Security (010_rls
         );
       }
     });
-
-    await db.close?.();
   });
 
   it('rejects INSERT with a mismatched tenant_id via WITH CHECK when connected as harbour_app', async () => {
-    const db = await createTestDb();
-    await runMigrationsAndSeed(db);
-
     await assert.rejects(
       async () => {
         await db.transaction(async (tx) => {
-          await tx.exec(`SET LOCAL ROLE harbour_app`);
+          if (!isPg) {
+            await tx.exec(`SET LOCAL ROLE harbour_app`);
+          }
           await tx.query(
             `SELECT set_config('app.tenant_id', $1, true), set_config('app.platform', '', true)`,
             [DEMO_TENANT_ID]
@@ -68,18 +105,15 @@ describe('Phase A1 — Strict Fail-Closed PostgreSQL Row-Level Security (010_rls
       },
       /new row violates row-level security policy/i
     );
-
-    await db.close?.();
   });
 
   it('revokes UPDATE, DELETE, and TRUNCATE on ledger.entries and ledger.journals from harbour_app', async () => {
-    const db = await createTestDb();
-    await runMigrationsAndSeed(db);
-
     await assert.rejects(
       async () => {
         await db.transaction(async (tx) => {
-          await tx.exec(`SET LOCAL ROLE harbour_app`);
+          if (!isPg) {
+            await tx.exec(`SET LOCAL ROLE harbour_app`);
+          }
           await tx.query(`SELECT set_config('app.tenant_id', $1, true)`, [DEMO_TENANT_ID]);
           await tx.exec(`TRUNCATE ledger.entries`);
         });
@@ -90,14 +124,14 @@ describe('Phase A1 — Strict Fail-Closed PostgreSQL Row-Level Security (010_rls
     await assert.rejects(
       async () => {
         await db.transaction(async (tx) => {
-          await tx.exec(`SET LOCAL ROLE harbour_app`);
+          if (!isPg) {
+            await tx.exec(`SET LOCAL ROLE harbour_app`);
+          }
           await tx.query(`SELECT set_config('app.tenant_id', $1, true)`, [DEMO_TENANT_ID]);
           await tx.exec(`DELETE FROM ledger.entries`);
         });
       },
       /permission denied|APPEND_ONLY_VIOLATION/i
     );
-
-    await db.close?.();
   });
 });

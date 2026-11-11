@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Docs, env examples, and compose examples containing placeholder patterns"
+paths = [
+  '''^docs/''',
+  '''^\.env\.example$''',
+  '''^docker-compose.*\.example\.yml$'''
+]

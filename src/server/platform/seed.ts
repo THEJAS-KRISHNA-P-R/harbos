@@ -98,7 +98,6 @@ export async function runMigrationsAndSeed(db: DbPort): Promise<void> {
 }
 
 export async function seedDemoData(db: DbPort): Promise<void> {
-  await db.query(`SELECT set_config('app.platform', 'on', false)`);
   try {
     // Check if demo tenant is already seeded
     const tenantCheck = await db.query<{ tenant_id: string }>(
@@ -488,7 +487,7 @@ export async function seedDemoData(db: DbPort): Promise<void> {
 
     await seedAuditLogsIfEmpty(db, tId);
   } finally {
-    await db.query(`SELECT set_config('app.platform', '', false), set_config('app.tenant_id', '', false)`);
+    await db.query(`SELECT set_config('app.tenant_id', '', false)`);
   }
 }
 

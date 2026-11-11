@@ -63,16 +63,6 @@ export class PgPoolAdapter implements DbPort {
       idle_in_transaction_session_timeout: DEFAULT_PG_IDLE_IN_TX_TIMEOUT_MS,
     });
 
-    this.pool.on('connect', (client) => {
-      void client
-        .query(
-          `SET statement_timeout = ${this.statementTimeoutMs}; SET lock_timeout = ${DEFAULT_PG_LOCK_TIMEOUT_MS}; SET idle_in_transaction_session_timeout = ${DEFAULT_PG_IDLE_IN_TX_TIMEOUT_MS};`
-        )
-        .catch(() => {
-          // ignore session init error on closing client
-        });
-    });
-
     this.pool.on('error', (err) => {
       recordCentralizedLog({
         level: 'error',
@@ -101,30 +91,46 @@ export class PgPoolAdapter implements DbPort {
 
   public async transaction<T>(fn: (tx: DbPort) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
+    let txChain: Promise<unknown> = Promise.resolve();
+    const enqueue = <R>(work: () => Promise<R>): Promise<R> => {
+      const next = txChain.then(work, work);
+      txChain = next.then(
+        () => undefined,
+        () => undefined
+      );
+      return next;
+    };
+
     try {
-      await client.query(`BEGIN; SET LOCAL statement_timeout = ${this.statementTimeoutMs};`);
+      await enqueue(() =>
+        client.query(`BEGIN; SET LOCAL statement_timeout = ${this.statementTimeoutMs};`)
+      );
       const txPort: DbPort = {
         query: async <R = Record<string, unknown>>(
           sql: string,
           params: ReadonlyArray<unknown> = []
         ): Promise<DbQueryResult<R>> =>
-          executeWithStatementTimeout(sql, this.statementTimeoutMs, async () => {
-            const res = await client.query(sql, [...params]);
-            return { rows: res.rows as R[] };
-          }),
+          enqueue(() =>
+            executeWithStatementTimeout(sql, this.statementTimeoutMs, async () => {
+              const res = await client.query(sql, [...params]);
+              return { rows: res.rows as R[] };
+            })
+          ),
         exec: async (sql: string): Promise<void> => {
-          await executeWithStatementTimeout(sql, this.statementTimeoutMs, async () => {
-            await client.query(sql);
-          });
+          await enqueue(() =>
+            executeWithStatementTimeout(sql, this.statementTimeoutMs, async () => {
+              await client.query(sql);
+            })
+          );
         },
         transaction: async <R>(nestedFn: (nestedTx: DbPort) => Promise<R>): Promise<R> =>
           nestedFn(txPort),
       };
       const result = await fn(txPort);
-      await client.query('COMMIT');
+      await enqueue(() => client.query('COMMIT'));
       return result;
     } catch (err) {
-      await client.query('ROLLBACK').catch(() => {});
+      await enqueue(() => client.query('ROLLBACK')).catch(() => {});
       throw err;
     } finally {
       client.release();

@@ -751,6 +751,13 @@ export async function createPayoutBatch(
   }>;
 }> {
   return db.transaction(async (tx) => {
+    // Serialize payout batch creation per tenant on ledger.heads FOR UPDATE so concurrent callers
+    // take their READ COMMITTED snapshot of ledger.accounts strictly after any in-flight payout commits.
+    await tx.query(
+      `SELECT tenant_id FROM ledger.heads WHERE tenant_id = $1 FOR UPDATE`,
+      [params.tenantId]
+    );
+
     const payableRes = await tx.query<{
       account_id: string;
       owner_entity_id: string | null;

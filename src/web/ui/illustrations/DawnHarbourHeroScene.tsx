@@ -4,6 +4,7 @@ export const DawnHarbourHeroScene: React.FC<{ className?: string }> = ({
   className = '',
 }) => (
   <svg
+    data-testid="hero-scene"
     viewBox="0 0 280 96"
     fill="none"
     className={`w-full max-w-[280px] h-auto select-none ${className}`}

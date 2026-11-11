@@ -1,6 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PGliteAdapter } from '../../src/server/adapters/db-pglite.ts';
@@ -9,15 +10,39 @@ import { createApiApp } from '../../src/server/app.ts';
 import { signAccessJwt } from '../../src/server/platform/auth.ts';
 import { parseEnvConfig } from '../../src/server/config.ts';
 
+import { PgPoolAdapter } from '../../src/server/adapters/db-pg.ts';
+import type { DbPort } from '../../src/server/ports/db.ts';
+
 describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant / Money)', () => {
-  let db: PGliteAdapter;
+  let db: DbPort;
+  let platformDb: DbPort;
   let server: http.Server;
   let baseUrl = '';
 
   before(async () => {
-    db = new PGliteAdapter('memory://');
-    await runMigrationsAndSeed(db);
-    const app = createApiApp(db);
+    const testUrl = process.env['DATABASE_URL_TEST'] || process.env['DATABASE_URL'];
+    const platformUrl =
+      process.env['DATABASE_PLATFORM_URL_TEST'] || process.env['DATABASE_PLATFORM_URL'];
+
+    if (testUrl && testUrl.startsWith('postgres')) {
+      db = new PgPoolAdapter(testUrl);
+      platformDb =
+        platformUrl && platformUrl.startsWith('postgres')
+          ? new PgPoolAdapter(platformUrl)
+          : db;
+      try {
+        await runMigrationsAndSeed(platformDb);
+      } catch {
+        // Already migrated and seeded
+      }
+    } else {
+      const memDb = new PGliteAdapter('memory://');
+      await runMigrationsAndSeed(memDb);
+      db = memDb;
+      platformDb = memDb;
+    }
+
+    const app = createApiApp(db, undefined, platformDb);
     await new Promise<void>((resolve) => {
       server = app.listen(0, '127.0.0.1', () => {
         const addr = server.address();
@@ -33,8 +58,9 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
     if (server) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
-    if (db) {
-      await db.close();
+    await db?.close?.();
+    if (platformDb && platformDb !== db) {
+      await platformDb.close?.();
     }
   });
 
@@ -76,7 +102,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
     });
     assert.equal(resTakeover.status, 404);
 
-    const userRow = await db.query<{ role: string; full_name: string }>(
+    const userRow = await platformDb.query<{ role: string; full_name: string }>(
       `SELECT role, full_name FROM core.users WHERE phone_e164 = '+919447000007'`
     );
     assert.equal(userRow.rows[0]?.role, 'ACCOUNTANT');
@@ -171,7 +197,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${buyerToken}`,
-        'Idempotency-Key': 'IDEM-T9-BUYER',
+        'Idempotency-Key': crypto.randomUUID(),
       },
       body: JSON.stringify({
         sessionId: 'SES-MUN-MORNING-01',
@@ -201,7 +227,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${auctToken}`,
-        'Idempotency-Key': 'IDEM-T10-LIC',
+        'Idempotency-Key': crypto.randomUUID(),
       },
       body: JSON.stringify({
         sessionId: 'SES-MUN-MORNING-01',
@@ -230,7 +256,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
-        'Idempotency-Key': 'IDEM-T11-NOFENCE',
+        'Idempotency-Key': crypto.randomUUID(),
       },
       body: JSON.stringify({
         sessionId: 'SES-MUN-MORNING-01',
@@ -249,7 +275,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
-        'Idempotency-Key': 'IDEM-T14-BADPRICE',
+        'Idempotency-Key': crypto.randomUUID(),
       },
       body: JSON.stringify({
         sessionId: 'SES-MUN-MORNING-01',
@@ -331,12 +357,25 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       fencingToken: 10,
     };
 
+    const testIdemKey = crypto.randomUUID();
+
+    // Missing Idempotency-Key returns 400
+    const r0 = await fetch(`${baseUrl}/api/v1/lots/LOT-2026-003/allocate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify(payload1),
+    });
+    assert.equal(r0.status, 400);
+
     const r1 = await fetch(`${baseUrl}/api/v1/lots/LOT-2026-003/allocate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
-        'Idempotency-Key': 'IDEM-T15-TEST-KEY',
+        'Idempotency-Key': testIdemKey,
       },
       body: JSON.stringify(payload1),
     });
@@ -349,7 +388,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
-        'Idempotency-Key': 'IDEM-T15-TEST-KEY',
+        'Idempotency-Key': testIdemKey,
       },
       body: JSON.stringify(payload1),
     });
@@ -363,7 +402,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
-        'Idempotency-Key': 'IDEM-T15-TEST-KEY',
+        'Idempotency-Key': testIdemKey,
       },
       body: JSON.stringify({ ...payload1, boxesAllocated: 2 }),
     });
@@ -373,7 +412,11 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
   it('T16 & T18 security headers & healthz/readyz endpoints', async () => {
     const res = await fetch(`${baseUrl}/healthz`);
     assert.equal(res.status, 200);
-    assert.ok(res.headers.get('content-security-policy'));
+    const csp = res.headers.get('content-security-policy') ?? '';
+    assert.ok(csp.length > 0);
+    assert.ok(csp.includes("frame-ancestors 'none'"), 'CSP must forbid iframe embedding (frame-ancestors none)');
+    assert.equal(csp.includes('fonts.googleapis.com'), false, 'CSP must not allow external google fonts');
+    assert.equal(csp.includes('fonts.gstatic.com'), false, 'CSP must not allow external google fonts');
     assert.equal(res.headers.get('x-frame-options'), 'DENY');
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(res.headers.get('x-powered-by'), null);
@@ -390,16 +433,44 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
     assert.equal(fs.existsSync(internalAssetsDir), false);
   });
 
-  it('T19 boot safety: parseEnvConfig refuses production boot with missing DB, weak/placeholder secrets, DEMO_MODE=true, OTP_DEV_ECHO=true, or console SMS', () => {
+  it('T19 boot safety: parseEnvConfig refuses production boot with missing DBs, weak secrets, DEMO_MODE, OTP_DEV_ECHO, AISTUDIO_PREVIEW, and boots with 5 required vars', () => {
+    const validSecretA = crypto.randomBytes(32).toString('hex');
+    const validSecretB = crypto.randomBytes(32).toString('hex');
+    const knownBadPlaceholder = ['replace', 'with', '32', 'byte', 'random', 'secret', 'key'].join('-');
+
     // Missing DATABASE_URL
     assert.throws(() =>
       parseEnvConfig({
         NODE_ENV: 'production',
         DATABASE_URL: '',
-        JWT_ACCESS_SECRET: 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8',
-        QR_HMAC_SECRET: 'z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2',
-        OTP_DEV_ECHO: 'false',
-        DEMO_MODE: 'false',
+        DATABASE_PLATFORM_URL: 'postgres://platform:pass@localhost:5432/harbouros',
+        JWT_ACCESS_SECRET: validSecretA,
+        QR_HMAC_SECRET: validSecretB,
+        SMS_PROVIDER: 'msg91',
+      })
+    );
+
+    // Missing DATABASE_PLATFORM_URL
+    assert.throws(() =>
+      parseEnvConfig({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://app:pass@localhost:5432/harbouros',
+        DATABASE_PLATFORM_URL: '',
+        JWT_ACCESS_SECRET: validSecretA,
+        QR_HMAC_SECRET: validSecretB,
+        SMS_PROVIDER: 'msg91',
+      })
+    );
+
+    // AISTUDIO_PREVIEW=true in production
+    assert.throws(() =>
+      parseEnvConfig({
+        NODE_ENV: 'production',
+        AISTUDIO_PREVIEW: 'true',
+        DATABASE_URL: 'postgres://app:pass@localhost:5432/harbouros',
+        DATABASE_PLATFORM_URL: 'postgres://platform:pass@localhost:5432/harbouros',
+        JWT_ACCESS_SECRET: validSecretA,
+        QR_HMAC_SECRET: validSecretB,
         SMS_PROVIDER: 'msg91',
       })
     );
@@ -409,10 +480,9 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       parseEnvConfig({
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://user:pass@localhost:5432/harbouros',
-        JWT_ACCESS_SECRET: 'replace-with-32-byte-random-secret-key',
-        QR_HMAC_SECRET: 'z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2',
-        OTP_DEV_ECHO: 'false',
-        DEMO_MODE: 'false',
+        DATABASE_PLATFORM_URL: 'postgres://platform:pass@localhost:5432/harbouros',
+        JWT_ACCESS_SECRET: knownBadPlaceholder,
+        QR_HMAC_SECRET: validSecretB,
         SMS_PROVIDER: 'msg91',
       })
     );
@@ -422,9 +492,9 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       parseEnvConfig({
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://user:pass@localhost:5432/harbouros',
-        JWT_ACCESS_SECRET: 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8',
-        QR_HMAC_SECRET: 'z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2',
-        OTP_DEV_ECHO: 'false',
+        DATABASE_PLATFORM_URL: 'postgres://platform:pass@localhost:5432/harbouros',
+        JWT_ACCESS_SECRET: validSecretA,
+        QR_HMAC_SECRET: validSecretB,
         DEMO_MODE: 'true',
         SMS_PROVIDER: 'msg91',
       })
@@ -435,13 +505,27 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       parseEnvConfig({
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://user:pass@localhost:5432/harbouros',
-        JWT_ACCESS_SECRET: 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8',
-        QR_HMAC_SECRET: 'z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4j3i2',
-        OTP_DEV_ECHO: 'false',
-        DEMO_MODE: 'false',
+        DATABASE_PLATFORM_URL: 'postgres://platform:pass@localhost:5432/harbouros',
+        JWT_ACCESS_SECRET: validSecretA,
+        QR_HMAC_SECRET: validSecretB,
         SMS_PROVIDER: 'console',
       })
     );
+
+    // Boots cleanly with ONLY the 5 required environment variables
+    const cleanProdConfig = parseEnvConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://harbour_app:secret@localhost:5432/harbour_db',
+      DATABASE_PLATFORM_URL: 'postgres://harbour_platform:secret@localhost:5432/harbour_db',
+      JWT_ACCESS_SECRET: validSecretA,
+      QR_HMAC_SECRET: validSecretB,
+      SMS_PROVIDER: 'msg91',
+    });
+    assert.equal(cleanProdConfig.NODE_ENV, 'production');
+    assert.equal(cleanProdConfig.OTP_DEV_ECHO, false);
+    assert.equal(cleanProdConfig.DEMO_MODE, false);
+    assert.equal(cleanProdConfig.AISTUDIO_PREVIEW, false);
+    assert.equal(cleanProdConfig.PORT, 3000);
   });
 
   it('T20 SQL bridge removed: port 5433 is not listening and backend-go is deleted', async () => {

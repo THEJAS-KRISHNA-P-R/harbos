@@ -6,6 +6,8 @@ import { checkBoundaries } from '../../scripts/check-boundaries.ts';
 import { ROUTE_RBAC_MATRIX } from '../../src/shared/contracts/rbac.ts';
 import { filterAuditLogs, type AuditLogRow } from '../../src/web/lib/api.ts';
 
+import crypto from 'node:crypto';
+
 describe('M0 & M3 Foundation — Config Safety, WCAG Contrast, Boundaries & RBAC Matrix', () => {
   it('parseEnvConfig refuses to boot when NODE_ENV=production and OTP_DEV_ECHO=true', () => {
     assert.throws(
@@ -13,7 +15,7 @@ describe('M0 & M3 Foundation — Config Safety, WCAG Contrast, Boundaries & RBAC
         parseEnvConfig({
           NODE_ENV: 'production',
           OTP_DEV_ECHO: 'true',
-          JWT_ACCESS_SECRET: '0123456789abcdef0123456789abcdef',
+          JWT_ACCESS_SECRET: crypto.randomBytes(32).toString('hex'),
         }),
       /OTP_DEV_ECHO=true is strictly forbidden when NODE_ENV=production/
     );

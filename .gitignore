@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+.aistudio/
+docs/screens/
+test-results/
+playwright-report/
+.data/

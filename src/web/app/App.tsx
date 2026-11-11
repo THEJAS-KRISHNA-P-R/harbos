@@ -236,6 +236,10 @@ export const App: React.FC = () => {
   );
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+      setScreenMode('login');
+      return;
+    }
     if (!import.meta.env.PROD) {
       void handlePersonaSwitch('HARBOUR_ADMIN');
     } else {

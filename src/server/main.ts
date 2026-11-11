@@ -19,13 +19,17 @@ export async function startServer(): Promise<void> {
     ? new PgPoolAdapter(config.DATABASE_URL)
     : new PGliteAdapter('memory://');
 
+  const platformDb = config.DATABASE_PLATFORM_URL
+    ? new PgPoolAdapter(config.DATABASE_PLATFORM_URL)
+    : db;
+
   if (config.NODE_ENV === 'production' && !config.RUN_MIGRATIONS_ON_BOOT) {
-    await verifySqlMigrations(db);
+    await verifySqlMigrations(platformDb);
   } else {
-    await runMigrationsAndSeed(db);
+    await runMigrationsAndSeed(platformDb);
   }
 
-  const apiApp = createApiApp(db, runCatchPhotoAssist);
+  const apiApp = createApiApp(db, runCatchPhotoAssist, platformDb);
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -66,6 +70,9 @@ export async function startServer(): Promise<void> {
         try {
           if (db.close) {
             await db.close();
+          }
+          if (platformDb !== db && platformDb.close) {
+            await platformDb.close();
           }
         } catch (err) {
           logger.error('Error closing database adapter during shutdown', {

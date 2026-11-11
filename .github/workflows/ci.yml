@@ -25,23 +25,26 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
       - name: Run Gitleaks Secret Scanner
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@e851e44a4b2a647d33eb4341c6f4997c6c4c5cfb # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@1a4442cacd436585916779262731c5b162bc6ec7 # v4.2.0
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Production Dependency Vulnerability Audit
         run: npm audit --omit=dev --audit-level=high
@@ -55,15 +58,40 @@ jobs:
       - name: Run Migrations Against PostgreSQL 16 Service Container
         env:
           DATABASE_PLATFORM_URL: postgresql://postgres:postgrespassword@localhost:5432/harbouros_test
+          HARBOUR_APP_PASSWORD: test_app_password_harbour_secret_2026
+          HARBOUR_PLATFORM_PASSWORD: test_platform_password_harbour_secret_2026
         run: npm run migrate
 
       - name: Run Unit, Database (RLS Strict) & Security Regression Suite
+        env:
+          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@localhost:5432/harbouros_test
+          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@localhost:5432/harbouros_test
+          NODE_OPTIONS: --throw-deprecation
         run: npm test
+
+      - name: Verify RLS Fail-Closed & Immutability on PostgreSQL 16
+        env:
+          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@localhost:5432/harbouros_test
+          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@localhost:5432/harbouros_test
+          NODE_OPTIONS: --throw-deprecation
+        run: npx tsx scripts/verify-rls.ts
+
+      - name: Run Production 5-Var Boot & Fail-Closed Smoke Check
+        env:
+          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@localhost:5432/harbouros_test
+          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@localhost:5432/harbouros_test
+          NODE_OPTIONS: --throw-deprecation
+        run: npx tsx scripts/smoke-prod.ts
 
       - name: Production Frontend Build & Asset Budget Gate
         run: |
           npm run build
           npm run check:budget
+
+      - name: Playwright Visual & Responsive Smoke Suite
+        env:
+          PORT: 3000
+        run: npx playwright test
 
       - name: Verify Zero Hardcoded Demo Phones in Production Bundle
         run: |
@@ -72,5 +100,18 @@ jobs:
             exit 1
           fi
 
-      - name: Verify Multi-Stage Production Docker Build
-        run: docker build -t harbouros:ci .
+      - name: Verify Multi-Stage Production Docker Build & Container Health
+        run: |
+          docker build -t harbouros:ci .
+          docker run -d --name harbouros-test -p 8080:8080 \
+            -e NODE_ENV=production \
+            -e PORT=8080 \
+            -e DATABASE_URL=postgresql://harbour_app:test_app_password_harbour_secret_2026@host.docker.internal:5432/harbouros_test \
+            -e DATABASE_PLATFORM_URL=postgresql://harbour_platform:test_platform_password_harbour_secret_2026@host.docker.internal:5432/harbouros_test \
+            -e JWT_ACCESS_SECRET=c0a80101c0a80101c0a80101c0a80101c0a80101c0a80101c0a80101c0a80101 \
+            -e QR_HMAC_SECRET=d0b90202d0b90202d0b90202d0b90202d0b90202d0b90202d0b90202d0b90202 \
+            -e SMS_PROVIDER=CONSOLE \
+            harbouros:ci
+          sleep 4
+          curl --fail http://localhost:8080/healthz || exit 1
+          docker stop harbouros-test

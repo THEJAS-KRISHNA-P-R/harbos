@@ -157,7 +157,7 @@ export const ROUTE_RBAC_MATRIX: ReadonlyArray<RoutePolicy> = [
   {
     method: 'POST',
     pattern: '/api/v1/lots/:lotId/allocate',
-    roles: ['LICENSED_AUCTIONEER', 'WHOLESALE_BUYER', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
+    roles: ['LICENSED_AUCTIONEER', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
   },
   {
     method: 'POST',
@@ -188,6 +188,11 @@ export const ROUTE_RBAC_MATRIX: ReadonlyArray<RoutePolicy> = [
     method: 'POST',
     pattern: '/api/v1/tenants',
     roles: ['SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/tenants/:tenantId/users',
+    roles: ['SUPER_ADMIN', 'HARBOUR_ADMIN'],
   },
   {
     method: 'POST',

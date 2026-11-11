@@ -16,12 +16,12 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test tests/unit/*.test.ts tests/db/*.test.ts tests/api/*.test.ts",
-    "test:api": "tsx --test tests/api/*.test.ts",
+    "test": "tsx --test --test-concurrency=1 tests/unit/*.test.ts tests/db/*.test.ts tests/api/*.test.ts",
+    "test:api": "tsx --test --test-concurrency=1 tests/api/*.test.ts",
     "check:boundaries": "tsx scripts/check-boundaries.ts",
     "check:contrast": "tsx scripts/check-contrast.ts",
     "check:budget": "tsx scripts/check-budget.ts",
-    "check": "tsc --noEmit && tsx --test tests/unit/*.test.ts tests/db/*.test.ts tests/api/*.test.ts && tsx scripts/check-boundaries.ts && tsx scripts/check-contrast.ts && vite build && tsx scripts/check-budget.ts"
+    "check": "tsc --noEmit && tsx --test --test-concurrency=1 tests/unit/*.test.ts tests/db/*.test.ts tests/api/*.test.ts && tsx scripts/check-boundaries.ts && tsx scripts/check-contrast.ts && vite build && tsx scripts/check-budget.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",
@@ -41,6 +41,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",

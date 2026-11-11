@@ -4,6 +4,11 @@ import { z } from 'zod';
 const RawEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
+  AISTUDIO_PREVIEW: z
+    .enum(['true', 'false', '1', '0', ''])
+    .optional()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
   DATABASE_URL: z.string().optional().default(''),
   DATABASE_PLATFORM_URL: z.string().optional().default(''),
   PG_CONNECTION_STRING: z.string().optional().default(''),
@@ -16,12 +21,12 @@ const RawEnvSchema = z.object({
   OTP_DEV_ECHO: z
     .enum(['true', 'false', '1', '0', ''])
     .optional()
-    .default('true')
+    .default('false')
     .transform((v) => v === 'true' || v === '1'),
   DEMO_MODE: z
     .enum(['true', 'false', '1', '0', ''])
     .optional()
-    .default('true')
+    .default('false')
     .transform((v) => v === 'true' || v === '1'),
   LLM_PROVIDER: z.enum(['none', 'gemini']).default('none'),
   LLM_MODEL_VISION: z.string().default('gemini-2.5-flash'),
@@ -43,6 +48,7 @@ const RawEnvSchema = z.object({
 export interface AppConfig {
   readonly NODE_ENV: 'development' | 'test' | 'production';
   readonly PORT: number;
+  readonly AISTUDIO_PREVIEW: boolean;
   readonly DATABASE_URL: string;
   readonly DATABASE_PLATFORM_URL: string;
   readonly PGLITE_DATA_DIR: string;
@@ -66,12 +72,18 @@ const WEAK_SECRET_RE = /replace|dev-|secret-0|placeholder|changeme/i;
 export function parseEnvConfig(rawEnv: Record<string, string | undefined>): AppConfig {
   const parsed = RawEnvSchema.parse(rawEnv);
   const dbUrl = (parsed.DATABASE_URL || parsed.PG_CONNECTION_STRING).trim();
-  const dbPlatformUrl = (parsed.DATABASE_PLATFORM_URL || dbUrl).trim();
+  const rawPlatformUrl = parsed.DATABASE_PLATFORM_URL.trim();
+  const dbPlatformUrl = (rawPlatformUrl || dbUrl).trim();
   const rawAccess = (parsed.JWT_ACCESS_SECRET || parsed.JWT_HS256_SECRET).trim();
   const rawRefresh = parsed.JWT_REFRESH_SECRET.trim();
   const rawQr = parsed.QR_HMAC_SECRET.trim();
 
   if (parsed.NODE_ENV === 'production') {
+    if (parsed.AISTUDIO_PREVIEW) {
+      throw new Error(
+        'FATAL [config]: AISTUDIO_PREVIEW=true is strictly forbidden when NODE_ENV=production.'
+      );
+    }
     if (parsed.OTP_DEV_ECHO) {
       throw new Error(
         'FATAL [config]: OTP_DEV_ECHO=true is strictly forbidden when NODE_ENV=production.'
@@ -85,6 +97,11 @@ export function parseEnvConfig(rawEnv: Record<string, string | undefined>): AppC
     if (!dbUrl) {
       throw new Error(
         'FATAL [config]: DATABASE_URL is required when NODE_ENV=production (PGlite in-memory is forbidden in production).'
+      );
+    }
+    if (!rawPlatformUrl) {
+      throw new Error(
+        'FATAL [config]: DATABASE_PLATFORM_URL is required when NODE_ENV=production.'
       );
     }
     if (parsed.DEMO_MODE) {
@@ -123,9 +140,15 @@ export function parseEnvConfig(rawEnv: Record<string, string | undefined>): AppC
       ? val.trim()
       : crypto.randomBytes(32).toString('hex');
 
+  let port = parsed.PORT;
+  if (parsed.AISTUDIO_PREVIEW && parsed.NODE_ENV !== 'production' && parsed.PORT === 8080) {
+    port = 3000;
+  }
+
   return {
     NODE_ENV: parsed.NODE_ENV,
-    PORT: parsed.PORT === 8080 ? 3000 : parsed.PORT,
+    PORT: port,
+    AISTUDIO_PREVIEW: parsed.NODE_ENV === 'production' ? false : parsed.AISTUDIO_PREVIEW,
     DATABASE_URL: dbUrl,
     DATABASE_PLATFORM_URL: dbPlatformUrl,
     PGLITE_DATA_DIR: parsed.PGLITE_DATA_DIR,

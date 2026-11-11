@@ -29,7 +29,7 @@ export async function withTenant<T>(
   return db.transaction(async (tx) => {
     await tx.exec(`SET LOCAL ROLE harbour_app`);
     await tx.query(
-      `SELECT set_config('app.tenant_id', $1, true), set_config('app.platform', '', true)`,
+      `SELECT set_config('app.tenant_id', $1, true)`,
       [tenantId]
     );
     return fn(tx);
@@ -37,8 +37,8 @@ export async function withTenant<T>(
 }
 
 /**
- * Executes a platform-scoped cross-tenant database unit of work inside a
- * transaction with `app.platform = 'on'`.
+ * Executes a platform-scoped database unit of work inside a transaction as
+ * role `harbour_platform` (BYPASSRLS) with empty tenant context.
  */
 export async function withPlatform<T>(
   db: DbPort,
@@ -46,7 +46,7 @@ export async function withPlatform<T>(
 ): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.query(
-      `SELECT set_config('app.platform', 'on', true), set_config('app.tenant_id', '', true)`
+      `SELECT set_config('app.tenant_id', '', true)`
     );
     return fn(tx);
   });

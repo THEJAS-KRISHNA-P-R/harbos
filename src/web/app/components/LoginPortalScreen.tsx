@@ -109,9 +109,9 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
             <MaritimeCrestSvgEmblem size={44} className="shrink-0" />
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight">
+                <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight">
                   HarbourOS Operator Identity &amp; Sign-In Portal
-                </span>
+                </h1>
                 <Badge tone="ok" label="HS256 JWT + RLS" />
               </div>
               <p className="text-xs text-[var(--text-secondary)]">
