@@ -1,11 +1,11 @@
-FROM node:22-slim AS builder
+FROM node:25-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22-slim AS runner
+FROM node:25-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
