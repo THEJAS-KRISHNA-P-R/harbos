@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import type { Request, Response, NextFunction } from 'express';
 import { config } from '@server/config.ts';
-import type { DbPort } from '@server/ports/db.ts';
+import { createTenantBoundDb, withPlatform, type DbPort } from '@server/ports/db.ts';
 import { AppError } from '@server/platform/errors.ts';
 import type { Role } from '@shared/contracts/rbac.ts';
 
@@ -20,13 +20,42 @@ const JWT_AUDIENCE = 'harbouros-api';
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_LOCKOUT_MS = 15 * 60 * 1000;
+const REFRESH_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+const USER_STATUS_CACHE_TTL_MS = 15_000; // <= 15s
+
+export const REFRESH_COOKIE_NAME = 'harbouros_refresh';
 
 const secretKey = new TextEncoder().encode(config.JWT_ACCESS_SECRET);
+
+interface CachedUserStatus {
+  exists: boolean;
+  isActive: boolean;
+  role: Role;
+  tenantId: string;
+  expiresAtMs: number;
+}
+
+const authUserCache = new Map<string, CachedUserStatus>();
+
+export function clearAuthUserCache(userId?: string): void {
+  if (userId) {
+    authUserCache.delete(userId);
+  } else {
+    authUserCache.clear();
+  }
+}
 
 function hashOtpWithSalt(code: string, saltHex: string): string {
   return crypto
     .createHash('sha256')
     .update(`${saltHex}:${code.trim()}`)
+    .digest('hex');
+}
+
+export function hashRefreshToken(rawToken: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(`${config.JWT_REFRESH_SECRET}:${rawToken.trim()}`)
     .digest('hex');
 }
 
@@ -95,11 +124,6 @@ export async function issueOtpChallenge(
 
 /**
  * Verifies a 6-digit OTP code against `core.otp_challenges`.
- * Enforces:
- *  - No hardcoded backdoor code (never accepts any code if no challenge was issued)
- *  - Per-phone lockout after 5 failed attempts (`429 OTP_LOCKED`)
- *  - Constant-time comparison via `crypto.timingSafeEqual`
- *  - Single-use consumption (`consumed_at` set atomically; replay rejected with `401`)
  */
 export async function verifyOtpChallenge(
   db: DbPort,
@@ -111,7 +135,6 @@ export async function verifyOtpChallenge(
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
 
-  // Check if latest challenge for this phone is locked out
   const latestRes = await db.query<{
     challenge_id: string;
     code_hash: string;
@@ -191,6 +214,236 @@ export async function verifyOtpChallenge(
   return consumeRes.rows.length > 0;
 }
 
+export async function issueRefreshToken(
+  db: DbPort,
+  params: {
+    userId: string;
+    tenantId: string;
+    familyId?: string;
+  }
+): Promise<{
+  rawToken: string;
+  tokenHash: string;
+  familyId: string;
+  expiresAtIso: string;
+}> {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashRefreshToken(rawToken);
+  const familyId = params.familyId ?? `FAM-${crypto.randomUUID()}`;
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const expiresAtIso = new Date(nowMs + REFRESH_TTL_MS).toISOString();
+
+  await withPlatform(db, async (tx) => {
+    await tx.query(
+      `INSERT INTO core.refresh_tokens (
+        token_hash, user_id, tenant_id, family_id, expires_at, rotated_at, revoked_at, created_at
+      ) VALUES ($1, $2, $3, $4, $5, NULL, NULL, $6)`,
+      [tokenHash, params.userId, params.tenantId, familyId, expiresAtIso, nowIso]
+    );
+  });
+
+  return { rawToken, tokenHash, familyId, expiresAtIso };
+}
+
+export async function rotateRefreshToken(
+  db: DbPort,
+  rawToken: string
+): Promise<{
+  accessToken: string;
+  newRawRefreshToken: string;
+  user: {
+    userId: string;
+    tenantId: string;
+    phoneE164: string;
+    fullName: string;
+    role: Role;
+    entityRefId: string | null;
+  };
+}> {
+  if (!rawToken || !rawToken.trim()) {
+    throw new AppError('UNAUTHORIZED', 'Missing refresh token', 401);
+  }
+  const tokenHash = hashRefreshToken(rawToken);
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+
+  let reuseDetected = false;
+
+  const result = await withPlatform(db, async (tx) => {
+    const tokenRes = await tx.query<{
+      token_hash: string;
+      user_id: string;
+      tenant_id: string;
+      family_id: string;
+      expires_at: string;
+      rotated_at: string | null;
+      revoked_at: string | null;
+    }>(
+      `SELECT token_hash, user_id, tenant_id, family_id,
+              expires_at::text AS expires_at,
+              rotated_at::text AS rotated_at,
+              revoked_at::text AS revoked_at
+       FROM core.refresh_tokens
+       WHERE token_hash = $1
+       FOR UPDATE`,
+      [tokenHash]
+    );
+
+    const row = tokenRes.rows[0];
+    if (!row) {
+      throw new AppError('UNAUTHORIZED', 'Invalid refresh token', 401);
+    }
+
+    // Reuse detection: if an already-rotated token is presented again, revoke the entire family!
+    if (row.rotated_at !== null) {
+      await tx.query(
+        `UPDATE core.refresh_tokens
+         SET revoked_at = $1
+         WHERE family_id = $2 AND revoked_at IS NULL`,
+        [nowIso, row.family_id]
+      );
+      reuseDetected = true;
+      return null;
+    }
+
+    if (row.revoked_at !== null || new Date(row.expires_at).getTime() <= nowMs) {
+      throw new AppError('UNAUTHORIZED', 'Refresh token is expired or revoked', 401);
+    }
+
+    const userRes = await tx.query<{
+      user_id: string;
+      tenant_id: string;
+      phone_e164: string;
+      full_name: string;
+      role: Role;
+      entity_ref_id: string | null;
+      is_active: boolean;
+    }>(
+      `SELECT user_id, tenant_id, phone_e164, full_name, role, entity_ref_id, is_active
+       FROM core.users
+       WHERE user_id = $1
+       LIMIT 1`,
+      [row.user_id]
+    );
+    const user = userRes.rows[0];
+    if (!user || !user.is_active) {
+      await tx.query(
+        `UPDATE core.refresh_tokens
+         SET revoked_at = $1
+         WHERE family_id = $2 AND revoked_at IS NULL`,
+        [nowIso, row.family_id]
+      );
+      reuseDetected = true;
+      return null;
+    }
+
+    await tx.query(
+      `UPDATE core.refresh_tokens
+       SET rotated_at = $1
+       WHERE token_hash = $2`,
+      [nowIso, tokenHash]
+    );
+
+    const newRawRefreshToken = crypto.randomBytes(32).toString('hex');
+    const newTokenHash = hashRefreshToken(newRawRefreshToken);
+    const newExpiresAtIso = new Date(nowMs + REFRESH_TTL_MS).toISOString();
+
+    await tx.query(
+      `INSERT INTO core.refresh_tokens (
+        token_hash, user_id, tenant_id, family_id, expires_at, rotated_at, revoked_at, created_at
+      ) VALUES ($1, $2, $3, $4, $5, NULL, NULL, $6)`,
+      [newTokenHash, user.user_id, user.tenant_id, row.family_id, newExpiresAtIso, nowIso]
+    );
+
+    const accessToken = await signAccessJwt({
+      sub: user.user_id,
+      tenantId: user.tenant_id,
+      role: user.role,
+      fullName: user.full_name,
+      phoneE164: user.phone_e164,
+      entityRefId: user.entity_ref_id,
+    });
+
+    return {
+      accessToken,
+      newRawRefreshToken,
+      user: {
+        userId: user.user_id,
+        tenantId: user.tenant_id,
+        phoneE164: user.phone_e164,
+        fullName: user.full_name,
+        role: user.role,
+        entityRefId: user.entity_ref_id,
+      },
+    };
+  });
+
+  if (reuseDetected || !result) {
+    throw new AppError(
+      'UNAUTHORIZED',
+      'Refresh token reuse or deactivated user detected; token family revoked.',
+      401
+    );
+  }
+
+  return result;
+}
+
+export async function revokeRefreshToken(db: DbPort, rawToken: string): Promise<void> {
+  if (!rawToken || !rawToken.trim()) return;
+  const tokenHash = hashRefreshToken(rawToken);
+  const nowIso = new Date().toISOString();
+  await withPlatform(db, async (tx) => {
+    await tx.query(
+      `UPDATE core.refresh_tokens
+       SET revoked_at = $1
+       WHERE token_hash = $2 AND revoked_at IS NULL`,
+      [nowIso, tokenHash]
+    );
+  });
+}
+
+export async function revokeAllUserRefreshTokens(db: DbPort, userId: string): Promise<void> {
+  clearAuthUserCache(userId);
+  const nowIso = new Date().toISOString();
+  await withPlatform(db, async (tx) => {
+    await tx.query(
+      `UPDATE core.refresh_tokens
+       SET revoked_at = $1
+       WHERE user_id = $2 AND revoked_at IS NULL`,
+      [nowIso, userId]
+    );
+  });
+}
+
+export function setRefreshTokenCookie(res: Response, rawToken: string): void {
+  res.setHeader(
+    'Set-Cookie',
+    `${REFRESH_COOKIE_NAME}=${rawToken}; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=1209600`
+  );
+}
+
+export function clearRefreshTokenCookie(res: Response): void {
+  res.setHeader(
+    'Set-Cookie',
+    `${REFRESH_COOKIE_NAME}=; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=0`
+  );
+}
+
+export function parseRefreshTokenCookie(req: Request): string | null {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return null;
+  const parts = cookieHeader.split(';');
+  for (const part of parts) {
+    const [k, ...vParts] = part.trim().split('=');
+    if (k === REFRESH_COOKIE_NAME) {
+      return vParts.join('=').trim() || null;
+    }
+  }
+  return null;
+}
+
 export async function signAccessJwt(claims: AuthSessionClaims): Promise<string> {
   return new SignJWT({
     tenantId: claims.tenantId,
@@ -267,6 +520,53 @@ export function verifySupervisorPin(
 
 export interface AuthenticatedRequest extends Request {
   auth?: AuthSessionClaims;
+  db?: DbPort;
+}
+
+async function resolveUserActiveStatus(
+  baseDb: DbPort,
+  userId: string
+): Promise<CachedUserStatus> {
+  const nowMs = Date.now();
+  const cached = authUserCache.get(userId);
+  if (cached && cached.expiresAtMs > nowMs) {
+    return cached;
+  }
+
+  const row = await withPlatform(baseDb, async (tx) => {
+    const res = await tx.query<{
+      user_id: string;
+      tenant_id: string;
+      role: Role;
+      is_active: boolean;
+    }>(
+      `SELECT user_id, tenant_id, role, is_active
+       FROM core.users
+       WHERE user_id = $1
+       LIMIT 1`,
+      [userId]
+    );
+    return res.rows[0] ?? null;
+  });
+
+  const status: CachedUserStatus = row
+    ? {
+        exists: true,
+        isActive: Boolean(row.is_active),
+        role: row.role,
+        tenantId: row.tenant_id,
+        expiresAtMs: nowMs + USER_STATUS_CACHE_TTL_MS,
+      }
+    : {
+        exists: false,
+        isActive: true,
+        role: 'WHOLESALE_BUYER',
+        tenantId: '',
+        expiresAtMs: nowMs + USER_STATUS_CACHE_TTL_MS,
+      };
+
+  authUserCache.set(userId, status);
+  return status;
 }
 
 export function requireAuth(allowedRoles?: ReadonlyArray<Role>) {
@@ -277,7 +577,24 @@ export function requireAuth(allowedRoles?: ReadonlyArray<Role>) {
         throw new AppError('UNAUTHORIZED', 'Missing Bearer access token', 401);
       }
       const token = header.slice('Bearer '.length).trim();
-      const claims = await verifyAccessJwt(token);
+      let claims = await verifyAccessJwt(token);
+
+      const baseDb = req.app?.locals?.db as DbPort | undefined;
+      if (baseDb) {
+        const userStatus = await resolveUserActiveStatus(baseDb, claims.sub);
+        if (userStatus.exists) {
+          if (!userStatus.isActive) {
+            throw new AppError('UNAUTHORIZED', 'Operator account is deactivated', 401);
+          }
+          if (userStatus.tenantId === claims.tenantId) {
+            claims = {
+              ...claims,
+              role: userStatus.role,
+            };
+          }
+        }
+        req.db = createTenantBoundDb(baseDb, claims.tenantId);
+      }
 
       if (allowedRoles && !allowedRoles.includes(claims.role)) {
         throw new AppError(

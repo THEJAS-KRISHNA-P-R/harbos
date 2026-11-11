@@ -33,21 +33,48 @@ import {
   type SessionUser,
 } from '@web/lib/api.ts';
 import { WORKSPACES, type Role, type WorkspaceId } from '@shared/contracts/rbac.ts';
-import { WeighingWorkspace } from '@web/workspaces/weighing/index.tsx';
-import { PitWorkspace } from '@web/workspaces/pit/index.tsx';
-import { BuyerWorkspace } from '@web/workspaces/buyer/index.tsx';
-import { FisherWorkspace } from '@web/workspaces/fisher/index.tsx';
-import { InspectorWorkspace } from '@web/workspaces/inspector/index.tsx';
-import { HarbourWorkspace } from '@web/workspaces/harbour/index.tsx';
-import { PlatformWorkspace } from '@web/workspaces/platform/index.tsx';
 import {
   LedgerInspectorDrawer,
   type GoldenVectorRow,
 } from '@web/app/components/LedgerInspectorDrawer.tsx';
 import { OperatorProfileDrawer } from '@web/app/components/OperatorProfileDrawer.tsx';
 import { LoginPortalScreen } from '@web/app/components/LoginPortalScreen.tsx';
-import { DesignSystemGalleryScreen } from '@web/app/components/DesignSystemGalleryScreen.tsx';
 import { CommandPaletteModal } from '@web/app/components/CommandPaletteModal.tsx';
+
+const WeighingWorkspace = React.lazy(async () => {
+  const m = await import('@web/workspaces/weighing/index.tsx');
+  return { default: m.WeighingWorkspace };
+});
+const PitWorkspace = React.lazy(async () => {
+  const m = await import('@web/workspaces/pit/index.tsx');
+  return { default: m.PitWorkspace };
+});
+const BuyerWorkspace = React.lazy(async () => {
+  const m = await import('@web/workspaces/buyer/index.tsx');
+  return { default: m.BuyerWorkspace };
+});
+const FisherWorkspace = React.lazy(async () => {
+  const m = await import('@web/workspaces/fisher/index.tsx');
+  return { default: m.FisherWorkspace };
+});
+const InspectorWorkspace = React.lazy(async () => {
+  const m = await import('@web/workspaces/inspector/index.tsx');
+  return { default: m.InspectorWorkspace };
+});
+const HarbourWorkspace = React.lazy(async () => {
+  const m = await import('@web/workspaces/harbour/index.tsx');
+  return { default: m.HarbourWorkspace };
+});
+const PlatformWorkspace = React.lazy(async () => {
+  const m = await import('@web/workspaces/platform/index.tsx');
+  return { default: m.PlatformWorkspace };
+});
+const DevDesignSystemGalleryScreen = import.meta.env.DEV
+  ? React.lazy(async () => {
+      const m = await import('@web/app/components/DesignSystemGalleryScreen.tsx');
+      return { default: m.DesignSystemGalleryScreen };
+    })
+  : null;
 
 const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
   weighing: <DockScaleIcon size={18} />,
@@ -127,7 +154,7 @@ export const App: React.FC = () => {
   const [docksideMobileLayout, setDocksideMobileLayout] = useState(false);
 
   // OTP Login states
-  const [phoneInput, setPhoneInput] = useState('+919447000006');
+  const [phoneInput, setPhoneInput] = useState('');
   const [otpInput, setOtpInput] = useState('');
   const [devEchoOtp, setDevEchoOtp] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -184,6 +211,7 @@ export const App: React.FC = () => {
         );
         setToken(res.accessToken);
         setUser(res.user);
+        setPhoneInput(res.user.phoneE164);
         setEditFullName(res.user.fullName);
         setEditPhoneE164(res.user.phoneE164);
         const pathMatch =
@@ -539,7 +567,7 @@ export const App: React.FC = () => {
         initials: activeInitials,
         fullName: user?.fullName ?? 'Capt. Mathew Thomas',
         roleBadge: activeRoleMeta.shortBadge,
-        phoneE164: user?.phoneE164 ?? '+919447000006',
+        phoneE164: user?.phoneE164 ?? '—',
         onOpenProfile: () => {
           setProfileFeedback(null);
           setProfileDrawerOpen(true);
@@ -547,21 +575,37 @@ export const App: React.FC = () => {
         },
       }}
     >
-      {screenMode === 'gallery' ? (
-        <DesignSystemGalleryScreen
-          docksideMobileLayout={docksideMobileLayout}
-          onToggleDocksideLayout={() => setDocksideMobileLayout((prev) => !prev)}
-          onOpenOverlayModal={() => setGalleryModalOpen(true)}
-          onOpenProfileDrawer={() => setProfileDrawerOpen(true)}
-          goldenVectorRows={GOLDEN_VECTOR_ROWS}
-        />
+      {screenMode === 'gallery' && DevDesignSystemGalleryScreen ? (
+        <React.Suspense
+          fallback={
+            <EmptyState
+              title="Loading HarbourOS UI Kit…"
+              description="Initializing design system tokens and component gallery."
+            />
+          }
+        >
+          <DevDesignSystemGalleryScreen
+            docksideMobileLayout={docksideMobileLayout}
+            onToggleDocksideLayout={() => setDocksideMobileLayout((prev) => !prev)}
+            onOpenOverlayModal={() => setGalleryModalOpen(true)}
+            onOpenProfileDrawer={() => setProfileDrawerOpen(true)}
+            goldenVectorRows={GOLDEN_VECTOR_ROWS}
+          />
+        </React.Suspense>
       ) : !bootstrap || !token ? (
         <EmptyState
           title="Loading HarbourOS Statutory Clearing Engine…"
           description="Initializing Node.js 22 + PostgreSQL 16 and verifying SHA-256 ledger hash chain."
         />
       ) : (
-        <>
+        <React.Suspense
+          fallback={
+            <EmptyState
+              title="Loading Statutory Workspace…"
+              description="Preparing role-scoped clearing surface."
+            />
+          }
+        >
           {activeWorkspace === 'weighing' && (
             <WeighingWorkspace
               data={bootstrap}
@@ -605,7 +649,7 @@ export const App: React.FC = () => {
               onRefresh={() => loadBootstrap(token)}
             />
           )}
-        </>
+        </React.Suspense>
       )}
 
       <OperatorProfileDrawer

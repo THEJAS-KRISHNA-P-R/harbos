@@ -20,6 +20,7 @@ import {
   type LotRow,
 } from '@web/lib/api.ts';
 import type { InspectionGrade } from '@shared/ids.ts';
+import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 
 export const InspectorWorkspace: React.FC<{
   data: BootstrapData;
@@ -32,7 +33,7 @@ export const InspectorWorkspace: React.FC<{
   const [grade, setGrade] = useState<InspectionGrade>('A_EXPORT');
   const [coreTempC, setCoreTempC] = useState('1.8');
   const [notes, setNotes] = useState(
-    'Clear cornea, bright red gills, firm elastic flesh, core temp <= 2.5C (Act 16 s.21)'
+    `Clear cornea, bright red gills, firm elastic flesh, core temp <= 2.5C (${ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE})`
   );
   const [submitting, setSubmitting] = useState(false);
   const [aiAdvisory, setAiAdvisory] = useState<{

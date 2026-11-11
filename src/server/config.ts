@@ -5,6 +5,7 @@ const RawEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().optional().default(''),
+  DATABASE_PLATFORM_URL: z.string().optional().default(''),
   PG_CONNECTION_STRING: z.string().optional().default(''),
   PGLITE_DATA_DIR: z.string().default('./.data/pglite'),
   JWT_ACCESS_SECRET: z.string().optional().default(''),
@@ -32,12 +33,18 @@ const RawEnvSchema = z.object({
     .optional()
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
+  RUN_MIGRATIONS_ON_BOOT: z
+    .enum(['true', 'false', '1', '0', ''])
+    .optional()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 });
 
 export interface AppConfig {
   readonly NODE_ENV: 'development' | 'test' | 'production';
   readonly PORT: number;
   readonly DATABASE_URL: string;
+  readonly DATABASE_PLATFORM_URL: string;
   readonly PGLITE_DATA_DIR: string;
   readonly JWT_ACCESS_SECRET: string;
   readonly JWT_REFRESH_SECRET: string;
@@ -51,6 +58,7 @@ export interface AppConfig {
   readonly SMS_PROVIDER: 'console' | 'noop' | 'msg91';
   readonly WHATSAPP_PROVIDER: 'console' | 'noop' | 'meta';
   readonly DISABLE_HMR: boolean;
+  readonly RUN_MIGRATIONS_ON_BOOT: boolean;
 }
 
 const WEAK_SECRET_RE = /replace|dev-|secret-0|placeholder|changeme/i;
@@ -58,6 +66,7 @@ const WEAK_SECRET_RE = /replace|dev-|secret-0|placeholder|changeme/i;
 export function parseEnvConfig(rawEnv: Record<string, string | undefined>): AppConfig {
   const parsed = RawEnvSchema.parse(rawEnv);
   const dbUrl = (parsed.DATABASE_URL || parsed.PG_CONNECTION_STRING).trim();
+  const dbPlatformUrl = (parsed.DATABASE_PLATFORM_URL || dbUrl).trim();
   const rawAccess = (parsed.JWT_ACCESS_SECRET || parsed.JWT_HS256_SECRET).trim();
   const rawRefresh = parsed.JWT_REFRESH_SECRET.trim();
   const rawQr = parsed.QR_HMAC_SECRET.trim();
@@ -116,8 +125,9 @@ export function parseEnvConfig(rawEnv: Record<string, string | undefined>): AppC
 
   return {
     NODE_ENV: parsed.NODE_ENV,
-    PORT: parsed.PORT,
+    PORT: parsed.PORT === 8080 ? 3000 : parsed.PORT,
     DATABASE_URL: dbUrl,
+    DATABASE_PLATFORM_URL: dbPlatformUrl,
     PGLITE_DATA_DIR: parsed.PGLITE_DATA_DIR,
     JWT_ACCESS_SECRET: parsed.NODE_ENV === 'production' ? rawAccess : ensureSecret(rawAccess),
     JWT_REFRESH_SECRET:
@@ -134,6 +144,7 @@ export function parseEnvConfig(rawEnv: Record<string, string | undefined>): AppC
     SMS_PROVIDER: parsed.SMS_PROVIDER,
     WHATSAPP_PROVIDER: parsed.WHATSAPP_PROVIDER,
     DISABLE_HMR: parsed.DISABLE_HMR,
+    RUN_MIGRATIONS_ON_BOOT: parsed.RUN_MIGRATIONS_ON_BOOT,
   };
 }
 

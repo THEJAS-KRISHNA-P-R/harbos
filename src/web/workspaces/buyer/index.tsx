@@ -21,6 +21,7 @@ import {
   type LotRow,
   type AllocationRow,
 } from '@web/lib/api.ts';
+import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 
 export const BuyerWorkspace: React.FC<{
   data: BootstrapData;
@@ -90,7 +91,7 @@ export const BuyerWorkspace: React.FC<{
       status: 'DRAFT_TEMPLATE_UNVERIFIED (OPEN-05)',
       generatedAt: new Date().toISOString(),
       harbour: data.tenant?.name_en,
-      statutoryBasis: 'Kerala Act 16 of 2021 s.21 Quality & Traceability Record',
+      statutoryBasis: `${ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE} Quality & Traceability Record`,
       buyer: {
         name: buyer?.buyer_name,
         gstin: buyer?.gstin,

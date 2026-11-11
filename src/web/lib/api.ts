@@ -353,6 +353,22 @@ export {
 } from '@shared/sdk/harbouros-sdk.ts';
 
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
+let inMemoryAccessToken: string | null = null;
+let onTokenRefreshedCallback: ((newToken: string) => void) | null = null;
+
+export function setInMemoryAccessToken(
+  token: string | null,
+  onRefreshed?: (newToken: string) => void
+): void {
+  inMemoryAccessToken = token;
+  if (onRefreshed) {
+    onTokenRefreshedCallback = onRefreshed;
+  }
+}
+
+export function getInMemoryAccessToken(): string | null {
+  return inMemoryAccessToken;
+}
 
 export async function apiRequest<T>(
   path: string,
@@ -364,7 +380,8 @@ export async function apiRequest<T>(
   } = {}
 ): Promise<T> {
   const method = options.method ?? 'GET';
-  const coalesceKey = method === 'GET' ? `${options.token ?? 'anon'}:${path}` : null;
+  const effectiveToken = options.token ?? inMemoryAccessToken;
+  const coalesceKey = method === 'GET' ? `${effectiveToken ?? 'anon'}:${path}` : null;
 
   if (coalesceKey) {
     const existing = inFlightGetRequests.get(coalesceKey);
@@ -373,13 +390,13 @@ export async function apiRequest<T>(
     }
   }
 
-  const executeFetch = async (): Promise<T> => {
+  const executeFetch = async (bearerToken: string | null | undefined, isRetry = false): Promise<T> => {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-HarbourOS-SDK-Version': '2.4.0-statutory',
     };
-    if (options.token) {
-      headers['Authorization'] = `Bearer ${options.token}`;
+    if (bearerToken) {
+      headers['Authorization'] = `Bearer ${bearerToken}`;
     }
     if (options.idempotencyKey) {
       headers['Idempotency-Key'] = options.idempotencyKey;
@@ -388,8 +405,29 @@ export async function apiRequest<T>(
     const res = await fetch(path, {
       method,
       headers,
+      credentials: 'include',
       ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
     });
+
+    if (res.status === 401 && !isRetry && !path.startsWith('/api/v1/auth/')) {
+      try {
+        const refreshRes = await fetch('/api/v1/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        });
+        if (refreshRes.ok) {
+          const refreshData = (await refreshRes.json()) as { accessToken?: string };
+          if (refreshData.accessToken) {
+            inMemoryAccessToken = refreshData.accessToken;
+            onTokenRefreshedCallback?.(refreshData.accessToken);
+            return executeFetch(refreshData.accessToken, true);
+          }
+        }
+      } catch {
+        // Fall through to 401 error
+      }
+    }
 
     const data = (await res.json()) as T & { error?: { code?: string; message?: string } };
     if (!res.ok) {
@@ -399,10 +437,10 @@ export async function apiRequest<T>(
   };
 
   if (!coalesceKey) {
-    return executeFetch();
+    return executeFetch(effectiveToken);
   }
 
-  const promise = executeFetch().finally(() => {
+  const promise = executeFetch(effectiveToken).finally(() => {
     inFlightGetRequests.delete(coalesceKey);
   });
   inFlightGetRequests.set(coalesceKey, promise);

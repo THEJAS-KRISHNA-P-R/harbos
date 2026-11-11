@@ -1,5 +1,6 @@
 import type { CommercialMode, AuctionMode } from '@shared/ids.ts';
 import { BPS_DENOMINATOR, applyBpsRoundHalfUp } from '@shared/domain/money.ts';
+import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 
 export interface CommissionPolicyConfig {
   readonly commissionBps: number; // <= 500 for Kerala regimes
@@ -87,7 +88,7 @@ export function computeSaleSettlement(
     throw new Error('hammerPaise must be > 0');
   }
   if (policy.commissionBps < 0 || policy.commissionBps > 500) {
-    throw new Error(`Statutory cap breach (Act 16 s.4(4)): commissionBps=${policy.commissionBps} exceeds 500 bps`);
+    throw new Error(`Statutory cap breach (${ACT_16_2021_CITATIONS.COMMISSION_CAP_500_BPS}): commissionBps=${policy.commissionBps} exceeds 500 bps`);
   }
 
   // C7: Modes B and C require legal_signoff_ref and legal_signoff_date

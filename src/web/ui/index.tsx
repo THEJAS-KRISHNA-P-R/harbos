@@ -37,6 +37,16 @@ import {
   ColdChainInspectorSvgDecor,
   type SvgDecorProps,
 } from './svg-decor.tsx';
+import {
+  SpeciesGlyphSprite,
+  SpeciesGlyph,
+  resolveSpeciesGlyphId,
+  DawnHarbourHeroScene,
+  WorkspaceHeaderIllustration,
+  MomentIllustrationScene,
+  type KeralaSpeciesGlyphId,
+  type MomentIllustrationVariant,
+} from './illustrations/index.tsx';
 
 export {
   HarbourCrestIcon,
@@ -57,6 +67,14 @@ export {
   StatutoryLedgerWaterfallSvgDecor,
   ColdChainInspectorSvgDecor,
   type SvgDecorProps,
+  SpeciesGlyphSprite,
+  SpeciesGlyph,
+  resolveSpeciesGlyphId,
+  DawnHarbourHeroScene,
+  WorkspaceHeaderIllustration,
+  MomentIllustrationScene,
+  type KeralaSpeciesGlyphId,
+  type MomentIllustrationVariant,
 };
 
 /* ============================================================================
@@ -998,7 +1016,7 @@ export const SpeciesTile: React.FC<SpeciesTileProps> = ({
     >
       <div className="flex items-center justify-between gap-2 w-full">
         <span className="inline-flex items-center gap-1.5 text-xs font-bold font-mono-code uppercase px-2.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] text-[var(--text-secondary)]">
-          <PelagicFishIcon size={14} className="text-[var(--brand)] shrink-0" />
+          <SpeciesGlyph code={`${code} ${nameEn}`} size={16} />
           <span>{code}</span>
         </span>
         <span className="text-xs font-mono-code font-semibold text-[var(--text-secondary)]">
@@ -1116,6 +1134,7 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[var(--bg-app)] text-[var(--text-primary)] overflow-x-hidden">
+      <SpeciesGlyphSprite />
       {/* Mobile Slide-Over Navigation Drawer (< 768px) */}
       {mobileNavOpen && (
         <div
@@ -1441,6 +1460,7 @@ export const DocksideShell: React.FC<ShellLayoutProps> = ({
 }) => {
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)] pb-24 overflow-x-hidden">
+      <SpeciesGlyphSprite />
       <header className="px-3 sm:px-6 lg:px-8 py-3 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex flex-wrap items-center justify-between gap-3 no-print">
         <div className="flex items-center gap-2.5">
           <MaritimeCrestSvgEmblem size={36} />

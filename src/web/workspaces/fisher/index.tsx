@@ -18,6 +18,7 @@ import {
   type BootstrapData,
   type AllocationRow,
 } from '@web/lib/api.ts';
+import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 
 export const FisherWorkspace: React.FC<{
   data: BootstrapData;
@@ -275,7 +276,7 @@ export const FisherWorkspace: React.FC<{
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-[var(--brand)]" />
-              <span>Protected under Act 16 of 2021 s.4(6): Zero unauthorized deductions</span>
+              <span>Protected under {ACT_16_2021_CITATIONS.UNAUTHORIZED_DEDUCTION_PROHIBITION}: Zero unauthorized deductions</span>
             </span>
             <span className="flex items-center gap-1 font-mono-code">
               <Anchor className="w-3.5 h-3.5" />

@@ -167,9 +167,9 @@ describe('M2, M6 & M7 Real PostgreSQL (PGlite) — Statutory Checks, Append-Only
     const postRevVerify = await verifyTenantLedgerChain(db, DEMO_TENANT_ID);
     assert.equal(postRevVerify.verified, true);
 
-    // 11. Fail-closed RLS policy helper: when app.rls_strict = 'on' and app.tenant_id is unset or mismatched, core.tenant_access_allowed returns false
+    // 11. Fail-closed RLS policy helper: when app.tenant_id is unset or mismatched, core.tenant_access_allowed returns false unconditionally
     const rlsCheck = await db.transaction(async (tx) => {
-      await tx.query(`SELECT set_config('app.rls_strict', 'on', true), set_config('app.tenant_id', '', true)`);
+      await tx.query(`SELECT set_config('app.tenant_id', '', true), set_config('app.platform', '', true)`);
       const unsetRes = await tx.query<{ allowed: boolean }>(
         `SELECT core.tenant_access_allowed($1) AS allowed`,
         [DEMO_TENANT_ID]

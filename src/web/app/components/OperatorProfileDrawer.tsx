@@ -100,7 +100,7 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
                 {activeRoleMeta.titleEn} · <span lang="ml">{activeRoleMeta.titleMl}</span>
               </div>
               <div className="text-xs font-mono-code text-[var(--text-secondary)] mt-1">
-                ID: {user?.userId ?? 'USR-ADM-01'} · Phone: {user?.phoneE164 ?? '+919447000006'} · Tenant:{' '}
+                ID: {user?.userId ?? 'USR-ADM-01'} · Phone: {user?.phoneE164 ?? '—'} · Tenant:{' '}
                 {user?.tenantId ?? 'munambam-demo'}
               </div>
             </div>

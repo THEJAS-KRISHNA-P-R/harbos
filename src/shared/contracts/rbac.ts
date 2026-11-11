@@ -1,3 +1,5 @@
+import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
+
 export type Role =
   | 'SUPER_ADMIN'
   | 'HARBOUR_ADMIN'
@@ -42,7 +44,7 @@ export const WORKSPACES: ReadonlyArray<WorkspaceDefinition> = [
     path: '/w/pit',
     titleEn: 'Auction Pit Pad',
     titleMl: 'ലേല തട്ട് ടെർമിനൽ', // TODO-REVIEW-ML
-    subtitleEn: 'Live lot keypad, leader lease fencing, Dutch clock & Act 16 s.4/s.10/s.19 checks',
+    subtitleEn: `Live lot keypad, leader lease fencing, Dutch clock & ${ACT_16_2021_CITATIONS.HARBOUR_COMMISSION_SPLIT} checks`,
     allowedRoles: ['LICENSED_AUCTIONEER', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
     docksideMobile: true,
   },

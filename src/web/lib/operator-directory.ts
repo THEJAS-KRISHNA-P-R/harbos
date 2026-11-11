@@ -1,4 +1,5 @@
 import type { Role } from '@shared/contracts/rbac.ts';
+import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 
 export interface OperatorRow {
   user_id: string;
@@ -53,7 +54,7 @@ const ROLE_DISPLAY_MAP: Record<Role, RoleDisplayMeta> = {
     titleEn: 'Harbour Admin (HMS Secretary)',
     titleMl: 'ഹാർബർ അഡ്മിൻ (HMS സെക്രട്ടറി)',
     shortBadge: 'HMS Admin',
-    statutoryRef: 'Act 16 s.7 & s.19',
+    statutoryRef: ACT_16_2021_CITATIONS.BASIC_FLOOR_PRICE,
     description:
       'Full custody of Section 19 basic floor schedules, payout batch UTR reconciliation, and Key-2 reversal approvals.',
     defaultWorkspace: 'harbour',
@@ -69,7 +70,7 @@ const ROLE_DISPLAY_MAP: Record<Role, RoleDisplayMeta> = {
     titleEn: 'HMS Chief Accountant',
     titleMl: 'HMS ചീഫ് അക്കൗണ്ടന്റ്',
     shortBadge: 'Accountant',
-    statutoryRef: 'Act 16 s.16 & s.24',
+    statutoryRef: ACT_16_2021_CITATIONS.LICENSED_AUCTIONEER_RETURN,
     description:
       'Manages double-entry harbour ledger accounts, initiates Key-1 reversal requests, and reconciles bank settlement batches.',
     defaultWorkspace: 'harbour',
@@ -85,7 +86,7 @@ const ROLE_DISPLAY_MAP: Record<Role, RoleDisplayMeta> = {
     titleEn: 'Dockside Weighing Operator',
     titleMl: 'ഡോക്സൈഡ് തൂക്ക ഓപ്പറേറ്റർ',
     shortBadge: 'Weighing Desk',
-    statutoryRef: 'Act 16 s.14 & QR Tagging',
+    statutoryRef: `${ACT_16_2021_CITATIONS.FISH_MARKET_COMMISSION_SPLIT} & QR Tagging`,
     description:
       'Captures integer gram catch weights at the landing quay, binds vessels and species, and prints HMAC-SHA256 QR lot stickers.',
     defaultWorkspace: 'weighing',
@@ -101,7 +102,7 @@ const ROLE_DISPLAY_MAP: Record<Role, RoleDisplayMeta> = {
     titleEn: 'Licensed Pit Auctioneer',
     titleMl: 'ലൈസൻസുള്ള ലേലക്കാരൻ',
     shortBadge: 'Pit Auctioneer',
-    statutoryRef: 'Act 16 s.5 & s.4(8)',
+    statutoryRef: ACT_16_2021_CITATIONS.SOCIETY_DEPUTED_AUCTIONEER,
     description:
       'Conducts pit shout and Dutch clock auctions, allocates partial boxes, and triggers atomic 8-gate statutory clearing.',
     defaultWorkspace: 'pit',
@@ -117,7 +118,7 @@ const ROLE_DISPLAY_MAP: Record<Role, RoleDisplayMeta> = {
     titleEn: 'Wholesale Buyer (Paddle #101)',
     titleMl: 'മൊത്തവ്യാപാര വാങ്ങുന്നയാൾ',
     shortBadge: 'Buyer #101',
-    statutoryRef: 'Act 16 s.21 & s.23',
+    statutoryRef: ACT_16_2021_CITATIONS.UNAUTHORIZED_DEDUCTION_PROHIBITION,
     description:
       'Monitors live harbour lots, places remote bids against pre-funded escrow/credit lines, and downloads export traceability dossiers.',
     defaultWorkspace: 'buyer',
@@ -133,7 +134,7 @@ const ROLE_DISPLAY_MAP: Record<Role, RoleDisplayMeta> = {
     titleEn: 'Fisherman / Vessel Owner',
     titleMl: 'മത്സ്യത്തൊഴിലാളി / വള്ളം ഉടമ',
     shortBadge: 'Vessel Owner',
-    statutoryRef: 'Act 16 s.4(4) & s.4(5)(a)',
+    statutoryRef: ACT_16_2021_CITATIONS.HARBOUR_POLICY_LEGAL_BASIS,
     description:
       'Reviews transparent 95% net catch settlements, 40% annual production bonus escrow accruals, and Malayalam voice readout.',
     defaultWorkspace: 'fisher',
@@ -149,7 +150,7 @@ const ROLE_DISPLAY_MAP: Record<Role, RoleDisplayMeta> = {
     titleEn: 'Quality Inspector (s.21)',
     titleMl: 'ഗുണനിലവാര ഇൻസ്പെക്ടർ (s.21)',
     shortBadge: 's.21 Inspector',
-    statutoryRef: 'Act 16 s.21 Authority',
+    statutoryRef: ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE,
     description:
       'Performs organoleptic and core-temperature hygiene inspections, certifying export lots or quarantining unfit catch.',
     defaultWorkspace: 'inspector',

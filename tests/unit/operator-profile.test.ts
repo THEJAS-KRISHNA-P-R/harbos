@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatOperatorInitials, getRoleDisplayMeta } from '../../src/web/lib/api.ts';
+import { ACT_16_2021_CITATIONS } from '../../src/shared/contracts/statute.ts';
 
 test('formatOperatorInitials strips honorifics and parenthetical suffixes and extracts 2-letter initials', () => {
   assert.equal(formatOperatorInitials('Capt. Mathew Thomas'), 'MT');
@@ -20,7 +21,7 @@ test('getRoleDisplayMeta returns statutory capabilities and default workspace fo
 
   const auctioneerMeta = getRoleDisplayMeta('LICENSED_AUCTIONEER');
   assert.equal(auctioneerMeta.defaultWorkspace, 'pit');
-  assert.equal(auctioneerMeta.statutoryRef, 'Act 16 s.5 & s.4(8)');
+  assert.equal(auctioneerMeta.statutoryRef, ACT_16_2021_CITATIONS.SOCIETY_DEPUTED_AUCTIONEER);
 
   const inspectorMeta = getRoleDisplayMeta('AUTHORIZED_INSPECTOR');
   assert.equal(inspectorMeta.defaultWorkspace, 'inspector');

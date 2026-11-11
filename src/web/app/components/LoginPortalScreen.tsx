@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   UserCheck,
   ArrowRight,
@@ -13,9 +13,10 @@ import {
   Select,
   Toast,
   MaritimeCrestSvgEmblem,
-  HarbourQuayDawnSvgDecor,
+  DawnHarbourHeroScene,
 } from '@web/ui/index.tsx';
 import {
+  apiRequest,
   formatOperatorInitials,
   getRoleDisplayMeta,
   type OperatorRow,
@@ -42,89 +43,6 @@ export interface LoginPortalScreenProps {
   onOpenActiveProfile: () => void;
 }
 
-const DEMO_SANDBOX_PERSONAS: ReadonlyArray<OperatorRow> = [
-  {
-    user_id: 'USR-HADMIN-01',
-    tenant_id: 'munambam-demo',
-    phone_e164: '+919447000006',
-    full_name: 'Capt. Mathew Thomas',
-    role: 'HARBOUR_ADMIN',
-    entity_ref_id: null,
-    is_active: true,
-    entity_summary: 'HMS Secretary & Statutory Custodian',
-  },
-  {
-    user_id: 'USR-ACCT-01',
-    tenant_id: 'munambam-demo',
-    phone_e164: '+919447000007',
-    full_name: 'Deepa Krishnan',
-    role: 'ACCOUNTANT',
-    entity_ref_id: null,
-    is_active: true,
-    entity_summary: 'Chief Accountant · Dual-Key Authority',
-  },
-  {
-    user_id: 'USR-WEIGH-01',
-    tenant_id: 'munambam-demo',
-    phone_e164: '+919447000001',
-    full_name: 'Sajeev K.',
-    role: 'WEIGHING_OPERATOR',
-    entity_ref_id: null,
-    is_active: true,
-    entity_summary: 'Dockside Scale & QR Terminal',
-  },
-  {
-    user_id: 'USR-AUCT-01',
-    tenant_id: 'munambam-demo',
-    phone_e164: '+919447000002',
-    full_name: 'K. Balakrishnan Nair',
-    role: 'LICENSED_AUCTIONEER',
-    entity_ref_id: 'LIC-MUN-001',
-    is_active: true,
-    entity_summary: 'Licence KL-HMS-MUN-AUCT-2024-01 (ACTIVE)',
-  },
-  {
-    user_id: 'USR-BUYER-01',
-    tenant_id: 'munambam-demo',
-    phone_e164: '+919447000003',
-    full_name: 'Ramesh Menon',
-    role: 'WHOLESALE_BUYER',
-    entity_ref_id: 'BUY-01',
-    is_active: true,
-    entity_summary: 'Paddle #101 · Apex Marine Exports',
-  },
-  {
-    user_id: 'USR-FISHER-01',
-    tenant_id: 'munambam-demo',
-    phone_e164: '+919447000004',
-    full_name: 'Antony Varghese',
-    role: 'FISHERMAN_BOAT_OWNER',
-    entity_ref_id: 'FSH-01',
-    is_active: true,
-    entity_summary: 'Welfare #KFWFB-EKM-8821',
-  },
-  {
-    user_id: 'USR-INSP-01',
-    tenant_id: 'munambam-demo',
-    phone_e164: '+919447000005',
-    full_name: 'Dr. Lekshmi R.',
-    role: 'AUTHORIZED_INSPECTOR',
-    entity_ref_id: null,
-    is_active: true,
-    entity_summary: 'Act 16 s.21 Hygiene & Cold-Chain Authority',
-  },
-  {
-    user_id: 'USR-SUPER-01',
-    tenant_id: 'munambam-demo',
-    phone_e164: '+919447000008',
-    full_name: 'Thejas R.',
-    role: 'SUPER_ADMIN',
-    entity_ref_id: null,
-    is_active: true,
-    entity_summary: 'Multi-Harbour Platform Governance',
-  },
-];
-
 export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
   user,
   phoneInput,
@@ -144,8 +62,44 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
   onOpenActiveProfile,
 }) => {
   const isDevSandbox = !import.meta.env.PROD;
+  const [fetchedDemoOperators, setFetchedDemoOperators] = useState<ReadonlyArray<OperatorRow>>([]);
+
+  useEffect(() => {
+    if (!isDevSandbox || displayedOperators.length > 0) return;
+    let active = true;
+    void apiRequest<{
+      operators: ReadonlyArray<{
+        userId: string;
+        tenantId: string;
+        phoneE164: string;
+        fullName: string;
+        role: Role;
+      }>;
+    }>('/api/v1/demo/operators')
+      .then((res) => {
+        if (!active || !Array.isArray(res.operators)) return;
+        setFetchedDemoOperators(
+          res.operators.map((op) => ({
+            user_id: op.userId,
+            tenant_id: op.tenantId,
+            phone_e164: op.phoneE164,
+            full_name: op.fullName,
+            role: op.role,
+            entity_ref_id: null,
+            is_active: true,
+          }))
+        );
+      })
+      .catch(() => {
+        // Production or DEMO_MODE=false returns 404
+      });
+    return () => {
+      active = false;
+    };
+  }, [isDevSandbox, displayedOperators.length]);
+
   const operators =
-    displayedOperators.length > 0 ? displayedOperators : DEMO_SANDBOX_PERSONAS;
+    displayedOperators.length > 0 ? displayedOperators : fetchedDemoOperators;
 
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] py-8 px-4 sm:px-6 lg:px-10 flex flex-col items-center justify-center">
@@ -188,9 +142,9 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className={isDevSandbox ? 'lg:col-span-6 flex flex-col gap-5' : 'lg:col-span-8 lg:col-start-3 flex flex-col gap-5'}>
-            <div className="p-4 rounded-[var(--radius-card)] border border-[var(--border-hair)] bg-[var(--bg-surface)] flex items-start gap-3.5">
-              <HarbourQuayDawnSvgDecor size={48} />
+          <div className={isDevSandbox && operators.length > 0 ? 'lg:col-span-6 flex flex-col gap-5' : 'lg:col-span-8 lg:col-start-3 flex flex-col gap-5'}>
+            <div className="p-4 rounded-[var(--radius-card)] border border-[var(--border-hair)] bg-[var(--bg-surface)] bg-pattern-isobath flex flex-col sm:flex-row items-center gap-4">
+              <DawnHarbourHeroScene className="w-[180px] sm:w-[200px] shrink-0" />
               <div className="flex flex-col gap-1 min-w-0">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--brand)]">
                   Munambam Fishing Harbour (HMS)
@@ -231,21 +185,15 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
             >
               <div className="flex flex-col gap-5">
                 <form onSubmit={(e) => void onRequestOtp(e)} className="flex flex-col gap-3.5">
-                  {isDevSandbox && (
+                  {isDevSandbox && operators.length > 0 && (
                     <Select
                       label="Step 1: Select Sandbox Harbour Operator Phone"
                       value={phoneInput}
                       onChange={(e) => onChangePhoneInput(e.target.value)}
-                      options={[
-                        { value: '+919447000006', label: '+91 94470 00006 — Capt. Mathew Thomas (HARBOUR_ADMIN)' },
-                        { value: '+919447000007', label: '+91 94470 00007 — Deepa Krishnan (ACCOUNTANT)' },
-                        { value: '+919447000001', label: '+91 94470 00001 — Sajeev K. (WEIGHING_OPERATOR)' },
-                        { value: '+919447000002', label: '+91 94470 00002 — K. Balakrishnan Nair (LICENSED_AUCTIONEER)' },
-                        { value: '+919447000003', label: '+91 94470 00003 — Ramesh Menon (WHOLESALE_BUYER)' },
-                        { value: '+919447000004', label: '+91 94470 00004 — Antony Varghese (FISHERMAN_BOAT_OWNER)' },
-                        { value: '+919447000005', label: '+91 94470 00005 — Dr. Lekshmi R. (AUTHORIZED_INSPECTOR)' },
-                        { value: '+919447000008', label: '+91 94470 00008 — Thejas R. (SUPER_ADMIN)' },
-                      ]}
+                      options={operators.map((op) => ({
+                        value: op.phone_e164,
+                        label: `${op.phone_e164} — ${op.full_name} (${op.role})`,
+                      }))}
                     />
                   )}
                   <Input
@@ -293,7 +241,7 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
             </Card>
           </div>
 
-          {isDevSandbox && (
+          {isDevSandbox && operators.length > 0 && (
             <div className="lg:col-span-6 flex flex-col gap-4">
               <Card
                 stepBadge="SANDBOX PERSONAS"

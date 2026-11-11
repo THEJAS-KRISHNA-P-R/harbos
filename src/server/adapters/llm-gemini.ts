@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { config } from '@server/config.ts';
+import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 
 export interface CatchAssistResult {
   readonly available: boolean;
@@ -26,7 +27,7 @@ export async function runCatchPhotoAssist(params: {
     const ai = new GoogleGenAI({ apiKey: config.GEMINI_API_KEY });
     const response = await ai.models.generateContent({
       model: config.LLM_MODEL_VISION,
-      contents: `Act as an advisory fisheries quality assistant under Kerala Act 16 of 2021 s.21. Species: ${params.speciesNameEn}, Core Temp: ${params.coreTempC}C, Notes: ${params.inspectorNotes}. Suggest grade (A_EXPORT, A_DOMESTIC, or B_PROCESS) in 1 short sentence.`,
+      contents: `Act as an advisory fisheries quality assistant under ${ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE}. Species: ${params.speciesNameEn}, Core Temp: ${params.coreTempC}C, Notes: ${params.inspectorNotes}. Suggest grade (A_EXPORT, A_DOMESTIC, or B_PROCESS) in 1 short sentence.`,
     });
     return {
       available: true,

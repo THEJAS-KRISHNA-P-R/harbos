@@ -4,10 +4,14 @@ import path from 'node:path';
 const TOKENS_PATH = path.resolve(process.cwd(), 'src/web/ui/tokens.css');
 
 export function parseTokensCss(cssContent: string): Record<string, string> {
+  // Parse only the :root block so dark-predawn overrides do not overwrite daylight tokens
+  const rootMatch = cssContent.match(/:root\s*\{([\s\S]*?)\}/);
+  const rootBlock = rootMatch ? rootMatch[1]! : cssContent;
+
   const rawVars: Record<string, string> = {};
   const varRegex = /(--[a-z0-9-]+)\s*:\s*([^;]+);/gi;
   let match: RegExpExecArray | null;
-  while ((match = varRegex.exec(cssContent)) !== null) {
+  while ((match = varRegex.exec(rootBlock)) !== null) {
     const key = match[1]?.trim();
     const val = match[2]?.trim();
     if (key && val) {
@@ -61,7 +65,10 @@ interface ContrastPairCheck {
   fgToken: string;
   bgToken: string;
   minRatio: number;
-  standard: 'WCAG AA Text (4.5:1)' | 'WCAG Non-Text (3.0:1)';
+  standard:
+    | 'WCAG AAA Vector Ink (7.0:1)'
+    | 'WCAG AA Text (4.5:1)'
+    | 'WCAG Non-Text (3.0:1)';
 }
 
 const REQUIRED_CHECKS: ContrastPairCheck[] = [
@@ -82,6 +89,11 @@ const REQUIRED_CHECKS: ContrastPairCheck[] = [
   { label: 'border-strong on bg-app', fgToken: '--border-strong', bgToken: '--bg-app', minRatio: 3.0, standard: 'WCAG Non-Text (3.0:1)' },
   { label: 'border-strong on bg-surface', fgToken: '--border-strong', bgToken: '--bg-surface', minRatio: 3.0, standard: 'WCAG Non-Text (3.0:1)' },
   { label: 'focus on bg-app', fgToken: '--focus', bgToken: '--bg-app', minRatio: 3.0, standard: 'WCAG Non-Text (3.0:1)' },
+  { label: 'decor-ink on decor-aqua-soft', fgToken: '--decor-ink', bgToken: '--decor-aqua-soft', minRatio: 7.0, standard: 'WCAG AAA Vector Ink (7.0:1)' },
+  { label: 'decor-ink on decor-sun-soft', fgToken: '--decor-ink', bgToken: '--decor-sun-soft', minRatio: 7.0, standard: 'WCAG AAA Vector Ink (7.0:1)' },
+  { label: 'decor-ink on decor-sand', fgToken: '--decor-ink', bgToken: '--decor-sand', minRatio: 7.0, standard: 'WCAG AAA Vector Ink (7.0:1)' },
+  { label: 'decor-aqua on bg-surface', fgToken: '--decor-aqua', bgToken: '--bg-surface', minRatio: 3.0, standard: 'WCAG Non-Text (3.0:1)' },
+  { label: 'decor-sun on bg-surface', fgToken: '--decor-sun', bgToken: '--bg-surface', minRatio: 3.0, standard: 'WCAG Non-Text (3.0:1)' },
 ];
 
 export function runContrastAudit(): { passed: boolean; failures: string[] } {
@@ -120,5 +132,5 @@ if (isMain) {
     console.error('\n[contrast] FAILED:', result.failures);
     process.exit(1);
   }
-  console.log('\n[contrast] All 17 WCAG 2.1 token contrast checks passed.');
+  console.log(`\n[contrast] All ${REQUIRED_CHECKS.length} WCAG 2.1 token contrast checks passed.`);
 }

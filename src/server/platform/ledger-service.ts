@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { DbPort } from '@server/ports/db.ts';
+import { auditInTx, type DbPort } from '@server/ports/db.ts';
 import { AppError } from '@server/platform/errors.ts';
 import { computeWeightAmountPaise } from '@shared/domain/money.ts';
 import { computeSaleSettlement, type CommissionPolicyConfig } from '@shared/domain/split.ts';
@@ -12,6 +12,7 @@ import {
   buildReversalJournalEntries,
   type JournalEntryDraft,
 } from '@shared/domain/ledger-hash.ts';
+import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 import type { AuctionMode, CommercialMode, FloorEnforcement } from '@shared/ids.ts';
 
 export function signLotQrPayload(
@@ -358,17 +359,24 @@ export async function allocateLotSale(
       throw new AppError('NOT_FOUND', 'Lot not found', 404);
     }
 
-    // §7 Check 3: Lot must have passed s.21 inspection (not null, not REJECTED_UNFIT, not WEIGHED_PENDING_INSPECTION)
-    if (
-      !lot.inspection_grade ||
-      lot.inspection_grade === 'REJECTED_UNFIT' ||
-      lot.status === 'BLOCKED_UNFIT' ||
-      lot.status === 'WEIGHED_PENDING_INSPECTION'
-    ) {
+    // §7 Check 3: Lot must have passed s.21 inspection
+    if (lot.inspection_grade === 'REJECTED_UNFIT' || lot.status === 'BLOCKED_UNFIT') {
       throw new AppError(
         'FORBIDDEN',
-        `Statutory quality block (Act 16 s.21): Lot ${lot.lot_code} is graded ${String(lot.inspection_grade ?? 'UNINSPECTED')} (${lot.status}) and cannot be auctioned.`,
+        `Statutory quality block (${ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE}): Lot ${lot.lot_code} is graded ${String(lot.inspection_grade ?? 'REJECTED_UNFIT')} (${lot.status}) and cannot be auctioned.`,
         422
+      );
+    }
+
+    if (
+      !lot.inspection_grade ||
+      lot.status === 'WEIGHED_PENDING_INSPECTION' ||
+      (lot.status !== 'OPEN_FOR_AUCTION' && lot.status !== 'PARTIALLY_SOLD')
+    ) {
+      throw new AppError(
+        'CONFLICT',
+        `Statutory quality gate (${ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE}): Lot ${lot.lot_code} has status ${lot.status} (grade=${String(lot.inspection_grade ?? 'UNINSPECTED')}) and is not open for auction.`,
+        409
       );
     }
 
@@ -405,7 +413,7 @@ export async function allocateLotSale(
       throw new AppError('NOT_FOUND', 'Fisherman not found', 404);
     }
 
-    // §7 Check 1 & Check 2: Auctioneer licence validity (s.5(7)-(8)) & Society Loan match (s.4(8))
+    // §7 Check 1 & Check 2: Auctioneer licence validity & Society Loan match
     const licRes = await tx.query<{
       licence_no: string;
       status: string;
@@ -420,7 +428,11 @@ export async function allocateLotSale(
     );
     const licence = licRes.rows[0];
     if (!licence) {
-      throw new AppError('FORBIDDEN', 'Auctioneer licence not registered for this harbour (Act 16 s.5)', 422);
+      throw new AppError(
+        'FORBIDDEN',
+        `Auctioneer licence not registered for this harbour (${ACT_16_2021_CITATIONS.AUCTIONEER_LICENCE_REGISTRATION})`,
+        422
+      );
     }
 
     const todayDate = input.nowIso.slice(0, 10);
@@ -431,7 +443,7 @@ export async function allocateLotSale(
     ) {
       throw new AppError(
         'FORBIDDEN',
-        `Auctioneer licence ${licence.licence_no} is ${licence.status} (valid ${licence.valid_from.slice(0, 10)} to ${licence.valid_until.slice(0, 10)}) — blocked under Act 16 s.5(7)-(8).`,
+        `Auctioneer licence ${licence.licence_no} is ${licence.status} (valid ${licence.valid_from.slice(0, 10)} to ${licence.valid_until.slice(0, 10)}) — blocked under ${ACT_16_2021_CITATIONS.AUCTIONEER_LICENCE_VALIDITY}.`,
         422
       );
     }
@@ -443,7 +455,7 @@ export async function allocateLotSale(
     ) {
       throw new AppError(
         'FORBIDDEN',
-        `Section 4(8) violation: Vessel has an active loan from co-op society ${String(vessel.loan_coop_society_id)}; only an auctioneer deputed by that society may conduct the auction.`,
+        `Section 4(8) violation (${ACT_16_2021_CITATIONS.SOCIETY_DEPUTED_AUCTIONEER}): Vessel has an active loan from co-op society ${String(vessel.loan_coop_society_id)}; only an auctioneer deputed by that society may conduct the auction.`,
         422
       );
     }
@@ -689,6 +701,361 @@ export async function allocateLotSale(
       remainingBoxes: boxResult.remainingBoxes,
       remainingGrams: boxResult.remainingGrams.toString(),
       serverLatencyMs,
+      idempotentReplay: false,
+    };
+  });
+}
+
+async function resolveOrCreateBankClearingAccountInTx(
+  tx: DbPort,
+  tenantId: string
+): Promise<string> {
+  const bankRes = await tx.query<{ account_id: string }>(
+    `SELECT account_id FROM ledger.accounts
+     WHERE tenant_id = $1 AND kind = 'BANK_CLEARING'
+     ORDER BY account_id ASC LIMIT 1`,
+    [tenantId]
+  );
+  if (bankRes.rows[0]?.account_id) {
+    return bankRes.rows[0].account_id;
+  }
+  const fallbackBankId = `ACC-BANK-${tenantId}`;
+  await tx.query(
+    `INSERT INTO ledger.accounts (account_id, tenant_id, kind, code, name_en, owner_entity_id, balance_paise)
+     VALUES ($1, $2, 'BANK_CLEARING', '1100-BANK', 'HMS Nodal Bank Clearing Account', $2, 0)
+     ON CONFLICT (account_id) DO NOTHING`,
+    [fallbackBankId, tenantId]
+  );
+  return fallbackBankId;
+}
+
+export async function createPayoutBatch(
+  db: DbPort,
+  params: {
+    tenantId: string;
+    actorUserId: string;
+    actorRole: string;
+    actorFullName: string;
+  }
+): Promise<{
+  batchId: string;
+  batchCode: string;
+  journalId: string;
+  totalAmountPaise: string;
+  itemCount: number;
+  items: ReadonlyArray<{
+    itemId: string;
+    beneficiaryId: string;
+    accountId: string;
+    amountPaise: string;
+  }>;
+}> {
+  return db.transaction(async (tx) => {
+    const payableRes = await tx.query<{
+      account_id: string;
+      owner_entity_id: string | null;
+      balance_paise: string;
+    }>(
+      `SELECT account_id, owner_entity_id, balance_paise::text AS balance_paise
+       FROM ledger.accounts
+       WHERE tenant_id = $1 AND kind = 'FISHERMAN_PAYABLE' AND balance_paise > 0
+       ORDER BY account_id ASC
+       FOR UPDATE`,
+      [params.tenantId]
+    );
+
+    let totalAmountPaise = 0n;
+    for (const row of payableRes.rows) {
+      totalAmountPaise += BigInt(row.balance_paise);
+    }
+
+    if (payableRes.rows.length === 0 || totalAmountPaise <= 0n) {
+      throw new AppError(
+        'NOTHING_PAYABLE',
+        'No positive fisherman payable balances available to settle.',
+        422
+      );
+    }
+
+    const bankAccountId = await resolveOrCreateBankClearingAccountInTx(tx, params.tenantId);
+
+    const cntRes = await tx.query<{ cnt: number }>(
+      `SELECT COUNT(*)::int AS cnt FROM ledger.payout_batches WHERE tenant_id = $1`,
+      [params.tenantId]
+    );
+    const seqNum = (cntRes.rows[0]?.cnt ?? 0) + 1;
+    const nowIso = new Date().toISOString();
+    const dateStamp = nowIso.slice(0, 10).replace(/-/g, '');
+    const batchId = `BATCH-${crypto.randomUUID()}`;
+    const batchCode = `MUN-PAY-${dateStamp}-${String(seqNum).padStart(2, '0')}`;
+    const journalId = `JRN-${batchId}`;
+
+    await tx.query(
+      `INSERT INTO ledger.payout_batches (
+        batch_id, tenant_id, batch_code, beneficiary_kind,
+        total_amount_paise, item_count, status, bank_utr, reconciled_at, created_at
+      ) VALUES ($1, $2, $3, 'FISHERMAN_NET_SETTLEMENT', $4, $5, 'GENERATED_CSV', NULL, NULL, $6)`,
+      [
+        batchId,
+        params.tenantId,
+        batchCode,
+        totalAmountPaise.toString(),
+        payableRes.rows.length,
+        nowIso,
+      ]
+    );
+
+    const items: Array<{
+      itemId: string;
+      beneficiaryId: string;
+      accountId: string;
+      amountPaise: string;
+    }> = [];
+    const journalEntries: JournalEntryDraft[] = [];
+
+    for (const row of payableRes.rows) {
+      const itemId = `PBI-${crypto.randomUUID()}`;
+      const beneficiaryId = row.owner_entity_id ?? row.account_id;
+      const amtPaise = BigInt(row.balance_paise);
+
+      await tx.query(
+        `INSERT INTO ledger.payout_batch_items (
+          item_id, batch_id, tenant_id, fisherman_id, account_id, amount_paise
+        ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [itemId, batchId, params.tenantId, beneficiaryId, row.account_id, amtPaise.toString()]
+      );
+
+      items.push({
+        itemId,
+        beneficiaryId,
+        accountId: row.account_id,
+        amountPaise: amtPaise.toString(),
+      });
+
+      // Debit FISHERMAN_PAYABLE (credit-normal account -> decrements balance to 0)
+      journalEntries.push({
+        accountId: row.account_id,
+        direction: 'D',
+        amountPaise: amtPaise,
+      });
+    }
+
+    // Credit BANK_CLEARING for the batch total
+    journalEntries.push({
+      accountId: bankAccountId,
+      direction: 'C',
+      amountPaise: totalAmountPaise,
+    });
+
+    await postJournalInTx(tx, {
+      tenantId: params.tenantId,
+      journalId,
+      referenceType: 'PAYOUT_BATCH',
+      referenceId: batchId,
+      description: `Fisherman net settlement payout batch ${batchCode} (${items.length} beneficiaries)`,
+      entries: journalEntries,
+      createdAtIso: nowIso,
+    });
+
+    await auditInTx(tx, {
+      tenantId: params.tenantId,
+      actorUserId: params.actorUserId,
+      actorRole: params.actorRole,
+      actionCode: 'PAYOUT_BATCH_GENERATED',
+      targetType: 'PAYOUT_BATCH',
+      targetId: batchId,
+      details: {
+        actorName: params.actorFullName,
+        batchCode,
+        journalId,
+        totalAmountPaise: totalAmountPaise.toString(),
+        itemCount: items.length,
+      },
+    });
+
+    return {
+      batchId,
+      batchCode,
+      journalId,
+      totalAmountPaise: totalAmountPaise.toString(),
+      itemCount: items.length,
+      items,
+    };
+  });
+}
+
+export async function recordBuyerReceipt(
+  db: DbPort,
+  params: {
+    tenantId: string;
+    actorUserId: string;
+    actorRole: string;
+    actorFullName: string;
+    buyerId: string;
+    amountPaise: bigint;
+    paymentChannel: 'UPI_ESCROW' | 'NEFT' | 'RTGS' | 'IMPS' | 'NODAL_TRANSFER';
+    referenceNo: string;
+    idempotencyKey: string;
+  }
+): Promise<{
+  receiptId: string;
+  buyerId: string;
+  journalId: string;
+  amountPaise: string;
+  unsettledPayablesPaise: string;
+  paymentChannel: string;
+  referenceNo: string;
+  idempotentReplay: boolean;
+}> {
+  if (!params.idempotencyKey.trim()) {
+    throw new AppError(
+      'VALIDATION_ERROR',
+      'Idempotency-Key header is required for buyer receipt postings.',
+      400
+    );
+  }
+  if (params.amountPaise <= 0n) {
+    throw new AppError('VALIDATION_ERROR', 'amountPaise must be > 0', 400);
+  }
+
+  return db.transaction(async (tx) => {
+    const existingRes = await tx.query<{
+      receipt_id: string;
+      buyer_id: string;
+      journal_id: string;
+      amount_paise: string;
+      payment_reference: string;
+    }>(
+      `SELECT receipt_id, buyer_id, journal_id, amount_paise::text AS amount_paise,
+              payment_reference
+       FROM ledger.buyer_receipts
+       WHERE tenant_id = $1 AND idempotency_key = $2`,
+      [params.tenantId, params.idempotencyKey.trim()]
+    );
+    const existing = existingRes.rows[0];
+    if (existing) {
+      const bSnap = await tx.query<{ unsettled_payables_paise: string }>(
+        `SELECT unsettled_payables_paise::text AS unsettled_payables_paise
+         FROM harbour.buyers WHERE buyer_id = $1 AND tenant_id = $2`,
+        [existing.buyer_id, params.tenantId]
+      );
+      return {
+        receiptId: existing.receipt_id,
+        buyerId: existing.buyer_id,
+        journalId: existing.journal_id,
+        amountPaise: existing.amount_paise,
+        unsettledPayablesPaise: bSnap.rows[0]?.unsettled_payables_paise ?? '0',
+        paymentChannel: params.paymentChannel,
+        referenceNo: existing.payment_reference,
+        idempotentReplay: true,
+      };
+    }
+
+    const buyerRes = await tx.query<{
+      buyer_id: string;
+      buyer_name: string;
+      unsettled_payables_paise: string;
+      receivable_account_id: string;
+    }>(
+      `SELECT buyer_id, buyer_name, unsettled_payables_paise::text AS unsettled_payables_paise,
+              receivable_account_id
+       FROM harbour.buyers
+       WHERE buyer_id = $1 AND tenant_id = $2
+       FOR UPDATE`,
+      [params.buyerId, params.tenantId]
+    );
+    const buyer = buyerRes.rows[0];
+    if (!buyer) {
+      throw new AppError('NOT_FOUND', `Buyer ${params.buyerId} not found`, 404);
+    }
+
+    const currentUnsettled = BigInt(buyer.unsettled_payables_paise);
+    if (params.amountPaise > currentUnsettled) {
+      throw new AppError(
+        'OVERPAYMENT_REJECTED',
+        `Receipt amount (${params.amountPaise.toString()} paise) exceeds buyer unsettled payables (${currentUnsettled.toString()} paise).`,
+        422
+      );
+    }
+
+    const bankAccountId = await resolveOrCreateBankClearingAccountInTx(tx, params.tenantId);
+    const receiptId = `RCPT-${crypto.randomUUID()}`;
+    const journalId = `JRN-${receiptId}`;
+    const nowIso = new Date().toISOString();
+
+    await postJournalInTx(tx, {
+      tenantId: params.tenantId,
+      journalId,
+      referenceType: 'BUYER_RECEIPT',
+      referenceId: receiptId,
+      description: `Buyer settlement receipt ${receiptId} from ${buyer.buyer_name} (${params.paymentChannel} ${params.referenceNo})`,
+      entries: [
+        {
+          accountId: bankAccountId,
+          direction: 'D',
+          amountPaise: params.amountPaise,
+        },
+        {
+          accountId: buyer.receivable_account_id,
+          direction: 'C',
+          amountPaise: params.amountPaise,
+        },
+      ],
+      createdAtIso: nowIso,
+    });
+
+    const newUnsettled = currentUnsettled - params.amountPaise;
+    await tx.query(
+      `UPDATE harbour.buyers
+       SET unsettled_payables_paise = $1
+       WHERE buyer_id = $2 AND tenant_id = $3`,
+      [newUnsettled.toString(), params.buyerId, params.tenantId]
+    );
+
+    await tx.query(
+      `INSERT INTO ledger.buyer_receipts (
+        receipt_id, tenant_id, buyer_id, amount_paise, payment_reference,
+        idempotency_key, journal_id, recorded_by_user_id, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        receiptId,
+        params.tenantId,
+        params.buyerId,
+        params.amountPaise.toString(),
+        params.referenceNo,
+        params.idempotencyKey.trim(),
+        journalId,
+        params.actorUserId,
+        nowIso,
+      ]
+    );
+
+    await auditInTx(tx, {
+      tenantId: params.tenantId,
+      actorUserId: params.actorUserId,
+      actorRole: params.actorRole,
+      actionCode: 'BUYER_RECEIPT_RECORDED',
+      targetType: 'BUYER_RECEIPT',
+      targetId: receiptId,
+      details: {
+        actorName: params.actorFullName,
+        buyerId: params.buyerId,
+        amountPaise: params.amountPaise.toString(),
+        unsettledPayablesPaise: newUnsettled.toString(),
+        paymentChannel: params.paymentChannel,
+        referenceNo: params.referenceNo,
+        journalId,
+      },
+    });
+
+    return {
+      receiptId,
+      buyerId: params.buyerId,
+      journalId,
+      amountPaise: params.amountPaise.toString(),
+      unsettledPayablesPaise: newUnsettled.toString(),
+      paymentChannel: params.paymentChannel,
+      referenceNo: params.referenceNo,
       idempotentReplay: false,
     };
   });

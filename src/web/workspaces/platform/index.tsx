@@ -35,10 +35,12 @@ import {
   type EntryRow,
 } from '@web/lib/api.ts';
 import type { CentreType, CommercialMode } from '@shared/ids.ts';
-import {
-  PerformanceDashboard,
-  type SystemObservabilityMetrics,
-} from './PerformanceDashboard.tsx';
+import type { SystemObservabilityMetrics } from './PerformanceDashboard.tsx';
+
+const LazyPerformanceDashboard = React.lazy(async () => {
+  const mod = await import('./PerformanceDashboard.tsx');
+  return { default: mod.PerformanceDashboard };
+});
 
 interface AppliedMigrationRow {
   version: string;
@@ -523,10 +525,18 @@ export const PlatformWorkspace: React.FC<{
       {/* TAB 0: OBSERVABILITY & SDK */}
       {activeTab === 'scalability' && (
         <div className="flex flex-col gap-5">
-          <PerformanceDashboard
-            token={token}
-            onMetricsRefreshed={(snap) => setScaleMetrics(snap)}
-          />
+          <React.Suspense
+            fallback={
+              <div className="p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] text-xs text-[var(--text-secondary)]">
+                Loading real-time SQL &amp; clearing telemetry charts…
+              </div>
+            }
+          >
+            <LazyPerformanceDashboard
+              token={token}
+              onMetricsRefreshed={(snap) => setScaleMetrics(snap)}
+            />
+          </React.Suspense>
 
           <Card
             title="Multi-Harbour Cross-Tenant Benchmarks & Isomorphic SDK (`@harbouros/sdk`)"

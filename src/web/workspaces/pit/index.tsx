@@ -24,6 +24,7 @@ import {
   type AllocationRow,
 } from '@web/lib/api.ts';
 import type { AuctionMode } from '@shared/ids.ts';
+import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 
 export const PitWorkspace: React.FC<{
   data: BootstrapData;
@@ -284,7 +285,7 @@ export const PitWorkspace: React.FC<{
 
               {auctionMode === 'HMS_DIRECT_TAKEOVER' && (
                 <Input
-                  label="Government Permission Reference (Required by Act 16 s.10 Proviso)"
+                  label={`Government Permission Reference (Required by ${ACT_16_2021_CITATIONS.HMS_DIRECT_TAKEOVER_PROVISO})`}
                   value={govPermissionRef}
                   onChange={(e) => setGovPermissionRef(e.target.value)}
                   mono

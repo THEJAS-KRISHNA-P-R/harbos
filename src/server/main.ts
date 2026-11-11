@@ -1,12 +1,11 @@
 import path from 'node:path';
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { createApiApp } from '@server/app.ts';
 import { config } from '@server/config.ts';
 import { PGliteAdapter } from '@server/adapters/db-pglite.ts';
 import { PgPoolAdapter } from '@server/adapters/db-pg.ts';
 import { runCatchPhotoAssist } from '@server/adapters/llm-gemini.ts';
-import { runMigrationsAndSeed } from '@server/platform/seed.ts';
+import { runMigrationsAndSeed, verifySqlMigrations } from '@server/platform/seed.ts';
 import { logger } from '@server/platform/logger.ts';
 
 export async function startServer(): Promise<void> {
@@ -20,7 +19,11 @@ export async function startServer(): Promise<void> {
     ? new PgPoolAdapter(config.DATABASE_URL)
     : new PGliteAdapter('memory://');
 
-  await runMigrationsAndSeed(db);
+  if (config.NODE_ENV === 'production' && !config.RUN_MIGRATIONS_ON_BOOT) {
+    await verifySqlMigrations(db);
+  } else {
+    await runMigrationsAndSeed(db);
+  }
 
   const apiApp = createApiApp(db, runCatchPhotoAssist);
   const app = express();
@@ -31,6 +34,7 @@ export async function startServer(): Promise<void> {
   app.use(apiApp);
 
   if (config.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

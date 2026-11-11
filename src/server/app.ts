@@ -3,7 +3,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { config } from '@server/config.ts';
-import { withTenant, type DbPort } from '@server/ports/db.ts';
+import { auditInTx, withPlatform, withTenant, type DbPort } from '@server/ports/db.ts';
 import { AppError } from '@server/platform/errors.ts';
 import { logger } from '@server/platform/logger.ts';
 import {
@@ -15,6 +15,12 @@ import {
 import {
   issueOtpChallenge,
   verifyOtpChallenge,
+  issueRefreshToken,
+  rotateRefreshToken,
+  revokeRefreshToken,
+  setRefreshTokenCookie,
+  clearRefreshTokenCookie,
+  parseRefreshTokenCookie,
   signAccessJwt,
   verifySupervisorPin,
   requireAuth,
@@ -22,6 +28,8 @@ import {
 } from '@server/platform/auth.ts';
 import {
   allocateLotSale,
+  createPayoutBatch,
+  recordBuyerReceipt,
   verifyTenantLedgerChain,
   executeDualKeyReversal,
   signLotQrPayload,
@@ -32,6 +40,7 @@ import {
 } from '@server/platform/reconcile-service.ts';
 import { DEMO_TENANT_ID } from '@server/platform/seed.ts';
 import { GENESIS_PREV_HASH } from '@shared/domain/ledger-hash.ts';
+import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 import {
   HARBOUROS_SDK_VERSION,
   signBankNodalWebhookPayload,
@@ -48,6 +57,18 @@ import type {
   FloorEnforcement,
   InspectionGrade,
 } from '@shared/ids.ts';
+
+/**
+ * Explicit allowlist of platform-level SUPER_ADMIN routes permitted to run with
+ * `app.platform = 'on'` cross-tenant visibility. All other authenticated routes
+ * strictly use the tenant-bound `req.db` attached by `requireAuth`.
+ */
+export const PLATFORM_CROSS_TENANT_ROUTES = [
+  'GET /api/v1/governance/migrations',
+  'GET /api/v1/benchmarks/harbours',
+  'POST /api/v1/tenants',
+  'GET /api/v1/ledger/verify',
+] as const;
 
 export interface CatchAssistFn {
   (params: {
@@ -346,15 +367,34 @@ const InspectLotBodySchema = z
     grade: z.enum(['A_EXPORT', 'A_DOMESTIC', 'B_PROCESS', 'REJECTED_UNFIT']).optional(),
     inspectionGrade: z.enum(['A_EXPORT', 'A_DOMESTIC', 'B_PROCESS', 'REJECTED_UNFIT']).optional(),
     coreTempC: z.number().finite().min(-30).max(50).optional().default(2.0),
-    notes: z.string().max(500).optional().default('Inspected under Act 16 s.21'),
+    notes: z
+      .string()
+      .max(500)
+      .optional()
+      .default(`Inspected under ${ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE}`),
+    overrideReason: z.string().max(500).optional(),
   })
   .refine((d) => Boolean(d.grade || d.inspectionGrade), {
     message: 'grade (or inspectionGrade) is required',
     path: ['grade'],
   });
 
+const BuyerReceiptBodySchema = z.object({
+  amountPaise: z.union([
+    z.number().int().positive(),
+    z.string().regex(/^[1-9]\d*$/),
+  ]),
+  paymentChannel: z
+    .enum(['UPI_ESCROW', 'NEFT', 'RTGS', 'IMPS', 'NODAL_TRANSFER'])
+    .optional()
+    .default('NEFT'),
+  referenceNo: z.string().min(2).max(120).optional(),
+  paymentReference: z.string().min(2).max(120).optional(),
+});
+
 export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Express {
   const app = express();
+  app.locals.db = db;
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
   app.use(express.json({ limit: '256kb' }));
@@ -369,7 +409,9 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
       crypto.randomUUID();
     res.setHeader('X-Request-Id', reqId);
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
+    if (req.path.startsWith('/api') || req.path === '/healthz' || req.path === '/readyz') {
+      res.setHeader('X-Frame-Options', 'DENY');
+    }
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader(
       'Permissions-Policy',
@@ -382,8 +424,8 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
     res.setHeader(
       'Content-Security-Policy',
       config.NODE_ENV === 'production'
-        ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self';"
-        : "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'self'; base-uri 'self';"
+        ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors *; base-uri 'self';"
+        : "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors *; base-uri 'self';"
     );
     next();
   });
@@ -446,6 +488,49 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
     apiLimiter
   );
 
+  // Demo Operators Directory (Strictly gated behind DEMO_MODE && NODE_ENV !== 'production'; 404 otherwise)
+  app.get(
+    '/api/v1/demo/operators',
+    async (_req: Request, res: Response, next: NextFunction) => {
+      try {
+        if (!config.DEMO_MODE || config.NODE_ENV === 'production') {
+          res.status(404).json({
+            error: {
+              code: 'NOT_FOUND',
+              message: 'API route not found',
+            },
+          });
+          return;
+        }
+        const operators = await withPlatform(db, async (tx) => {
+          const uRes = await tx.query<{
+            user_id: string;
+            tenant_id: string;
+            phone_e164: string;
+            full_name: string;
+            role: Role;
+          }>(
+            `SELECT user_id, tenant_id, phone_e164, full_name, role
+             FROM core.users
+             WHERE tenant_id = $1 AND is_active = true
+             ORDER BY user_id ASC`,
+            [DEMO_TENANT_ID]
+          );
+          return uRes.rows.map((u) => ({
+            userId: u.user_id,
+            tenantId: u.tenant_id,
+            phoneE164: u.phone_e164,
+            fullName: u.full_name,
+            role: u.role,
+          }));
+        });
+        res.status(200).json({ operators });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
   // Authenticated Real Process & SQL Metrics Endpoint (SUPER_ADMIN / HARBOUR_ADMIN only)
   app.get(
     '/api/v1/metrics',
@@ -469,7 +554,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
   app.get(
     '/api/v1/governance/migrations',
     requireAuth(['SUPER_ADMIN', 'HARBOUR_ADMIN']),
-    async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
         const appliedRes = await db.query<{
           version: string;
@@ -480,18 +565,24 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
            FROM core.schema_migrations
            ORDER BY version ASC`
         );
-        const journalBalanceAudit = await db.query<{
-          journal_id: string;
-          reference_type: string;
-          entry_count: string;
-          sum_debit_paise: string;
-          sum_credit_paise: string;
-          is_balanced: boolean;
-        }>(
-          `SELECT journal_id, reference_type, entry_count::text, sum_debit_paise::text, sum_credit_paise::text, is_balanced
-           FROM ledger.v_journal_balance_audit
-           ORDER BY journal_id`
-        );
+        const runner =
+          req.auth!.role === 'SUPER_ADMIN'
+            ? (fn: (tx: DbPort) => Promise<unknown>) => withPlatform(db, fn)
+            : (fn: (tx: DbPort) => Promise<unknown>) => req.db!.transaction(fn);
+        const journalBalanceAudit = (await runner((tx) =>
+          tx.query<{
+            journal_id: string;
+            reference_type: string;
+            entry_count: string;
+            sum_debit_paise: string;
+            sum_credit_paise: string;
+            is_balanced: boolean;
+          }>(
+            `SELECT journal_id, reference_type, entry_count::text, sum_debit_paise::text, sum_credit_paise::text, is_balanced
+             FROM ledger.v_journal_balance_audit
+             ORDER BY journal_id`
+          )
+        )) as { rows: unknown[] };
         res.status(200).json({
           migrations: appliedRes.rows,
           journalBalanceAudit: journalBalanceAudit.rows,
@@ -506,16 +597,31 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
   app.get(
     '/api/v1/benchmarks/harbours',
     requireAuth(['SUPER_ADMIN', 'HARBOUR_ADMIN', 'ACCOUNTANT']),
-    async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        const tenantsRes = await db.query<{
-          tenant_id: string;
-          name_en: string;
-          centre_type: string;
-        }>(
-          `SELECT tenant_id, name_en, centre_type FROM core.tenants ORDER BY created_at ASC`
-        );
-        const benchmarks = computeCrossHarbourBenchmarks(tenantsRes.rows);
+        const tenantsRows =
+          req.auth!.role === 'SUPER_ADMIN'
+            ? await withPlatform(db, async (tx) => {
+                const r = await tx.query<{
+                  tenant_id: string;
+                  name_en: string;
+                  centre_type: string;
+                }>(
+                  `SELECT tenant_id, name_en, centre_type FROM core.tenants ORDER BY created_at ASC`
+                );
+                return r.rows;
+              })
+            : (
+                await req.db!.query<{
+                  tenant_id: string;
+                  name_en: string;
+                  centre_type: string;
+                }>(
+                  `SELECT tenant_id, name_en, centre_type FROM core.tenants WHERE tenant_id = $1 ORDER BY created_at ASC`,
+                  [req.auth!.tenantId]
+                )
+              ).rows;
+        const benchmarks = computeCrossHarbourBenchmarks(tenantsRows);
         res.status(200).json({
           sdkVersion: HARBOUROS_SDK_VERSION,
           sdkStarterCode: generateExternalSdkStarterCode(),
@@ -546,7 +652,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         };
         const tenantId = String(body.tenantId || DEMO_TENANT_ID).trim();
         const eventId = String(
-          body.eventId || `EVT-NODAL-${Date.now()}`
+          body.eventId || `EVT-NODAL-${crypto.randomUUID()}`
         ).trim();
         const bankCode = String(body.bankCode || 'FDRL-NODAL-KOCHI')
           .trim()
@@ -556,144 +662,145 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
             ? body.timestampSec
             : Math.floor(Date.now() / 1000);
 
-        let rawSettlements = Array.isArray(body.settlements)
-          ? body.settlements
-          : [];
-        if (rawSettlements.length === 0) {
-          const pendingRes = await db.query<{
+        const responsePayload = await withTenant(db, tenantId, async (tenantTx) => {
+          let rawSettlements = Array.isArray(body.settlements)
+            ? body.settlements
+            : [];
+          if (rawSettlements.length === 0) {
+            const pendingRes = await tenantTx.query<{
+              batch_id: string;
+              batch_code: string;
+              status: string;
+            }>(
+              `SELECT batch_id, batch_code, status FROM ledger.payout_batches WHERE tenant_id = $1 ORDER BY created_at DESC`,
+              [tenantId]
+            );
+            rawSettlements = pendingRes.rows.map((b, idx) => ({
+              batchCodeOrId: b.batch_code,
+              bankUtr: `FDRL2611099988${String(idx + 10).padStart(2, '0')}`,
+              channel: 'ISO20022_CAMT054' as const,
+            }));
+          }
+
+          const webhookPayload: BankNodalWebhookPayload = {
+            eventId,
+            bankCode,
+            tenantId,
+            timestampSec,
+            settlements: rawSettlements,
+          };
+
+          let signatureHeader = String(
+            req.headers['x-harbouros-webhook-signature'] ?? ''
+          );
+          let timestampHeader = String(
+            req.headers['x-harbouros-webhook-timestamp'] ?? ''
+          );
+
+          if (
+            config.DEMO_MODE &&
+            (body.simulateSigned || !signatureHeader)
+          ) {
+            const signed = signBankNodalWebhookPayload(
+              webhookPayload,
+              config.QR_HMAC_SECRET
+            );
+            signatureHeader = signed.headers['X-HarbourOS-Webhook-Signature'];
+            timestampHeader = signed.headers['X-HarbourOS-Webhook-Timestamp'];
+          }
+
+          const verification = verifyBankNodalWebhookSignature({
+            payload: webhookPayload,
+            signatureHeader,
+            timestampHeader,
+            webhookSecret: config.QR_HMAC_SECRET,
+          });
+
+          if (!verification.valid) {
+            throw new AppError(
+              'WEBHOOK_SIGNATURE_INVALID',
+              verification.reason,
+              401
+            );
+          }
+
+          const idempotencyKey = String(
+            req.headers['idempotency-key'] || `${tenantId}:${eventId}`
+          ).trim();
+          const cachedHit = webhookIdempotencyCache.get(idempotencyKey);
+          if (cachedHit) {
+            return {
+              ...cachedHit.value,
+              idempotentReplay: true,
+              cachedAtIso: cachedHit.cachedAtIso,
+            };
+          }
+
+          const batchesRes = await tenantTx.query<{
             batch_id: string;
             batch_code: string;
-            status: string;
           }>(
-            `SELECT batch_id, batch_code, status FROM ledger.payout_batches WHERE tenant_id = $1 ORDER BY created_at DESC`,
+            `SELECT batch_id, batch_code FROM ledger.payout_batches WHERE tenant_id = $1`,
             [tenantId]
           );
-          rawSettlements = pendingRes.rows.map((b, idx) => ({
-            batchCodeOrId: b.batch_code,
-            bankUtr: `FDRL2611099988${String(idx + 10).padStart(2, '0')}`,
-            channel: 'ISO20022_CAMT054' as const,
-          }));
-        }
 
-        const webhookPayload: BankNodalWebhookPayload = {
-          eventId,
-          bankCode,
-          tenantId,
-          timestampSec,
-          settlements: rawSettlements,
-        };
+          const matchedItems: Array<{ batchId: string; bankUtr: string }> = [];
+          for (const s of webhookPayload.settlements) {
+            const ref = s.batchCodeOrId.trim().toUpperCase();
+            const found = batchesRes.rows.find(
+              (b) =>
+                b.batch_code.toUpperCase() === ref ||
+                b.batch_id.toUpperCase() === ref
+            );
+            if (found) {
+              matchedItems.push({
+                batchId: found.batch_id,
+                bankUtr: s.bankUtr.trim().toUpperCase(),
+              });
+            }
+          }
 
-        let signatureHeader = String(
-          req.headers['x-harbouros-webhook-signature'] ?? ''
-        );
-        let timestampHeader = String(
-          req.headers['x-harbouros-webhook-timestamp'] ?? ''
-        );
+          const reconciled =
+            matchedItems.length > 0
+              ? await executeRobustBulkUtrReconcile(tenantTx, {
+                  tenantId,
+                  actorUserId: 'USR-ACCT-01',
+                  actorRole: 'ACCOUNTANT',
+                  actorFullName: `${bankCode} Nodal Gateway (Webhook)`,
+                  headerIdempotencyKey: idempotencyKey,
+                  rawBody: {
+                    items: matchedItems,
+                    sourceLabel: `${bankCode} Webhook (${eventId})`,
+                    totalRowsParsed: webhookPayload.settlements.length,
+                    invalidOrUnmatchedCount:
+                      webhookPayload.settlements.length - matchedItems.length,
+                  },
+                })
+              : {
+                  auditId: `AUD-WHK-${crypto.randomUUID()}`,
+                  timestampIso: new Date().toISOString(),
+                  sourceLabel: `${bankCode} Webhook (${eventId})`,
+                  reconciledCount: 0,
+                  reconciled: [],
+                };
 
-        if (
-          config.DEMO_MODE &&
-          (body.simulateSigned || !signatureHeader)
-        ) {
-          const signed = signBankNodalWebhookPayload(
-            webhookPayload,
-            config.QR_HMAC_SECRET
-          );
-          signatureHeader = signed.headers['X-HarbourOS-Webhook-Signature'];
-          timestampHeader = signed.headers['X-HarbourOS-Webhook-Timestamp'];
-        }
+          invalidateLedgerAuditSqlLruCache(tenantId);
 
-        const verification = verifyBankNodalWebhookSignature({
-          payload: webhookPayload,
-          signatureHeader,
-          timestampHeader,
-          webhookSecret: config.QR_HMAC_SECRET,
+          const built: Record<string, unknown> = {
+            ok: true,
+            eventId,
+            bankCode,
+            sdkVersion: HARBOUROS_SDK_VERSION,
+            signatureVerified: true,
+            signatureHex: verification.computedSignatureHex,
+            idempotentReplay: false,
+            ...reconciled,
+          };
+
+          webhookIdempotencyCache.set(idempotencyKey, built);
+          return built;
         });
 
-        if (!verification.valid) {
-          res.status(401).json({
-            error: {
-              code: 'WEBHOOK_SIGNATURE_INVALID',
-              message: verification.reason,
-            },
-          });
-          return;
-        }
-
-        const idempotencyKey = String(
-          req.headers['idempotency-key'] || `${tenantId}:${eventId}`
-        ).trim();
-        const cachedHit = webhookIdempotencyCache.get(idempotencyKey);
-        if (cachedHit) {
-          res.status(200).json({
-            ...cachedHit.value,
-            idempotentReplay: true,
-            cachedAtIso: cachedHit.cachedAtIso,
-          });
-          return;
-        }
-
-        const batchesRes = await db.query<{
-          batch_id: string;
-          batch_code: string;
-        }>(
-          `SELECT batch_id, batch_code FROM ledger.payout_batches WHERE tenant_id = $1`,
-          [tenantId]
-        );
-
-        const matchedItems: Array<{ batchId: string; bankUtr: string }> = [];
-        for (const s of webhookPayload.settlements) {
-          const ref = s.batchCodeOrId.trim().toUpperCase();
-          const found = batchesRes.rows.find(
-            (b) =>
-              b.batch_code.toUpperCase() === ref ||
-              b.batch_id.toUpperCase() === ref
-          );
-          if (found) {
-            matchedItems.push({
-              batchId: found.batch_id,
-              bankUtr: s.bankUtr.trim().toUpperCase(),
-            });
-          }
-        }
-
-        const reconciled =
-          matchedItems.length > 0
-            ? await executeRobustBulkUtrReconcile(db, {
-                tenantId,
-                actorUserId: 'USR-ACCT-01',
-                actorRole: 'ACCOUNTANT',
-                actorFullName: `${bankCode} Nodal Gateway (Webhook)`,
-                headerIdempotencyKey: idempotencyKey,
-                rawBody: {
-                  items: matchedItems,
-                  sourceLabel: `${bankCode} Webhook (${eventId})`,
-                  totalRowsParsed: webhookPayload.settlements.length,
-                  invalidOrUnmatchedCount:
-                    webhookPayload.settlements.length - matchedItems.length,
-                },
-              })
-            : {
-                auditId: `AUD-WHK-${Date.now()}`,
-                timestampIso: new Date().toISOString(),
-                sourceLabel: `${bankCode} Webhook (${eventId})`,
-                reconciledCount: 0,
-                reconciled: [],
-              };
-
-        invalidateLedgerAuditSqlLruCache(tenantId);
-
-        const responsePayload: Record<string, unknown> = {
-          ok: true,
-          eventId,
-          bankCode,
-          sdkVersion: HARBOUROS_SDK_VERSION,
-          signatureVerified: true,
-          signatureHex: verification.computedSignatureHex,
-          idempotentReplay: false,
-          ...reconciled,
-        };
-
-        webhookIdempotencyCache.set(idempotencyKey, responsePayload);
         res.status(200).json(responsePayload);
       } catch (err) {
         next(err);
@@ -715,36 +822,40 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           );
         }
 
-        const userRes = await db.query<{
-          user_id: string;
-          tenant_id: string;
-          full_name: string;
-          role: Role;
-        }>(
-          `SELECT user_id, tenant_id, full_name, role
-           FROM core.users
-           WHERE phone_e164 = $1 AND is_active = true
-           LIMIT 1`,
-          [rawPhone]
-        );
-        const user = userRes.rows[0];
-
-        // Always issue a challenge row so timing and lockout behavior are uniform
-        const challenge = await issueOtpChallenge(db, rawPhone);
-
-        if (user) {
-          await db.query(
-            `INSERT INTO sync.outbox_events (event_id, tenant_id, channel, recipient, template_code, payload_json, status, created_at)
-             VALUES ($1, $2, 'SMS', $3, 'OTP_LOGIN', $4, 'DISPATCHED_CONSOLE', $5)`,
-            [
-              `OTP-${Date.now()}`,
-              user.tenant_id,
-              rawPhone,
-              JSON.stringify({ challengeId: challenge.challengeId }),
-              new Date().toISOString(),
-            ]
+        const { user, challenge } = await withPlatform(db, async (tx) => {
+          const userRes = await tx.query<{
+            user_id: string;
+            tenant_id: string;
+            full_name: string;
+            role: Role;
+          }>(
+            `SELECT user_id, tenant_id, full_name, role
+             FROM core.users
+             WHERE phone_e164 = $1 AND is_active = true
+             LIMIT 1`,
+            [rawPhone]
           );
-        }
+          const foundUser = userRes.rows[0];
+
+          // Always issue a challenge row so timing and lockout behavior are uniform
+          const issuedChallenge = await issueOtpChallenge(tx, rawPhone);
+
+          if (foundUser) {
+            await tx.query(
+              `INSERT INTO sync.outbox_events (event_id, tenant_id, channel, recipient, template_code, payload_json, status, created_at)
+               VALUES ($1, $2, 'SMS', $3, 'OTP_LOGIN', $4, 'DISPATCHED_CONSOLE', $5)`,
+              [
+                `OTP-${crypto.randomUUID()}`,
+                foundUser.tenant_id,
+                rawPhone,
+                JSON.stringify({ challengeId: issuedChallenge.challengeId }),
+                new Date().toISOString(),
+              ]
+            );
+          }
+
+          return { user: foundUser, challenge: issuedChallenge };
+        });
 
         res.status(200).json({
           status: 'OTP_CHALLENGE_ISSUED',
@@ -760,7 +871,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
     }
   );
 
-  // Auth: Verify OTP & issue 15m HS256 JWT (iss, aud, jti)
+  // Auth: Verify OTP & issue 15m HS256 JWT + 14d rotating HttpOnly refresh token cookie
   app.post(
     '/api/v1/auth/otp/verify',
     async (req: Request, res: Response, next: NextFunction) => {
@@ -784,21 +895,24 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           );
         }
 
-        const userRes = await db.query<{
-          user_id: string;
-          tenant_id: string;
-          phone_e164: string;
-          full_name: string;
-          role: Role;
-          entity_ref_id: string | null;
-        }>(
-          `SELECT user_id, tenant_id, phone_e164, full_name, role, entity_ref_id
-           FROM core.users
-           WHERE phone_e164 = $1 AND is_active = true
-           LIMIT 1`,
-          [rawPhone]
-        );
-        const user = userRes.rows[0];
+        const user = await withPlatform(db, async (tx) => {
+          const userRes = await tx.query<{
+            user_id: string;
+            tenant_id: string;
+            phone_e164: string;
+            full_name: string;
+            role: Role;
+            entity_ref_id: string | null;
+          }>(
+            `SELECT user_id, tenant_id, phone_e164, full_name, role, entity_ref_id
+             FROM core.users
+             WHERE phone_e164 = $1 AND is_active = true
+             LIMIT 1`,
+            [rawPhone]
+          );
+          return userRes.rows[0] ?? null;
+        });
+
         if (!user) {
           throw new AppError(
             'UNAUTHORIZED',
@@ -816,6 +930,12 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           entityRefId: user.entity_ref_id,
         });
 
+        const refresh = await issueRefreshToken(db, {
+          userId: user.user_id,
+          tenantId: user.tenant_id,
+        });
+        setRefreshTokenCookie(res, refresh.rawToken);
+
         res.status(200).json({
           accessToken,
           user: {
@@ -827,6 +947,45 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
             entityRefId: user.entity_ref_id,
           },
         });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Auth: Rotate Refresh Token Cookie & Issue Fresh Access JWT (Revokes family on reuse)
+  app.post(
+    '/api/v1/auth/refresh',
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const rawCookie = parseRefreshTokenCookie(req);
+        if (!rawCookie) {
+          throw new AppError('UNAUTHORIZED', 'Missing refresh token cookie', 401);
+        }
+        const rotated = await rotateRefreshToken(db, rawCookie);
+        setRefreshTokenCookie(res, rotated.newRawRefreshToken);
+        res.status(200).json({
+          accessToken: rotated.accessToken,
+          user: rotated.user,
+        });
+      } catch (err) {
+        clearRefreshTokenCookie(res);
+        next(err);
+      }
+    }
+  );
+
+  // Auth: Logout & Revoke Refresh Token
+  app.post(
+    '/api/v1/auth/logout',
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const rawCookie = parseRefreshTokenCookie(req);
+        if (rawCookie) {
+          await revokeRefreshToken(db, rawCookie);
+        }
+        clearRefreshTokenCookie(res);
+        res.status(200).json({ loggedOut: true });
       } catch (err) {
         next(err);
       }
@@ -848,19 +1007,22 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         const role = String(req.body?.role ?? 'HARBOUR_ADMIN') as Role;
         const requestedTenantId = String(req.body?.tenantId ?? DEMO_TENANT_ID);
 
-        const userRes = await db.query<{
-          user_id: string;
-          tenant_id: string;
-          phone_e164: string;
-          full_name: string;
-          role: Role;
-          entity_ref_id: string | null;
-        }>(
-          `SELECT user_id, tenant_id, phone_e164, full_name, role, entity_ref_id
-           FROM core.users WHERE role = $1 ORDER BY tenant_id = $2 DESC LIMIT 1`,
-          [role, requestedTenantId]
-        );
-        const user = userRes.rows[0];
+        const user = await withPlatform(db, async (tx) => {
+          const userRes = await tx.query<{
+            user_id: string;
+            tenant_id: string;
+            phone_e164: string;
+            full_name: string;
+            role: Role;
+            entity_ref_id: string | null;
+          }>(
+            `SELECT user_id, tenant_id, phone_e164, full_name, role, entity_ref_id
+             FROM core.users WHERE role = $1 AND is_active = true ORDER BY tenant_id = $2 DESC LIMIT 1`,
+            [role, requestedTenantId]
+          );
+          return userRes.rows[0] ?? null;
+        });
+
         if (!user) {
           throw new AppError(
             'NOT_FOUND',
@@ -882,6 +1044,12 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           phoneE164: user.phone_e164,
           entityRefId: user.entity_ref_id,
         });
+
+        const refresh = await issueRefreshToken(db, {
+          userId: user.user_id,
+          tenantId: effectiveTenantId,
+        });
+        setRefreshTokenCookie(res, refresh.rawToken);
 
         res.status(200).json({
           accessToken,
@@ -918,7 +1086,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         const userId = req.auth!.sub;
         const tenantId = req.auth!.tenantId;
         const [uRes, auditRes] = await Promise.all([
-          db.query(
+          req.db!.query(
             `SELECT u.user_id, u.tenant_id, COALESCE(t.name_en, 'Munambam HMS') AS tenant_name_en,
                     COALESCE(t.name_ml, '') AS tenant_name_ml,
                     u.phone_e164, u.full_name, u.role, u.entity_ref_id, u.is_active,
@@ -929,7 +1097,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
              LIMIT 1`,
             [userId, tenantId]
           ),
-          db.query(
+          req.db!.query(
             `SELECT audit_id, action_code, target_type, target_id, details_json, created_at
              FROM core.audit_logs
              WHERE actor_user_id = $1 AND tenant_id = $2
@@ -976,28 +1144,26 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         if (!/^\+[1-9]\d{9,14}$/.test(phoneE164)) {
           throw new AppError(
             'VALIDATION_ERROR',
-            'Phone number must be in E.164 format starting with + (e.g. +919447000006)',
+            'Phone number must be in E.164 format starting with +',
             400
           );
         }
         const claims = req.auth!;
-        await db.query(
-          `UPDATE core.users SET full_name = $1, phone_e164 = $2 WHERE user_id = $3 AND tenant_id = $4`,
-          [fullName, phoneE164, claims.sub, claims.tenantId]
-        );
-        await db.query(
-          `INSERT INTO core.audit_logs (audit_id, tenant_id, actor_user_id, actor_role, action_code, target_type, target_id, details_json, created_at)
-           VALUES ($1, $2, $3, $4, 'USER_PROFILE_UPDATED', 'USER', $5, $6, $7)`,
-          [
-            `AUD-PROF-${Date.now()}`,
-            claims.tenantId,
-            claims.sub,
-            claims.role,
-            claims.sub,
-            JSON.stringify({ fullName, phoneE164 }),
-            new Date().toISOString(),
-          ]
-        );
+        await req.db!.transaction(async (tx) => {
+          await tx.query(
+            `UPDATE core.users SET full_name = $1, phone_e164 = $2 WHERE user_id = $3 AND tenant_id = $4`,
+            [fullName, phoneE164, claims.sub, claims.tenantId]
+          );
+          await auditInTx(tx, {
+            tenantId: claims.tenantId,
+            actorUserId: claims.sub,
+            actorRole: claims.role,
+            actionCode: 'USER_PROFILE_UPDATED',
+            targetType: 'USER',
+            targetId: claims.sub,
+            details: { fullName, phoneE164 },
+          });
+        });
         const accessToken = await signAccessJwt({
           sub: claims.sub,
           tenantId: claims.tenantId,
@@ -1023,7 +1189,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
     }
   );
 
-  // Bootstrap Workspace State (Strictly scoped to req.auth.tenantId and req.auth.role)
+  // Bootstrap Workspace State (Strictly scoped to req.auth.tenantId and req.auth.role via req.db)
   app.get(
     '/api/v1/bootstrap',
     requireAuth(),
@@ -1034,7 +1200,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         const role = claims.role;
         const entityRefId = claims.entityRefId ?? null;
 
-        const payload = await withTenant(db, tenantId, async (tx) => {
+        const payload = await req.db!.transaction(async (tx) => {
           const [
             tenantRes,
             allTenantsRes,
@@ -1060,11 +1226,9 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
             tx.query(`SELECT * FROM core.tenants WHERE tenant_id = $1`, [
               tenantId,
             ]),
-            role === 'SUPER_ADMIN'
-              ? tx.query(`SELECT * FROM core.tenants ORDER BY created_at ASC`)
-              : tx.query(`SELECT * FROM core.tenants WHERE tenant_id = $1`, [
-                  tenantId,
-                ]),
+            tx.query(`SELECT * FROM core.tenants WHERE tenant_id = $1`, [
+              tenantId,
+            ]),
             tx.query(
               `SELECT * FROM core.commission_policies WHERE tenant_id = $1 ORDER BY version_num DESC`,
               [tenantId]
@@ -1219,7 +1383,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
       try {
         const tenantId = req.auth!.tenantId;
         const view = String(req.query.view ?? 'ALL').toUpperCase();
-        const result = await withTenant(db, tenantId, (tx) =>
+        const result = await req.db!.transaction((tx) =>
           queryAllImportAuditLogsWithLruCache(tx, tenantId, view)
         );
         res.setHeader('X-SQL-LRU-Cache', result.cacheStatus);
@@ -1238,22 +1402,21 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
     }
   );
 
-  // Weighing Workspace: Create & Tag Lot (with HMAC-SHA256 QR Signature & Scrypt Supervisor PIN Verification)
+  // Weighing Workspace: Create & Tag Lot (Phase A2: creates WEIGHED_PENDING_INSPECTION with inspection_grade = NULL)
   app.post(
     '/api/v1/lots',
     requireAuth(['WEIGHING_OPERATOR', 'HARBOUR_ADMIN', 'SUPER_ADMIN']),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
         const tenantId = req.auth!.tenantId;
-        const vesselId = String(req.body?.vesselId ?? '');
-        const speciesId = String(req.body?.speciesId ?? '');
+        const vesselId = String(req.body?.vesselId ?? '').trim();
+        const speciesId = String(req.body?.speciesId ?? '').trim();
         const totalBoxes = Number(req.body?.totalBoxes ?? 0);
         const netGrams = BigInt(req.body?.netGrams ?? 0);
         const coreTempC = Number(req.body?.coreTempC ?? 2.0);
-        const weightSource = String(req.body?.weightSource ?? 'MANUAL') as
-          | 'MANUAL'
-          | 'SIMULATOR'
-          | 'BLE_SCALE';
+        const rawWeightSource = String(req.body?.weightSource ?? 'MANUAL').trim();
+        const weightSource: 'MANUAL' | 'BLE_SCALE' =
+          rawWeightSource === 'BLE_SCALE' ? 'BLE_SCALE' : 'MANUAL';
         const supervisorPin = String(req.body?.supervisorPin ?? '');
 
         if (
@@ -1270,122 +1433,125 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           );
         }
 
-        if (weightSource === 'MANUAL') {
-          const pinRows = await db.query<{
-            pin_code: string | null;
-            supervisor_pin_hash: string | null;
-          }>(
-            `SELECT pin_code, supervisor_pin_hash
-             FROM core.users
-             WHERE tenant_id = $1 AND role IN ('WEIGHING_OPERATOR', 'HARBOUR_ADMIN', 'SUPER_ADMIN') AND is_active = true`,
-            [tenantId]
+        const created = await req.db!.transaction(async (tx) => {
+          if (weightSource === 'MANUAL') {
+            const pinRows = await tx.query<{
+              pin_code: string | null;
+              supervisor_pin_hash: string | null;
+            }>(
+              `SELECT pin_code, supervisor_pin_hash
+               FROM core.users
+               WHERE tenant_id = $1 AND role IN ('WEIGHING_OPERATOR', 'HARBOUR_ADMIN', 'SUPER_ADMIN') AND is_active = true`,
+              [tenantId]
+            );
+            const pinAuthorized = pinRows.rows.some((r) =>
+              verifySupervisorPin(
+                supervisorPin,
+                r.supervisor_pin_hash,
+                r.pin_code
+              )
+            );
+            if (!pinAuthorized) {
+              throw new AppError(
+                'FORBIDDEN',
+                'Valid supervisor PIN required for manual scale weight override.',
+                403
+              );
+            }
+          }
+
+          const vesselRes = await tx.query<{ owner_fisherman_id: string }>(
+            `SELECT owner_fisherman_id FROM harbour.vessels WHERE vessel_id = $1 AND tenant_id = $2`,
+            [vesselId, tenantId]
           );
-          const pinAuthorized = pinRows.rows.some((r) =>
-            verifySupervisorPin(
-              supervisorPin,
-              r.supervisor_pin_hash,
-              r.pin_code
-            )
-          );
-          if (!pinAuthorized) {
+          const vessel = vesselRes.rows[0];
+          if (!vessel) {
             throw new AppError(
-              'FORBIDDEN',
-              'Valid supervisor PIN required for manual scale weight override.',
-              403
+              'NOT_FOUND',
+              'Vessel not found in this harbour',
+              404
             );
           }
-        }
 
-        const vesselRes = await db.query<{ owner_fisherman_id: string }>(
-          `SELECT owner_fisherman_id FROM harbour.vessels WHERE vessel_id = $1 AND tenant_id = $2`,
-          [vesselId, tenantId]
-        );
-        const vessel = vesselRes.rows[0];
-        if (!vessel) {
-          throw new AppError(
-            'NOT_FOUND',
-            'Vessel not found in this harbour',
-            404
+          const countRes = await tx.query<{ cnt: number }>(
+            `SELECT COUNT(*)::int AS cnt FROM auction.lots WHERE tenant_id = $1`,
+            [tenantId]
           );
-        }
-
-        const countRes = await db.query<{ cnt: number }>(
-          `SELECT COUNT(*)::int AS cnt FROM auction.lots WHERE tenant_id = $1`,
-          [tenantId]
-        );
-        const seqNum = (countRes.rows[0]?.cnt ?? 0) + 1;
-        const lotId = `LOT-2026-${String(seqNum).padStart(3, '0')}`;
-        const lotCode = `MUN-261106-${String(seqNum).padStart(3, '0')}`;
-        const qrSignature = signLotQrPayload(
-          lotId,
-          vesselId,
-          netGrams,
-          config.QR_HMAC_SECRET
-        );
-        const nowIso = new Date().toISOString();
-
-        await db.query(
-          `INSERT INTO auction.lots (
-            lot_id, tenant_id, lot_code, vessel_id, fisherman_id, species_id,
-            sale_unit_type, total_boxes, available_boxes, net_grams, available_grams,
-            core_temp_c, inspection_grade, inspection_notes, inspected_by_user_id,
-            weight_source, qr_signature, status, created_at
-          ) VALUES (
-            $1, $2, $3, $4, $5, $6,
-            'BOX', $7, $7, $8, $8,
-            $9, 'A_EXPORT', 'Weighed at dockside terminal', $10,
-            $11, $12, 'OPEN_FOR_AUCTION', $13
-          )`,
-          [
+          const seqNum = (countRes.rows[0]?.cnt ?? 0) + 1;
+          const lotId = `LOT-2026-${String(seqNum).padStart(3, '0')}`;
+          const lotCode = `MUN-261106-${String(seqNum).padStart(3, '0')}`;
+          const qrSignature = signLotQrPayload(
             lotId,
-            tenantId,
-            lotCode,
             vesselId,
-            vessel.owner_fisherman_id,
-            speciesId,
-            totalBoxes,
-            netGrams.toString(),
-            coreTempC,
-            req.auth!.sub,
-            weightSource,
-            qrSignature,
-            nowIso,
-          ]
-        );
+            netGrams,
+            config.QR_HMAC_SECRET
+          );
+          const nowIso = new Date().toISOString();
 
-        await db.query(
-          `INSERT INTO core.audit_logs (audit_id, tenant_id, actor_user_id, actor_role, action_code, target_type, target_id, details_json, created_at)
-           VALUES ($1, $2, $3, $4, 'LOT_WEIGHED_AND_TAGGED', 'LOT', $5, $6, $7)`,
-          [
-            `AUD-${Date.now()}`,
+          await tx.query(
+            `INSERT INTO auction.lots (
+              lot_id, tenant_id, lot_code, vessel_id, fisherman_id, species_id,
+              sale_unit_type, total_boxes, available_boxes, net_grams, available_grams,
+              core_temp_c, inspection_grade, inspection_notes, inspected_by_user_id, weighed_by_user_id,
+              weight_source, qr_signature, status, created_at
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6,
+              'BOX', $7, $7, $8, $8,
+              $9, NULL, 'Weighed at dockside terminal; awaiting quality inspection', NULL, $10,
+              $11, $12, 'WEIGHED_PENDING_INSPECTION', $13
+            )`,
+            [
+              lotId,
+              tenantId,
+              lotCode,
+              vesselId,
+              vessel.owner_fisherman_id,
+              speciesId,
+              totalBoxes,
+              netGrams.toString(),
+              coreTempC,
+              req.auth!.sub,
+              weightSource,
+              qrSignature,
+              nowIso,
+            ]
+          );
+
+          await auditInTx(tx, {
             tenantId,
-            req.auth!.sub,
-            req.auth!.role,
-            lotId,
-            JSON.stringify({
+            actorUserId: req.auth!.sub,
+            actorRole: req.auth!.role,
+            actionCode: 'LOT_WEIGHED_AND_TAGGED',
+            targetType: 'LOT',
+            targetId: lotId,
+            details: {
               lotCode,
               weightSource,
               netGrams: netGrams.toString(),
               qrSignature,
-            }),
-            nowIso,
-          ]
-        );
+              status: 'WEIGHED_PENDING_INSPECTION',
+            },
+          });
 
-        res.status(201).json({
-          lotId,
-          lotCode,
-          qrSignature,
-          netGrams: netGrams.toString(),
-          totalBoxes,
+          return {
+            lotId,
+            lotCode,
+            qrSignature,
+            netGrams: netGrams.toString(),
+            totalBoxes,
+            status: 'WEIGHED_PENDING_INSPECTION' as const,
+            inspectionGrade: null,
+          };
         });
+
+        res.status(201).json(created);
       } catch (err) {
         next(err);
       }
     }
   );
 
-  // Offline Queue Sync Endpoint (§10 Workspace 1 & §12 M5)
+  // Offline Queue Sync Endpoint (Phase A2: requires all fields, no silent defaults, creates WEIGHED_PENDING_INSPECTION)
   app.post(
     '/api/v1/sync/commands',
     requireAuth(['WEIGHING_OPERATOR', 'HARBOUR_ADMIN', 'SUPER_ADMIN']),
@@ -1395,94 +1561,169 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         const commands = Array.isArray(req.body?.commands)
           ? req.body.commands
           : [];
-        const results: Array<{
-          commandId: string;
-          status: string;
-          lotCode?: string;
-        }> = [];
-
-        for (const cmd of commands) {
-          const commandId = String(cmd.commandId ?? '');
-          if (!commandId) continue;
-
-          const existing = await db.query<{
-            status: string;
-            result_ref_id: string | null;
-          }>(
-            `SELECT status, result_ref_id FROM sync.client_commands WHERE command_id = $1 AND tenant_id = $2`,
-            [commandId, tenantId]
+        if (commands.length === 0) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'commands array with at least one command is required',
+            400
           );
-          if (existing.rows[0]) {
-            results.push({
-              commandId,
-              status: existing.rows[0].status,
-              ...(existing.rows[0].result_ref_id
-                ? { lotCode: existing.rows[0].result_ref_id }
-                : {}),
+        }
+
+        const results = await req.db!.transaction(async (tx) => {
+          const out: Array<{
+            commandId: string;
+            status: string;
+            lotId?: string;
+            lotCode?: string;
+            lotStatus?: string;
+            inspectionGrade?: string | null;
+          }> = [];
+
+          for (const cmd of commands) {
+            const commandId = String(cmd?.commandId ?? '').trim();
+            const vesselId = String(cmd?.vesselId ?? '').trim();
+            const speciesId = String(cmd?.speciesId ?? '').trim();
+            const totalBoxes = Number(cmd?.totalBoxes ?? 0);
+            let netGrams = 0n;
+            try {
+              netGrams = BigInt(cmd?.netGrams ?? 0);
+            } catch {
+              netGrams = 0n;
+            }
+
+            if (
+              !commandId ||
+              !vesselId ||
+              !speciesId ||
+              !Number.isInteger(totalBoxes) ||
+              totalBoxes <= 0 ||
+              netGrams <= 0n
+            ) {
+              throw new AppError(
+                'VALIDATION_ERROR',
+                'Each sync command requires commandId, vesselId, speciesId, totalBoxes > 0, and netGrams > 0',
+                400
+              );
+            }
+
+            const existing = await tx.query<{
+              status: string;
+              result_ref_id: string | null;
+            }>(
+              `SELECT status, result_ref_id FROM sync.client_commands WHERE command_id = $1 AND tenant_id = $2`,
+              [commandId, tenantId]
+            );
+            if (existing.rows[0]) {
+              out.push({
+                commandId,
+                status: existing.rows[0].status,
+                ...(existing.rows[0].result_ref_id
+                  ? { lotCode: existing.rows[0].result_ref_id }
+                  : {}),
+              });
+              continue;
+            }
+
+            const vesselRes = await tx.query<{ owner_fisherman_id: string }>(
+              `SELECT owner_fisherman_id FROM harbour.vessels WHERE vessel_id = $1 AND tenant_id = $2`,
+              [vesselId, tenantId]
+            );
+            const vessel = vesselRes.rows[0];
+            if (!vessel) {
+              throw new AppError(
+                'NOT_FOUND',
+                `Vessel ${vesselId} not found in tenant ${tenantId}`,
+                404
+              );
+            }
+
+            const countRes = await tx.query<{ cnt: number }>(
+              `SELECT COUNT(*)::int AS cnt FROM auction.lots WHERE tenant_id = $1`,
+              [tenantId]
+            );
+            const seqNum = (countRes.rows[0]?.cnt ?? 0) + 1;
+            const lotId = `LOT-SYNC-${seqNum}-${commandId.slice(-4)}`;
+            const lotCode = `MUN-SYNC-${String(seqNum).padStart(3, '0')}`;
+            const qrSignature = signLotQrPayload(
+              lotId,
+              vesselId,
+              netGrams,
+              config.QR_HMAC_SECRET
+            );
+            const nowIso = new Date().toISOString();
+            const weightSource: 'MANUAL' | 'BLE_SCALE' =
+              cmd?.weightSource === 'MANUAL' ? 'MANUAL' : 'BLE_SCALE';
+
+            await tx.query(
+              `INSERT INTO auction.lots (
+                lot_id, tenant_id, lot_code, vessel_id, fisherman_id, species_id,
+                sale_unit_type, total_boxes, available_boxes, net_grams, available_grams,
+                core_temp_c, inspection_grade, inspection_notes, inspected_by_user_id, weighed_by_user_id,
+                weight_source, qr_signature, status, created_at
+              ) VALUES (
+                $1, $2, $3, $4, $5, $6,
+                'BOX', $7, $7, $8, $8,
+                2.0, NULL, 'Synced from offline dockside queue; awaiting inspection', NULL, $9,
+                $10, $11, 'WEIGHED_PENDING_INSPECTION', $12
+              )`,
+              [
+                lotId,
+                tenantId,
+                lotCode,
+                vesselId,
+                vessel.owner_fisherman_id,
+                speciesId,
+                totalBoxes,
+                netGrams.toString(),
+                req.auth!.sub,
+                weightSource,
+                qrSignature,
+                nowIso,
+              ]
+            );
+
+            await tx.query(
+              `INSERT INTO sync.client_commands (command_id, tenant_id, device_id, command_type, status, result_ref_id, created_at)
+               VALUES ($1, $2, $3, 'TAG_LOT', 'APPLIED', $4, $5)`,
+              [
+                commandId,
+                tenantId,
+                String(cmd.deviceId ?? 'TAB-WEIGH-01'),
+                lotCode,
+                nowIso,
+              ]
+            );
+
+            await auditInTx(tx, {
+              tenantId,
+              actorUserId: req.auth!.sub,
+              actorRole: req.auth!.role,
+              actionCode: 'LOT_SYNCED_PENDING_INSPECTION',
+              targetType: 'LOT',
+              targetId: lotId,
+              details: {
+                commandId,
+                lotCode,
+                vesselId,
+                speciesId,
+                totalBoxes,
+                netGrams: netGrams.toString(),
+                status: 'WEIGHED_PENDING_INSPECTION',
+              },
             });
-            continue;
+
+            out.push({
+              commandId,
+              status: 'APPLIED',
+              lotId,
+              lotCode,
+              lotStatus: 'WEIGHED_PENDING_INSPECTION',
+              inspectionGrade: null,
+            });
           }
 
-          const vesselId = String(cmd.vesselId ?? 'VSL-01');
-          const speciesId = String(cmd.speciesId ?? 'SPC-01');
-          const totalBoxes = Math.max(1, Number(cmd.totalBoxes ?? 5));
-          const netGrams = BigInt(cmd.netGrams ?? 125000);
-
-          const countRes = await db.query<{ cnt: number }>(
-            `SELECT COUNT(*)::int AS cnt FROM auction.lots WHERE tenant_id = $1`,
-            [tenantId]
-          );
-          const seqNum = (countRes.rows[0]?.cnt ?? 0) + 1;
-          const lotId = `LOT-SYNC-${seqNum}-${commandId.slice(-4)}`;
-          const lotCode = `MUN-SYNC-${String(seqNum).padStart(3, '0')}`;
-          const qrSignature = signLotQrPayload(
-            lotId,
-            vesselId,
-            netGrams,
-            config.QR_HMAC_SECRET
-          );
-          const nowIso = new Date().toISOString();
-
-          await db.query(
-            `INSERT INTO auction.lots (
-              lot_id, tenant_id, lot_code, vessel_id, fisherman_id, species_id,
-              sale_unit_type, total_boxes, available_boxes, net_grams, available_grams,
-              core_temp_c, inspection_grade, inspection_notes, inspected_by_user_id,
-              weight_source, qr_signature, status, created_at
-            ) VALUES (
-              $1, $2, $3, $4, 'FSH-01', $5,
-              'BOX', $6, $6, $7, $7,
-              2.0, 'A_EXPORT', 'Synced from offline dockside queue', $8,
-              'SIMULATOR', $9, 'OPEN_FOR_AUCTION', $10
-            )`,
-            [
-              lotId,
-              tenantId,
-              lotCode,
-              vesselId,
-              speciesId,
-              totalBoxes,
-              netGrams.toString(),
-              req.auth!.sub,
-              qrSignature,
-              nowIso,
-            ]
-          );
-
-          await db.query(
-            `INSERT INTO sync.client_commands (command_id, tenant_id, device_id, command_type, status, result_ref_id, created_at)
-             VALUES ($1, $2, $3, 'TAG_LOT', 'APPLIED', $4, $5)`,
-            [
-              commandId,
-              tenantId,
-              String(cmd.deviceId ?? 'TAB-WEIGH-01'),
-              lotCode,
-              nowIso,
-            ]
-          );
-
-          results.push({ commandId, status: 'APPLIED', lotCode });
-        }
+          return out;
+        });
 
         res.status(200).json({ syncedCount: results.length, results });
       } catch (err) {
@@ -1491,7 +1732,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
     }
   );
 
-  // Quality Inspector: Grade Lot under Section 21 (Returns 404 when lot is not in caller's tenant)
+  // Quality Inspector: Grade Lot under Section 21 (Phase A2: enforces independent inspector & blocks post-allocation re-inspection)
   app.post(
     '/api/v1/lots/:lotId/inspect',
     requireAuth(['AUTHORIZED_INSPECTOR', 'HARBOUR_ADMIN']),
@@ -1508,16 +1749,72 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
 
         const tenantId = req.auth!.tenantId;
         const lotId = String(req.params.lotId ?? '');
-        const { coreTempC, notes } = parsed.data;
+        const { coreTempC, notes, overrideReason } = parsed.data;
         const grade = (parsed.data.grade ?? parsed.data.inspectionGrade)!;
         const newStatus =
           grade === 'REJECTED_UNFIT' ? 'BLOCKED_UNFIT' : 'OPEN_FOR_AUCTION';
 
-        const updateRes = await withTenant(db, tenantId, (tx) =>
-          tx.query<{ lot_id: string; status: string }>(
+        const updatedLot = await req.db!.transaction(async (tx) => {
+          const lotRes = await tx.query<{
+            lot_id: string;
+            lot_code: string;
+            status: string;
+            weighed_by_user_id: string | null;
+          }>(
+            `SELECT lot_id, lot_code, status, weighed_by_user_id
+             FROM auction.lots
+             WHERE lot_id = $1 AND tenant_id = $2
+             FOR UPDATE`,
+            [lotId, tenantId]
+          );
+          const existingLot = lotRes.rows[0];
+          if (!existingLot) {
+            throw new AppError(
+              'NOT_FOUND',
+              `Lot ${lotId} not found in tenant ${tenantId}`,
+              404
+            );
+          }
+
+          // Block self-inspection unless HARBOUR_ADMIN provides explicit overrideReason
+          if (
+            existingLot.weighed_by_user_id &&
+            existingLot.weighed_by_user_id === req.auth!.sub
+          ) {
+            const canOverride =
+              req.auth!.role === 'HARBOUR_ADMIN' &&
+              typeof overrideReason === 'string' &&
+              overrideReason.trim().length >= 5;
+            if (!canOverride) {
+              throw new AppError(
+                'SELF_INSPECTION_FORBIDDEN',
+                `Independent quality gate (${ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE}): Operator who weighed the lot cannot perform Section 21 inspection.`,
+                403
+              );
+            }
+          }
+
+          // Forbid re-inspection once any sale allocation exists
+          const allocRes = await tx.query<{ cnt: number }>(
+            `SELECT COUNT(*)::int AS cnt FROM auction.sale_allocations WHERE lot_id = $1 AND tenant_id = $2`,
+            [lotId, tenantId]
+          );
+          if (
+            (allocRes.rows[0]?.cnt ?? 0) > 0 ||
+            existingLot.status === 'PARTIALLY_SOLD' ||
+            existingLot.status === 'FULLY_SOLD'
+          ) {
+            throw new AppError(
+              'CONFLICT',
+              `Lot ${existingLot.lot_code} already has sale allocations and cannot be re-inspected.`,
+              409
+            );
+          }
+
+          const updRes = await tx.query<{ lot_id: string; status: string }>(
             `UPDATE auction.lots
              SET inspection_grade = $1, core_temp_c = $2, inspection_notes = $3,
-                 inspected_by_user_id = $4, status = CASE WHEN status = 'FULLY_SOLD' THEN status ELSE $5 END
+                 inspected_by_user_id = $4, status = $5
              WHERE lot_id = $6 AND tenant_id = $7
              RETURNING lot_id, status`,
             [
@@ -1529,17 +1826,30 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
               lotId,
               tenantId,
             ]
-          )
-        );
-
-        const updatedLot = updateRes.rows[0];
-        if (!updatedLot) {
-          throw new AppError(
-            'NOT_FOUND',
-            `Lot ${lotId} not found in tenant ${tenantId}`,
-            404
           );
-        }
+
+          await auditInTx(tx, {
+            tenantId,
+            actorUserId: req.auth!.sub,
+            actorRole: req.auth!.role,
+            actionCode:
+              grade === 'REJECTED_UNFIT'
+                ? 'QUALITY_INSPECTION_REJECTED_S21'
+                : 'QUALITY_INSPECTION_PASSED_S21',
+            targetType: 'LOT',
+            targetId: lotId,
+            details: {
+              actorName: req.auth!.fullName,
+              grade,
+              coreTempC,
+              status: newStatus,
+              statutoryRef: ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE,
+              ...(overrideReason ? { overrideReason } : {}),
+            },
+          });
+
+          return updRes.rows[0]!;
+        });
 
         res.status(200).json({
           lotId: updatedLot.lot_id,
@@ -1582,7 +1892,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
     }
   );
 
-  // Pit Workspace: Allocate Lot Sale (Restricted to LICENSED_AUCTIONEER / HARBOUR_ADMIN; enforces licence binding, Zod schema, and Idempotency-Key)
+  // Pit Workspace: Allocate Lot Sale
   app.post(
     '/api/v1/lots/:lotId/allocate',
     requireAuth(['LICENSED_AUCTIONEER', 'HARBOUR_ADMIN']),
@@ -1619,7 +1929,6 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           );
         }
 
-        // Enforce auctioneer licence ownership: a LICENSED_AUCTIONEER can only allocate under their own bound licence
         if (
           req.auth!.role === 'LICENSED_AUCTIONEER' &&
           req.auth!.entityRefId &&
@@ -1632,24 +1941,22 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           );
         }
 
-        const result = await withTenant(db, tenantId, (tx) =>
-          allocateLotSale(tx, {
-            tenantId,
-            lotId,
-            sessionId: data.sessionId,
-            auctionMode: data.auctionMode as AuctionMode,
-            auctioneerLicenceId: data.auctioneerLicenceId,
-            buyerId: data.buyerId,
-            boxesRequested,
-            pricePerKgPaise,
-            idempotencyKey,
-            fencingToken: data.fencingToken,
-            ...(data.governmentPermissionRef
-              ? { governmentPermissionRef: data.governmentPermissionRef }
-              : {}),
-            nowIso: new Date().toISOString(),
-          })
-        );
+        const result = await allocateLotSale(req.db!, {
+          tenantId,
+          lotId,
+          sessionId: data.sessionId,
+          auctionMode: data.auctionMode as AuctionMode,
+          auctioneerLicenceId: data.auctioneerLicenceId,
+          buyerId: data.buyerId,
+          boxesRequested,
+          pricePerKgPaise,
+          idempotencyKey,
+          fencingToken: data.fencingToken,
+          ...(data.governmentPermissionRef
+            ? { governmentPermissionRef: data.governmentPermissionRef }
+            : {}),
+          nowIso: new Date().toISOString(),
+        });
 
         invalidateLedgerAuditSqlLruCache(tenantId);
         res.status(result.idempotentReplay ? 200 : 201).json(result);
@@ -1666,47 +1973,45 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
         const tenantId = req.auth!.tenantId;
-        if (req.body?.floorEnforcement) {
-          const mode = String(req.body.floorEnforcement) as FloorEnforcement;
-          await db.query(
-            `UPDATE core.tenants SET floor_enforcement = $1 WHERE tenant_id = $2`,
-            [mode, tenantId]
-          );
-        }
-        if (
-          req.body?.speciesId &&
-          req.body?.floorPricePaisePerKg !== undefined
-        ) {
-          const floorVal = BigInt(req.body.floorPricePaisePerKg);
-          if (floorVal <= 0n) {
-            throw new AppError(
-              'VALIDATION_ERROR',
-              'floorPricePaisePerKg must be > 0',
-              400
+        await req.db!.transaction(async (tx) => {
+          if (req.body?.floorEnforcement) {
+            const mode = String(req.body.floorEnforcement) as FloorEnforcement;
+            await tx.query(
+              `UPDATE core.tenants SET floor_enforcement = $1 WHERE tenant_id = $2`,
+              [mode, tenantId]
             );
           }
-          await db.query(
-            `UPDATE harbour.species SET floor_price_paise_per_kg = $1 WHERE species_id = $2 AND tenant_id = $3`,
-            [floorVal.toString(), String(req.body.speciesId), tenantId]
-          );
-        }
-        await db.query(
-          `INSERT INTO core.audit_logs (audit_id, tenant_id, actor_user_id, actor_role, action_code, target_type, target_id, details_json, created_at)
-           VALUES ($1, $2, $3, $4, 'FLOOR_SCHEDULE_UPDATED_S19', 'SPECIES', $5, $6, $7)`,
-          [
-            `AUD-${Date.now()}`,
+          if (
+            req.body?.speciesId &&
+            req.body?.floorPricePaisePerKg !== undefined
+          ) {
+            const floorVal = BigInt(req.body.floorPricePaisePerKg);
+            if (floorVal <= 0n) {
+              throw new AppError(
+                'VALIDATION_ERROR',
+                'floorPricePaisePerKg must be > 0',
+                400
+              );
+            }
+            await tx.query(
+              `UPDATE harbour.species SET floor_price_paise_per_kg = $1 WHERE species_id = $2 AND tenant_id = $3`,
+              [floorVal.toString(), String(req.body.speciesId), tenantId]
+            );
+          }
+          await auditInTx(tx, {
             tenantId,
-            req.auth!.sub,
-            req.auth!.role,
-            String(req.body?.speciesId ?? 'TENANT-FLOOR-MODE'),
-            JSON.stringify({
+            actorUserId: req.auth!.sub,
+            actorRole: req.auth!.role,
+            actionCode: 'FLOOR_SCHEDULE_UPDATED_S19',
+            targetType: 'SPECIES',
+            targetId: String(req.body?.speciesId ?? 'TENANT-FLOOR-MODE'),
+            details: {
               actorName: req.auth!.fullName,
               floorEnforcement: req.body?.floorEnforcement,
               floorPricePaisePerKg: req.body?.floorPricePaisePerKg,
-            }),
-            new Date().toISOString(),
-          ]
-        );
+            },
+          });
+        });
         res.status(200).json({ updated: true });
       } catch (err) {
         next(err);
@@ -1714,53 +2019,21 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
     }
   );
 
-  // Accountant: Generate Payout Batch & Reconcile Bank UTR
+  // Accountant: Generate Atomic Payout Batch (Phase A3: locks FISHERMAN_PAYABLE, builds items, posts PAYOUT_BATCH journal, rejects 0 balance)
   app.post(
     '/api/v1/payout-batches',
     requireAuth(['ACCOUNTANT', 'HARBOUR_ADMIN', 'SUPER_ADMIN']),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
         const tenantId = req.auth!.tenantId;
-        const payRes = await db.query<{ total_paise: string; cnt: number }>(
-          `SELECT COALESCE(SUM(balance_paise), 0)::text AS total_paise, COUNT(*)::int AS cnt
-           FROM ledger.accounts WHERE tenant_id = $1 AND kind = 'FISHERMAN_PAYABLE' AND balance_paise > 0`,
-          [tenantId]
-        );
-        const totalPaise = BigInt(payRes.rows[0]?.total_paise ?? '0');
-        const cnt = payRes.rows[0]?.cnt ?? 1;
-        const batchId = `BATCH-${Date.now()}`;
-        const batchCode = `MUN-PAY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(cnt).padStart(2, '0')}`;
-        const nowIso = new Date().toISOString();
-
-        await db.query(
-          `INSERT INTO ledger.payout_batches (batch_id, tenant_id, batch_code, beneficiary_kind, total_amount_paise, item_count, status, created_at)
-           VALUES ($1, $2, $3, 'FISHERMAN_NET_SETTLEMENT', $4, $5, 'GENERATED_CSV', $6)`,
-          [
-            batchId,
-            tenantId,
-            batchCode,
-            (totalPaise > 0n ? totalPaise : 500000n).toString(),
-            Math.max(1, cnt),
-            nowIso,
-          ]
-        );
-
-        await db.query(
-          `INSERT INTO core.audit_logs (audit_id, tenant_id, actor_user_id, actor_role, action_code, target_type, target_id, details_json, created_at)
-           VALUES ($1, $2, $3, $4, 'PAYOUT_BATCH_GENERATED', 'PAYOUT_BATCH', $5, $6, $7)`,
-          [
-            `AUD-${Date.now()}`,
-            tenantId,
-            req.auth!.sub,
-            req.auth!.role,
-            batchId,
-            JSON.stringify({ actorName: req.auth!.fullName, batchCode }),
-            nowIso,
-          ]
-        );
-
+        const result = await createPayoutBatch(req.db!, {
+          tenantId,
+          actorUserId: req.auth!.sub,
+          actorRole: req.auth!.role,
+          actorFullName: req.auth!.fullName,
+        });
         invalidateLedgerAuditSqlLruCache(tenantId);
-        res.status(201).json({ batchId, batchCode });
+        res.status(201).json(result);
       } catch (err) {
         next(err);
       }
@@ -1772,13 +2045,14 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
     requireAuth(['ACCOUNTANT', 'HARBOUR_ADMIN']),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        const result = await reconcileSinglePayoutBatch(db, {
+        const result = await reconcileSinglePayoutBatch(req.db!, {
           tenantId: req.auth!.tenantId,
           actorUserId: req.auth!.sub,
           actorRole: req.auth!.role,
           actorFullName: req.auth!.fullName,
           batchId: String(req.params.batchId ?? ''),
           rawBankUtr: req.body?.bankUtr,
+          confirmTotalPaise: req.body?.confirmTotalPaise,
         });
         invalidateLedgerAuditSqlLruCache(req.auth!.tenantId);
         res.status(200).json(result);
@@ -1797,7 +2071,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           typeof req.headers['idempotency-key'] === 'string'
             ? req.headers['idempotency-key']
             : null;
-        const result = await executeRobustBulkUtrReconcile(db, {
+        const result = await executeRobustBulkUtrReconcile(req.db!, {
           tenantId: req.auth!.tenantId,
           actorUserId: req.auth!.sub,
           actorRole: req.auth!.role,
@@ -1807,6 +2081,59 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         });
         invalidateLedgerAuditSqlLruCache(req.auth!.tenantId);
         res.status(200).json(result);
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Accountant: Record Buyer Settlement Receipt (Phase A3: posts BUYER_RECEIPT journal, decrements unsettled_payables_paise, rejects overpayment)
+  app.post(
+    '/api/v1/buyers/:buyerId/receipts',
+    requireAuth(['ACCOUNTANT', 'HARBOUR_ADMIN']),
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+      try {
+        const parsed = BuyerReceiptBodySchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            parsed.error.issues[0]?.message ?? 'Invalid buyer receipt payload',
+            400
+          );
+        }
+
+        const rawIdem = req.headers['idempotency-key'];
+        const idempotencyKey = String(
+          (Array.isArray(rawIdem) ? rawIdem[0] : rawIdem) ?? ''
+        ).trim();
+        if (!idempotencyKey) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'Idempotency-Key header is required for buyer receipts.',
+            400
+          );
+        }
+
+        const referenceNo = (
+          parsed.data.referenceNo ??
+          parsed.data.paymentReference ??
+          'NODAL-RECEIPT'
+        ).trim();
+
+        const result = await recordBuyerReceipt(req.db!, {
+          tenantId: req.auth!.tenantId,
+          actorUserId: req.auth!.sub,
+          actorRole: req.auth!.role,
+          actorFullName: req.auth!.fullName,
+          buyerId: String(req.params.buyerId ?? ''),
+          amountPaise: BigInt(parsed.data.amountPaise),
+          paymentChannel: parsed.data.paymentChannel,
+          referenceNo,
+          idempotencyKey,
+        });
+
+        invalidateLedgerAuditSqlLruCache(req.auth!.tenantId);
+        res.status(result.idempotentReplay ? 200 : 201).json(result);
       } catch (err) {
         next(err);
       }
@@ -1832,40 +2159,38 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
               400
             );
           }
-          const reversalId = `REV-REQ-${Date.now()}`;
+          const reversalId = `REV-REQ-${crypto.randomUUID()}`;
           const nowIso = new Date().toISOString();
-          await db.query(
-            `INSERT INTO ledger.reversal_requests (
-              reversal_id, tenant_id, original_journal_id, reason_note,
-              requested_by_user_id, requested_by_name, status, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, 'PENDING_SECOND_APPROVAL', $7)`,
-            [
-              reversalId,
+          await req.db!.transaction(async (tx) => {
+            await tx.query(
+              `INSERT INTO ledger.reversal_requests (
+                reversal_id, tenant_id, original_journal_id, reason_note,
+                requested_by_user_id, requested_by_name, status, created_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, 'PENDING_SECOND_APPROVAL', $7)`,
+              [
+                reversalId,
+                tenantId,
+                originalJournalId,
+                reasonNote,
+                req.auth!.sub,
+                req.auth!.fullName,
+                nowIso,
+              ]
+            );
+            await auditInTx(tx, {
               tenantId,
-              originalJournalId,
-              reasonNote,
-              req.auth!.sub,
-              req.auth!.fullName,
-              nowIso,
-            ]
-          );
-          await db.query(
-            `INSERT INTO core.audit_logs (audit_id, tenant_id, actor_user_id, actor_role, action_code, target_type, target_id, details_json, created_at)
-             VALUES ($1, $2, $3, $4, 'REVERSAL_REQUESTED_KEY1', 'REVERSAL', $5, $6, $7)`,
-            [
-              `AUD-${Date.now()}`,
-              tenantId,
-              req.auth!.sub,
-              req.auth!.role,
-              reversalId,
-              JSON.stringify({
+              actorUserId: req.auth!.sub,
+              actorRole: req.auth!.role,
+              actionCode: 'REVERSAL_REQUESTED_KEY1',
+              targetType: 'REVERSAL',
+              targetId: reversalId,
+              details: {
                 actorName: req.auth!.fullName,
                 originalJournalId,
                 reasonNote,
-              }),
-              nowIso,
-            ]
-          );
+              },
+            });
+          });
           res
             .status(201)
             .json({ reversalId, status: 'PENDING_SECOND_APPROVAL' });
@@ -1874,7 +2199,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
 
         const reversalId = String(req.body?.reversalId ?? '');
         const nowIso = new Date().toISOString();
-        const result = await executeDualKeyReversal(db, {
+        const result = await executeDualKeyReversal(req.db!, {
           tenantId,
           reversalId,
           approverUserId: req.auth!.sub,
@@ -1882,21 +2207,19 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           nowIso,
         });
 
-        await db.query(
-          `INSERT INTO core.audit_logs (audit_id, tenant_id, actor_user_id, actor_role, action_code, target_type, target_id, details_json, created_at)
-           VALUES ($1, $2, $3, $4, 'DUAL_KEY_REVERSAL_EXECUTED', 'REVERSAL', $5, $6, $7)`,
-          [
-            `AUD-${Date.now()}`,
+        await req.db!.transaction((tx) =>
+          auditInTx(tx, {
             tenantId,
-            req.auth!.sub,
-            req.auth!.role,
-            reversalId,
-            JSON.stringify({
+            actorUserId: req.auth!.sub,
+            actorRole: req.auth!.role,
+            actionCode: 'DUAL_KEY_REVERSAL_EXECUTED',
+            targetType: 'REVERSAL',
+            targetId: reversalId,
+            details: {
               actorName: req.auth!.fullName,
               compensatingJournalId: result.compensatingJournalId,
-            }),
-            nowIso,
-          ]
+            },
+          })
         );
 
         res.status(200).json(result);
@@ -1916,7 +2239,10 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
           req.auth!.role === 'SUPER_ADMIN' && req.query.tenantId
             ? String(req.query.tenantId)
             : req.auth!.tenantId;
-        const verification = await verifyTenantLedgerChain(db, targetTenant);
+        const verification =
+          req.auth!.role === 'SUPER_ADMIN'
+            ? await withPlatform(db, (tx) => verifyTenantLedgerChain(tx, targetTenant))
+            : await verifyTenantLedgerChain(req.db!, targetTenant);
         res.status(200).json(verification);
       } catch (err) {
         next(err);
@@ -1959,7 +2285,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
             ? [2000, 2000, 3000, 3000]
             : [2000, 2000, 4000, 2000];
 
-        await db.transaction(async (tx) => {
+        await withPlatform(db, async (tx) => {
           await tx.query(
             `INSERT INTO core.tenants (
               tenant_id, slug, name_en, name_ml, centre_type, floor_enforcement,
@@ -1994,8 +2320,8 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
               bonusBps,
               coopBps,
               preset === 'KERALA_MARKET'
-                ? 'Kerala Act 16 of 2021 s.4(5)(b) Market Split'
-                : 'Kerala Act 16 of 2021 s.4(5)(a) Harbour Split',
+                ? ACT_16_2021_CITATIONS.MARKET_SPLIT_LABEL
+                : ACT_16_2021_CITATIONS.HARBOUR_SPLIT_LABEL,
               new Date().toISOString().slice(0, 10),
             ]
           );
@@ -2043,7 +2369,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         if (commissionBps < 0 || commissionBps > 500) {
           throw new AppError(
             'STATUTORY_CAP_BREACH',
-            'Commission rate cannot exceed 500 bps (5.00%) under Act 16 s.4(4)',
+            `Commission rate cannot exceed 500 bps (5.00%) under ${ACT_16_2021_CITATIONS.COMMISSION_CAP_500_BPS}`,
             422
           );
         }
@@ -2066,29 +2392,29 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
         ) {
           throw new AppError(
             'FORBIDDEN',
-            `Commercial mode ${commercialMode} is blocked by statutory guardrail C7 (Act 16 s.4(6)) unless both legalSignoffRef and legalSignoffDate are provided.`,
+            `Commercial mode ${commercialMode} is blocked by statutory guardrail C7 (${ACT_16_2021_CITATIONS.COMMERCIAL_MODE_SIGNOFF_GATE}) unless both legalSignoffRef and legalSignoffDate are provided.`,
             422
           );
         }
 
-        const verRes = await db.query<{ next_ver: number }>(
-          `SELECT COALESCE(MAX(version_num), 0) + 1 AS next_ver FROM core.commission_policies WHERE tenant_id = $1`,
-          [tenantId]
-        );
-        const nextVer = verRes.rows[0]?.next_ver ?? 2;
-        const policyId = `POL-${tenantId.toUpperCase()}-V${nextVer}`;
+        const nextVer = await req.db!.transaction(async (tx) => {
+          const verRes = await tx.query<{ next_ver: number }>(
+            `SELECT COALESCE(MAX(version_num), 0) + 1 AS next_ver FROM core.commission_policies WHERE tenant_id = $1`,
+            [tenantId]
+          );
+          const ver = verRes.rows[0]?.next_ver ?? 2;
+          const policyId = `POL-${tenantId.toUpperCase()}-V${ver}`;
 
-        await db.transaction(async (tx) => {
           await tx.query(
             `INSERT INTO core.commission_policies (
               policy_id, tenant_id, version_num, commercial_mode, commission_bps,
               auctioneer_share_bps, hms_share_bps, fisher_bonus_share_bps, coop_share_bps,
               notification_ref, legal_basis_ref, legal_signoff_ref, legal_signoff_date, effective_from
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Kerala Act 16 of 2021 s.4(5)', $11, $12, $13)`,
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
             [
               policyId,
               tenantId,
-              nextVer,
+              ver,
               commercialMode,
               commissionBps,
               auctioneerShareBps,
@@ -2096,6 +2422,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
               fisherBonusShareBps,
               coopShareBps,
               notificationRef,
+              ACT_16_2021_CITATIONS.POLICY_SPLIT_BASIS,
               legalSignoffRef,
               legalSignoffDate,
               new Date().toISOString().slice(0, 10),
@@ -2106,9 +2433,17 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn): Expres
             `UPDATE core.tenants SET active_policy_id = $1 WHERE tenant_id = $2`,
             [policyId, tenantId]
           );
+
+          return { ver, policyId };
         });
 
-        res.status(201).json({ policyId, versionNum: nextVer, commercialMode });
+        res
+          .status(201)
+          .json({
+            policyId: nextVer.policyId,
+            versionNum: nextVer.ver,
+            commercialMode,
+          });
       } catch (err) {
         next(err);
       }
