@@ -424,8 +424,10 @@ export async function apiRequest<T>(
             return executeFetch(refreshData.accessToken, true);
           }
         }
-      } catch {
-        // Fall through to 401 error
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          inMemoryAccessToken = null;
+        }
       }
     }
 

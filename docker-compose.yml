@@ -18,6 +18,32 @@ services:
           cpus: "1.0"
           memory: 512M
 
+  migrate:
+    build: .
+    command: ["npm", "run", "migrate"]
+    environment:
+      NODE_ENV: development
+      DATABASE_PLATFORM_URL: postgres://harbour_owner:harbour_dev_password@postgres:5432/harbouros
+      HARBOUR_APP_PASSWORD: harbour_app_dev_password
+      HARBOUR_PLATFORM_PASSWORD: harbour_platform_dev_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  seed:
+    build: .
+    command: ["npm", "run", "seed"]
+    environment:
+      NODE_ENV: development
+      DEMO_MODE: "true"
+      DATABASE_PLATFORM_URL: postgres://harbour_platform:harbour_platform_dev_password@postgres:5432/harbouros
+      DATABASE_URL: postgres://harbour_platform:harbour_platform_dev_password@postgres:5432/harbouros
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   harbouros-app:
     build: .
     ports:
@@ -25,16 +51,19 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      DATABASE_URL: postgres://harbour_owner:harbour_dev_password@postgres:5432/harbouros
-      JWT_ACCESS_SECRET: dev-compose-access-secret-32bytes-minimum-key-9901
-      JWT_REFRESH_SECRET: dev-compose-refresh-secret-32bytes-minimum-key-9902
-      QR_HMAC_SECRET: dev-compose-qr-hmac-secret-32bytes-minimum-key-9903
+      DATABASE_URL: postgres://harbour_app:harbour_app_dev_password@postgres:5432/harbouros
+      DATABASE_PLATFORM_URL: postgres://harbour_platform:harbour_platform_dev_password@postgres:5432/harbouros
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-}
+      QR_HMAC_SECRET: ${QR_HMAC_SECRET:-}
       OTP_DEV_ECHO: "true"
       DEMO_MODE: "true"
       SMS_PROVIDER: "console"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 10s

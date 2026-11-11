@@ -145,6 +145,28 @@ export function checkBoundaries(): { passed: boolean; violations: string[] } {
     }
   }
 
+  // Round 4 Rule R3: Zero empty or comment-only catch blocks across tests, scripts, and src
+  const emptyCatchRegex = /catch\s*(\([^)]*\))?\s*\{\s*(\/\/[^\n]*)?\s*\}/;
+  const allDirs = [
+    path.join(ROOT_DIR, 'tests'),
+    path.join(ROOT_DIR, 'scripts'),
+    SRC_DIR,
+  ];
+  for (const dir of allDirs) {
+    for (const absPath of walkFiles(dir, ['.ts', '.tsx'])) {
+      const relPath = path.relative(ROOT_DIR, absPath).split(path.sep).join('/');
+      if (relPath === 'scripts/check-boundaries.ts') continue;
+      const content = fs.readFileSync(absPath, 'utf8');
+      const m = emptyCatchRegex.exec(content);
+      if (m) {
+        const line = content.slice(0, m.index).split('\n').length;
+        violations.push(
+          `[Round 4 Rule R3] ${relPath}:${line} contains an empty or comment-only catch block`
+        );
+      }
+    }
+  }
+
   return { passed: violations.length === 0, violations };
 }
 

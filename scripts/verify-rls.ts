@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { config } from '../src/server/config.ts';
 import { PgPoolAdapter } from '../src/server/adapters/db-pg.ts';
 import { PGliteAdapter } from '../src/server/adapters/db-pglite.ts';
@@ -37,18 +38,99 @@ const TENANT_TABLES: ReadonlyArray<string> = [
   'sync.webhook_deliveries',
 ];
 
+function isExpectedPermissionDenied(err: unknown): boolean {
+  const code = (err as { code?: string })?.code;
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    code === '42501' ||
+    code === 'P0001' ||
+    /permission denied|APPEND_ONLY_VIOLATION/i.test(msg)
+  );
+}
+
+async function setPgliteRoleIfAvailable(tx: DbPort): Promise<void> {
+  try {
+    await tx.exec(`SET LOCAL ROLE harbour_app`);
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    if (code !== '42704' && code !== '22023') {
+      throw err;
+    }
+  }
+}
+
+async function ensureTargetTenantForRlsCheck(
+  platformDb: DbPort
+): Promise<{ tenantId: string; cleanupTenantId: string | null }> {
+  const existing = await platformDb.query<{ tenant_id: string }>(
+    `SELECT tenant_id FROM core.tenants WHERE tenant_id = $1`,
+    [DEMO_TENANT_ID]
+  );
+  if (existing.rows.length > 0) {
+    const existingUsers = await platformDb.query<{ user_id: string }>(
+      `SELECT user_id FROM core.users WHERE tenant_id = $1 LIMIT 1`,
+      [DEMO_TENANT_ID]
+    );
+    if (existingUsers.rows.length > 0) {
+      return { tenantId: DEMO_TENANT_ID, cleanupTenantId: null };
+    }
+  }
+
+  // Self-contained fallback: create a throwaway tenant + user via platformDb if demo tenant is absent
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const throwawayTenantId = `rls-probe-${suffix}`;
+  const throwawayUserId = `USR-RLS-${suffix}`;
+  const throwawayPhone = `+919999${String(crypto.randomInt(100000, 999999))}`;
+
+  await platformDb.query(
+    `INSERT INTO core.tenants (
+      tenant_id, slug, name_en, name_ml, centre_type, floor_enforcement,
+      active_policy_id, hms_account_id, coop_pool_account_id,
+      harbouros_revenue_account_id, gst_payable_account_id
+    ) VALUES ($1, $2, $3, $4, 'KERALA_HARBOUR', 'WARN', 'POL-PROBE', 'ACC-HMS-P', 'ACC-COOP-P', 'ACC-REV-P', 'ACC-GST-P')`,
+    [
+      throwawayTenantId,
+      throwawayTenantId,
+      'RLS Probe Harbour',
+      'ആർഎൽഎസ് പ്രോബ് ഹാർബർ',
+    ]
+  );
+
+  await platformDb.query(
+    `INSERT INTO core.users (user_id, tenant_id, phone_e164, full_name, role, pin_code, is_active)
+     VALUES ($1, $2, $3, 'RLS Probe Operator', 'WEIGHING_OPERATOR', '1234', true)`,
+    [throwawayUserId, throwawayTenantId, throwawayPhone]
+  );
+
+  return { tenantId: throwawayTenantId, cleanupTenantId: throwawayTenantId };
+}
+
 async function main(): Promise<void> {
   const dbUrl = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL || config.DATABASE_URL;
+  const platformUrl =
+    process.env.DATABASE_PLATFORM_URL_TEST ||
+    process.env.DATABASE_PLATFORM_URL ||
+    config.DATABASE_PLATFORM_URL;
+
   let db: DbPort;
+  let platformDb: DbPort;
   let isPg = false;
 
   if (dbUrl && dbUrl.startsWith('postgres')) {
     db = new PgPoolAdapter(dbUrl);
+    platformDb =
+      platformUrl && platformUrl.startsWith('postgres')
+        ? new PgPoolAdapter(platformUrl)
+        : db;
     isPg = true;
   } else {
-    db = new PGliteAdapter('memory://');
-    await runMigrationsAndSeed(db);
+    const memDb = new PGliteAdapter('memory://');
+    await runMigrationsAndSeed(memDb);
+    db = memDb;
+    platformDb = memDb;
   }
+
+  let cleanupTenantId: string | null = null;
 
   try {
     console.log('[verify-rls] Starting RLS and least-privilege audit...');
@@ -66,7 +148,11 @@ async function main(): Promise<void> {
       );
       const role = roleRes.rows[0];
       assert.ok(role, 'Must resolve current_user from pg_roles');
-      assert.equal(role.current_user, 'harbour_app', `verify-rls must connect as harbour_app (got ${role.current_user})`);
+      assert.equal(
+        role.current_user,
+        'harbour_app',
+        `verify-rls must connect as harbour_app (got ${role.current_user})`
+      );
       assert.equal(role.rolsuper, false, 'harbour_app must NOT be a superuser');
       assert.equal(role.rolbypassrls, false, 'harbour_app must NOT have BYPASSRLS');
       console.log(
@@ -74,14 +160,15 @@ async function main(): Promise<void> {
       );
     }
 
+    // Ensure at least one tenant + user row exists (demo tenant if seeded, else self-contained throwaway tenant via platformDb)
+    const target = await ensureTargetTenantForRlsCheck(platformDb);
+    const targetTenantId = target.tenantId;
+    cleanupTenantId = target.cleanupTenantId;
+
     // 2. Fail-Closed & GUC Bypass Check across all 27 tenant tables
     await db.transaction(async (tx) => {
       if (!isPg) {
-        try {
-          await tx.exec(`SET LOCAL ROLE harbour_app`);
-        } catch {
-          // PGlite fallback
-        }
+        await setPgliteRoleIfAvailable(tx);
       }
 
       console.log('\nTable                                | No-Ctx | app.platform=on | Wrong-Tenant');
@@ -116,22 +203,18 @@ async function main(): Promise<void> {
     // 3. Own-Tenant Access Check
     await db.transaction(async (tx) => {
       if (!isPg) {
-        try {
-          await tx.exec(`SET LOCAL ROLE harbour_app`);
-        } catch {
-          // PGlite fallback
-        }
+        await setPgliteRoleIfAvailable(tx);
       }
-      await tx.query(`SELECT set_config('app.tenant_id', $1, true)`, [DEMO_TENANT_ID]);
+      await tx.query(`SELECT set_config('app.tenant_id', $1, true)`, [targetTenantId]);
 
       const ownTenant = await tx.query<{ tenant_id: string }>(`SELECT tenant_id FROM core.tenants`);
       assert.equal(ownTenant.rows.length, 1, 'Expected harbour_app to see exactly 1 own tenant row');
-      assert.equal(ownTenant.rows[0]?.tenant_id, DEMO_TENANT_ID);
+      assert.equal(ownTenant.rows[0]?.tenant_id, targetTenantId);
 
       const ownUsers = await tx.query<{ tenant_id: string }>(`SELECT tenant_id FROM core.users`);
       assert.ok(ownUsers.rows.length > 0, 'Expected to see own tenant users');
       for (const u of ownUsers.rows) {
-        assert.equal(u.tenant_id, DEMO_TENANT_ID);
+        assert.equal(u.tenant_id, targetTenantId);
       }
       console.log('[verify-rls] PASS: Cross-tenant isolation and own-tenant visibility verified');
     });
@@ -142,16 +225,15 @@ async function main(): Promise<void> {
       try {
         await db.transaction(async (tx) => {
           if (!isPg) {
-            try {
-              await tx.exec(`SET LOCAL ROLE harbour_app`);
-            } catch {
-              // PGlite fallback
-            }
+            await setPgliteRoleIfAvailable(tx);
           }
-          await tx.query(`SELECT set_config('app.tenant_id', $1, true)`, [DEMO_TENANT_ID]);
+          await tx.query(`SELECT set_config('app.tenant_id', $1, true)`, [targetTenantId]);
           await tx.query(sql);
         });
-      } catch {
+      } catch (err: unknown) {
+        if (!isExpectedPermissionDenied(err)) {
+          throw err;
+        }
         denied = true;
       }
       assert.equal(denied, true, `${label} must be rejected`);
@@ -160,7 +242,7 @@ async function main(): Promise<void> {
     await testDeniedOp('UPDATE on ledger.entries', 'UPDATE ledger.entries SET amount_paise = amount_paise + 100');
     await testDeniedOp('DELETE on ledger.entries', 'DELETE FROM ledger.entries');
     await testDeniedOp('TRUNCATE on ledger.entries', 'TRUNCATE TABLE ledger.entries');
-    await testDeniedOp('UPDATE on ledger.journals', 'UPDATE ledger.journals SET is_balanced = false');
+    await testDeniedOp('UPDATE on ledger.journals', "UPDATE ledger.journals SET description = 'tamper'");
     await testDeniedOp('DELETE on ledger.journals', 'DELETE FROM ledger.journals');
     await testDeniedOp('TRUNCATE on ledger.journals', 'TRUNCATE TABLE ledger.journals');
     console.log('[verify-rls] PASS: Ledger immutability (UPDATE/DELETE/TRUNCATE denied on entries & journals) verified');
@@ -177,15 +259,14 @@ async function main(): Promise<void> {
       try {
         await db.transaction(async (tx) => {
           if (!isPg) {
-            try {
-              await tx.exec(`SET LOCAL ROLE harbour_app`);
-            } catch {
-              // PGlite fallback
-            }
+            await setPgliteRoleIfAvailable(tx);
           }
           await tx.query(`SELECT COUNT(*) FROM ${tbl}`);
         });
-      } catch {
+      } catch (err: unknown) {
+        if (!isExpectedPermissionDenied(err)) {
+          throw err;
+        }
         accessDenied = true;
       }
       assert.equal(accessDenied, true, `harbour_app must be denied access to ${tbl}`);
@@ -194,10 +275,23 @@ async function main(): Promise<void> {
 
     console.log('[verify-rls] ALL RLS AND LEAST-PRIVILEGE CHECKS PASSED.');
   } finally {
+    if (cleanupTenantId) {
+      await platformDb.query(`DELETE FROM core.users WHERE tenant_id = $1`, [cleanupTenantId]);
+      await platformDb.query(`DELETE FROM core.tenants WHERE tenant_id = $1`, [cleanupTenantId]);
+    }
     if (db.close) {
       await db.close();
+    }
+    if (platformDb !== db && platformDb.close) {
+      await platformDb.close();
     }
   }
 }
 
-void main();
+main().catch((err: unknown) => {
+  console.error(
+    '[verify-rls] FAILED:',
+    err instanceof Error ? err.stack || err.message : String(err)
+  );
+  process.exit(1);
+});

@@ -4,61 +4,29 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Server } from 'node:http';
-import { PGliteAdapter } from '../../src/server/adapters/db-pglite.ts';
-import { PgPoolAdapter } from '../../src/server/adapters/db-pg.ts';
-import { runMigrationsAndSeed, DEMO_TENANT_ID } from '../../src/server/platform/seed.ts';
+import { DEMO_TENANT_ID } from '../../src/server/platform/seed.ts';
 import { createApiApp } from '../../src/server/app.ts';
 import * as authModule from '../../src/server/platform/auth.ts';
 const { signAccessJwt } = authModule;
 const clearAuthUserCache = () =>
   (authModule as { clearAuthUserCache?: () => void }).clearAuthUserCache?.();
 import type { DbPort } from '../../src/server/ports/db.ts';
+import { bootstrapTestDatabase } from '../helpers/pg-bootstrap.ts';
 
 describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, Payouts & Buyer Receipts, Refresh Tokens, Fresh Tenant Happy Path', () => {
   let db: DbPort;
   let platformDb: DbPort;
+  let closeDb: () => Promise<void>;
   let isPg = false;
   let server: Server;
   let baseUrl = '';
 
   before(async () => {
-    const testUrl = process.env['DATABASE_URL_TEST'] || process.env['DATABASE_URL'];
-    const platformUrl =
-      process.env['DATABASE_PLATFORM_URL_TEST'] || process.env['DATABASE_PLATFORM_URL'];
-
-    if (testUrl && testUrl.startsWith('postgres')) {
-      isPg = true;
-      db = new PgPoolAdapter(testUrl);
-      platformDb =
-        platformUrl && platformUrl.startsWith('postgres')
-          ? new PgPoolAdapter(platformUrl)
-          : db;
-
-      // C2 guard: assert test is connected as harbour_app with rolsuper=false and rolbypassrls=false
-      const roleRes = await db.query<{
-        current_user: string;
-        rolsuper: boolean;
-        rolbypassrls: boolean;
-      }>(
-        `SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`
-      );
-      assert.deepEqual(roleRes.rows[0], {
-        current_user: 'harbour_app',
-        rolsuper: false,
-        rolbypassrls: false,
-      });
-
-      try {
-        await runMigrationsAndSeed(platformDb);
-      } catch {
-        // Already migrated and seeded via migrate.ts --seed
-      }
-    } else {
-      const memDb = new PGliteAdapter('memory://');
-      await runMigrationsAndSeed(memDb);
-      db = memDb;
-      platformDb = memDb;
-    }
+    const bootstrapped = await bootstrapTestDatabase();
+    db = bootstrapped.db;
+    platformDb = bootstrapped.platformDb;
+    isPg = bootstrapped.isPg;
+    closeDb = bootstrapped.close;
 
     const app = createApiApp(db, undefined, platformDb);
     await new Promise<void>((resolve) => {
@@ -74,10 +42,7 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
 
   after(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    await db.close?.();
-    if (platformDb !== db) {
-      await platformDb.close?.();
-    }
+    await closeDb?.();
   });
 
   it('A2: POST /api/v1/lots creates WEIGHED_PENDING_INSPECTION with null grade, blocks allocation before inspection, blocks weigher self-inspection, and blocks re-inspection after allocation', async () => {
@@ -269,6 +234,8 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
     });
     assert.equal(zeroPayableRes.status, 422);
 
+    const uniqueUtr = `FDRL${crypto.randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+
     // Reconcile with wrong confirmTotalPaise is rejected (422)
     const wrongTotalRec = await fetch(
       `${baseUrl}/api/v1/payout-batches/${createdBatch.batchId}/reconcile`,
@@ -279,7 +246,7 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
           Authorization: `Bearer ${acctToken}`,
         },
         body: JSON.stringify({
-          bankUtr: 'FDRL261110887766',
+          bankUtr: uniqueUtr,
           confirmTotalPaise: '123',
         }),
       }
@@ -296,7 +263,7 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
           Authorization: `Bearer ${acctToken}`,
         },
         body: JSON.stringify({
-          bankUtr: 'FDRL261110887766',
+          bankUtr: uniqueUtr,
           confirmTotalPaise: createdBatch.totalAmountPaise,
         }),
       }

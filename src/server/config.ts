@@ -1,14 +1,23 @@
 import crypto from 'node:crypto';
 import { z } from 'zod';
 
-const RawEnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().positive().default(3000),
-  AISTUDIO_PREVIEW: z
+const lowerPreprocess = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), schema);
+
+const boolEnvSchema = lowerPreprocess(
+  z
     .enum(['true', 'false', '1', '0', ''])
     .optional()
     .default('false')
-    .transform((v) => v === 'true' || v === '1'),
+    .transform((v) => v === 'true' || v === '1')
+);
+
+const RawEnvSchema = z.object({
+  NODE_ENV: lowerPreprocess(
+    z.enum(['development', 'test', 'production']).default('development')
+  ),
+  PORT: z.coerce.number().int().positive().default(3000),
+  AISTUDIO_PREVIEW: boolEnvSchema,
   DATABASE_URL: z.string().optional().default(''),
   DATABASE_PLATFORM_URL: z.string().optional().default(''),
   PG_CONNECTION_STRING: z.string().optional().default(''),
@@ -18,31 +27,15 @@ const RawEnvSchema = z.object({
   JWT_HS256_SECRET: z.string().optional().default(''),
   QR_HMAC_SECRET: z.string().optional().default(''),
   TRUST_PROXY: z.string().optional().default('false'),
-  OTP_DEV_ECHO: z
-    .enum(['true', 'false', '1', '0', ''])
-    .optional()
-    .default('false')
-    .transform((v) => v === 'true' || v === '1'),
-  DEMO_MODE: z
-    .enum(['true', 'false', '1', '0', ''])
-    .optional()
-    .default('false')
-    .transform((v) => v === 'true' || v === '1'),
-  LLM_PROVIDER: z.enum(['none', 'gemini']).default('none'),
+  OTP_DEV_ECHO: boolEnvSchema,
+  DEMO_MODE: boolEnvSchema,
+  LLM_PROVIDER: lowerPreprocess(z.enum(['none', 'gemini']).default('none')),
   LLM_MODEL_VISION: z.string().default('gemini-2.5-flash'),
   GEMINI_API_KEY: z.string().optional().default(''),
-  SMS_PROVIDER: z.enum(['console', 'noop', 'msg91']).default('console'),
-  WHATSAPP_PROVIDER: z.enum(['console', 'noop', 'meta']).default('console'),
-  DISABLE_HMR: z
-    .enum(['true', 'false', '1', '0', ''])
-    .optional()
-    .default('false')
-    .transform((v) => v === 'true' || v === '1'),
-  RUN_MIGRATIONS_ON_BOOT: z
-    .enum(['true', 'false', '1', '0', ''])
-    .optional()
-    .default('false')
-    .transform((v) => v === 'true' || v === '1'),
+  SMS_PROVIDER: lowerPreprocess(z.enum(['console', 'noop', 'msg91']).default('console')),
+  WHATSAPP_PROVIDER: lowerPreprocess(z.enum(['console', 'noop', 'meta']).default('console')),
+  DISABLE_HMR: boolEnvSchema,
+  RUN_MIGRATIONS_ON_BOOT: boolEnvSchema,
 });
 
 export interface AppConfig {

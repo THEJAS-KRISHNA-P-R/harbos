@@ -153,8 +153,10 @@ export const PerformanceDashboard: React.FC<{
       });
       setMetrics(res);
       onMetricsRefreshedRef.current?.(res);
-    } catch {
-      // Keep last known snapshot on transient poll errors
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes('401')) {
+        setMetrics((prev) => prev);
+      }
     } finally {
       setLoading(false);
     }

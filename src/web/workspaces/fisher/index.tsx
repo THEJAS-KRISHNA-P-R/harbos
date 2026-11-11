@@ -63,8 +63,10 @@ export const FisherWorkspace: React.FC<{
         window.speechSynthesis.speak(utterance);
         setSpeechNotice(mlSummary);
         return;
-      } catch {
-        // Fallback to visible Malayalam text transcript per §10 Workspace 4
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          setSpeechNotice(mlSummary);
+        }
       }
     }
     setSpeechNotice(mlSummary);

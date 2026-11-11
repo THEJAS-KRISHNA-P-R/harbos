@@ -11,3 +11,4 @@ docs/screens/
 test-results/
 playwright-report/
 .data/
+bun.lock

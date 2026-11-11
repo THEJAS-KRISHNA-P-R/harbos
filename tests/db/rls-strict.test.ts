@@ -1,55 +1,23 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { PGliteAdapter } from '../../src/server/adapters/db-pglite.ts';
-import { PgPoolAdapter } from '../../src/server/adapters/db-pg.ts';
-import { runMigrationsAndSeed, DEMO_TENANT_ID } from '../../src/server/platform/seed.ts';
+import { DEMO_TENANT_ID } from '../../src/server/platform/seed.ts';
 import type { DbPort } from '../../src/server/ports/db.ts';
+import { bootstrapTestDatabase } from '../helpers/pg-bootstrap.ts';
 
 describe('Phase A1 & C2 — Strict Fail-Closed PostgreSQL Row-Level Security (010 & 011)', () => {
   let db: DbPort;
+  let closeDb: () => Promise<void>;
   let isPg = false;
 
   before(async () => {
-    const testUrl = process.env['DATABASE_URL_TEST'] || process.env['DATABASE_URL'];
-    const platformUrl =
-      process.env['DATABASE_PLATFORM_URL_TEST'] || process.env['DATABASE_PLATFORM_URL'];
-
-    if (testUrl && testUrl.startsWith('postgres')) {
-      isPg = true;
-      db = new PgPoolAdapter(testUrl);
-
-      // C2 guard: assert test is connected as harbour_app with rolsuper=false and rolbypassrls=false
-      const roleRes = await db.query<{
-        current_user: string;
-        rolsuper: boolean;
-        rolbypassrls: boolean;
-      }>(
-        `SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`
-      );
-      assert.deepEqual(roleRes.rows[0], {
-        current_user: 'harbour_app',
-        rolsuper: false,
-        rolbypassrls: false,
-      });
-
-      if (platformUrl && platformUrl.startsWith('postgres')) {
-        const platDb = new PgPoolAdapter(platformUrl);
-        try {
-          await runMigrationsAndSeed(platDb);
-        } catch {
-          // Already migrated and seeded by migrate.ts
-        } finally {
-          await platDb.close();
-        }
-      }
-    } else {
-      db = new PGliteAdapter('memory://');
-      await runMigrationsAndSeed(db);
-    }
+    const bootstrapped = await bootstrapTestDatabase();
+    db = bootstrapped.db;
+    isPg = bootstrapped.isPg;
+    closeDb = bootstrapped.close;
   });
 
   after(async () => {
-    await db.close?.();
+    await closeDb?.();
   });
 
   it('returns 0 rows on every tenant-scoped table when connected as harbour_app with no tenant context', async () => {

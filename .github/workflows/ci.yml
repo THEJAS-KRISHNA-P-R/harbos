@@ -29,57 +29,62 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Gitleaks Secret Scanner
-        uses: gitleaks/gitleaks-action@e851e44a4b2a647d33eb4341c6f4997c6c4c5cfb # v2.3.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Setup Node.js 22
         uses: actions/setup-node@1a4442cacd436585916779262731c5b162bc6ec7 # v4.2.0
         with:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
+      - name: Install dependencies (Lockfile Guard)
         run: npm ci
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Run Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@e851e44a4b2a647d33eb4341c6f4997c6c4c5cfb # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Production Dependency Vulnerability Audit
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Typecheck, Boundaries & WCAG Contrast
+      - name: Typecheck, Empty-Catch Gate, Boundaries & WCAG Contrast
         run: |
           npm run lint
+          ! grep -rnE "catch\s*(\([^)]*\))?\s*\{\s*(//[^\n]*)?\s*\}" tests scripts src
           npm run check:boundaries
           npm run check:contrast
 
-      - name: Run Migrations Against PostgreSQL 16 Service Container
+      - name: Run Migrations Against PostgreSQL 16 Service Container (Owner Role)
         env:
-          DATABASE_PLATFORM_URL: postgresql://postgres:postgrespassword@localhost:5432/harbouros_test
+          DATABASE_PLATFORM_URL: postgresql://postgres:postgrespassword@127.0.0.1:5432/harbouros_test
           HARBOUR_APP_PASSWORD: test_app_password_harbour_secret_2026
           HARBOUR_PLATFORM_PASSWORD: test_platform_password_harbour_secret_2026
         run: npm run migrate
 
-      - name: Run Unit, Database (RLS Strict) & Security Regression Suite
+      - name: Seed Demo Harbour Data (Platform Role, Zero DDL)
         env:
-          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@localhost:5432/harbouros_test
-          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@localhost:5432/harbouros_test
+          NODE_ENV: development
+          DEMO_MODE: "true"
+          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
+        run: npm run seed
+
+      - name: Run Unit, Database (RLS Strict) & Security Regression Suite (as harbour_app)
+        env:
+          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
+          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
           NODE_OPTIONS: --throw-deprecation
         run: npm test
 
-      - name: Verify RLS Fail-Closed & Immutability on PostgreSQL 16
+      - name: Verify RLS Fail-Closed & Immutability on PostgreSQL 16 (as harbour_app)
         env:
-          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@localhost:5432/harbouros_test
-          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@localhost:5432/harbouros_test
+          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
+          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
           NODE_OPTIONS: --throw-deprecation
         run: npx tsx scripts/verify-rls.ts
 
-      - name: Run Production 5-Var Boot & Fail-Closed Smoke Check
+      - name: Run Production 5-Var Boot & Fail-Closed Smoke Check (as harbour_app)
         env:
-          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@localhost:5432/harbouros_test
-          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@localhost:5432/harbouros_test
+          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
+          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
           NODE_OPTIONS: --throw-deprecation
         run: npx tsx scripts/smoke-prod.ts
 
@@ -88,11 +93,6 @@ jobs:
           npm run build
           npm run check:budget
 
-      - name: Playwright Visual & Responsive Smoke Suite
-        env:
-          PORT: 3000
-        run: npx playwright test
-
       - name: Verify Zero Hardcoded Demo Phones in Production Bundle
         run: |
           if grep -rn "+91944700" src/web dist; then
@@ -100,18 +100,46 @@ jobs:
             exit 1
           fi
 
+      - name: Install Playwright Chromium & Run Visual Smoke Suite
+        env:
+          PORT: 3000
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+
       - name: Verify Multi-Stage Production Docker Build & Container Health
         run: |
           docker build -t harbouros:ci .
-          docker run -d --name harbouros-test -p 8080:8080 \
+          docker run -d --name harbouros-test --network host \
             -e NODE_ENV=production \
             -e PORT=8080 \
-            -e DATABASE_URL=postgresql://harbour_app:test_app_password_harbour_secret_2026@host.docker.internal:5432/harbouros_test \
-            -e DATABASE_PLATFORM_URL=postgresql://harbour_platform:test_platform_password_harbour_secret_2026@host.docker.internal:5432/harbouros_test \
-            -e JWT_ACCESS_SECRET=c0a80101c0a80101c0a80101c0a80101c0a80101c0a80101c0a80101c0a80101 \
-            -e QR_HMAC_SECRET=d0b90202d0b90202d0b90202d0b90202d0b90202d0b90202d0b90202d0b90202 \
-            -e SMS_PROVIDER=CONSOLE \
+            -e DATABASE_URL=postgresql://harbour_app:test_app_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test \
+            -e DATABASE_PLATFORM_URL=postgresql://harbour_platform:test_platform_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test \
+            -e JWT_ACCESS_SECRET="$(openssl rand -hex 32)" \
+            -e QR_HMAC_SECRET="$(openssl rand -hex 32)" \
+            -e SMS_PROVIDER=msg91 \
             harbouros:ci
-          sleep 4
-          curl --fail http://localhost:8080/healthz || exit 1
-          docker stop harbouros-test
+          READY=0
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/readyz >/dev/null; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$READY" -ne 1 ]; then
+            echo "ERROR: Container failed to become ready within 30s. Container logs:"
+            docker logs harbouros-test
+            exit 1
+          fi
+          curl -sf http://127.0.0.1:8080/healthz
+          curl -sI http://127.0.0.1:8080/ | grep -i "frame-ancestors 'none'"
+          CONTAINER_UID="$(docker exec harbouros-test id -u | tr -d '[:space:]')"
+          if [ "$CONTAINER_UID" = "0" ]; then
+            echo "ERROR: Container is running as root (UID 0)"
+            exit 1
+          fi
+
+      - name: Cleanup Docker Test Container
+        if: always()
+        run: docker rm -f harbouros-test || true

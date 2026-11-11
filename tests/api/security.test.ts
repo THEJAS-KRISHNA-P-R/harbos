@@ -4,43 +4,24 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { PGliteAdapter } from '../../src/server/adapters/db-pglite.ts';
-import { runMigrationsAndSeed } from '../../src/server/platform/seed.ts';
 import { createApiApp } from '../../src/server/app.ts';
 import { signAccessJwt } from '../../src/server/platform/auth.ts';
 import { parseEnvConfig } from '../../src/server/config.ts';
-
-import { PgPoolAdapter } from '../../src/server/adapters/db-pg.ts';
 import type { DbPort } from '../../src/server/ports/db.ts';
+import { bootstrapTestDatabase } from '../helpers/pg-bootstrap.ts';
 
 describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant / Money)', () => {
   let db: DbPort;
   let platformDb: DbPort;
+  let closeDb: () => Promise<void>;
   let server: http.Server;
   let baseUrl = '';
 
   before(async () => {
-    const testUrl = process.env['DATABASE_URL_TEST'] || process.env['DATABASE_URL'];
-    const platformUrl =
-      process.env['DATABASE_PLATFORM_URL_TEST'] || process.env['DATABASE_PLATFORM_URL'];
-
-    if (testUrl && testUrl.startsWith('postgres')) {
-      db = new PgPoolAdapter(testUrl);
-      platformDb =
-        platformUrl && platformUrl.startsWith('postgres')
-          ? new PgPoolAdapter(platformUrl)
-          : db;
-      try {
-        await runMigrationsAndSeed(platformDb);
-      } catch {
-        // Already migrated and seeded
-      }
-    } else {
-      const memDb = new PGliteAdapter('memory://');
-      await runMigrationsAndSeed(memDb);
-      db = memDb;
-      platformDb = memDb;
-    }
+    const bootstrapped = await bootstrapTestDatabase();
+    db = bootstrapped.db;
+    platformDb = bootstrapped.platformDb;
+    closeDb = bootstrapped.close;
 
     const app = createApiApp(db, undefined, platformDb);
     await new Promise<void>((resolve) => {
@@ -58,10 +39,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
     if (server) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
-    await db?.close?.();
-    if (platformDb && platformDb !== db) {
-      await platformDb.close?.();
-    }
+    await closeDb?.();
   });
 
   it('T1 backdoor: POST /api/v1/auth/otp/verify rejects hardcoded 202100 when no OTP was requested', async () => {
@@ -134,11 +112,11 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
   });
 
   it('T6 & T7 OTP brute-force lockout & single-use replay protection', async () => {
-    // Request an OTP for +919447000102
+    const uniquePhone = `+919449${String(crypto.randomInt(100000, 999999))}`;
     await fetch(`${baseUrl}/api/v1/auth/otp/request`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phoneE164: '+919447000102' }),
+      body: JSON.stringify({ phoneE164: uniquePhone }),
     });
 
     // 6 wrong attempts must lock the challenge
@@ -147,7 +125,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       const r = await fetch(`${baseUrl}/api/v1/auth/otp/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneE164: '+919447000102', otpCode: '000000' }),
+        body: JSON.stringify({ phoneE164: uniquePhone, otpCode: '000000' }),
       });
       lastStatus = r.status;
     }
@@ -339,13 +317,56 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
   });
 
   it('T15 idempotency: same Idempotency-Key with same payload returns original; different payload returns 422', async () => {
+    const weigherToken = await signAccessJwt({
+      sub: 'USR-WEIGH-01',
+      tenantId: 'munambam-demo',
+      role: 'WEIGHING_OPERATOR',
+      fullName: 'Sajeev K.',
+      phoneE164: '+919447000001',
+    });
+    const inspectorToken = await signAccessJwt({
+      sub: 'USR-INSP-01',
+      tenantId: 'munambam-demo',
+      role: 'AUTHORIZED_INSPECTOR',
+      fullName: 'Dr. Lekshmi R.',
+      phoneE164: '+919447000005',
+    });
     const adminToken = await signAccessJwt({
       sub: 'USR-HADMIN-01',
       tenantId: 'munambam-demo',
       role: 'HARBOUR_ADMIN',
       fullName: 'Capt. Mathew Thomas',
-      phoneE164: '+919447000101',
+      phoneE164: '+919447000006',
     });
+
+    // Create a dedicated fresh lot for T15 so it never depends on shared seed lot state
+    const createLotRes = await fetch(`${baseUrl}/api/v1/lots`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${weigherToken}`,
+      },
+      body: JSON.stringify({
+        vesselId: 'VSL-03',
+        speciesId: 'SPC-03',
+        totalBoxes: 6,
+        netGrams: '180000',
+        coreTempC: 1.5,
+        weightSource: 'BLE_SCALE',
+      }),
+    });
+    assert.equal(createLotRes.status, 201);
+    const createdLot = (await createLotRes.json()) as { lotId: string };
+
+    const inspectRes = await fetch(`${baseUrl}/api/v1/lots/${createdLot.lotId}/inspect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${inspectorToken}`,
+      },
+      body: JSON.stringify({ grade: 'A_EXPORT', coreTempC: 1.5 }),
+    });
+    assert.equal(inspectRes.status, 200);
 
     const payload1 = {
       sessionId: 'SES-MUN-MORNING-01',
@@ -360,7 +381,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
     const testIdemKey = crypto.randomUUID();
 
     // Missing Idempotency-Key returns 400
-    const r0 = await fetch(`${baseUrl}/api/v1/lots/LOT-2026-003/allocate`, {
+    const r0 = await fetch(`${baseUrl}/api/v1/lots/${createdLot.lotId}/allocate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -370,7 +391,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
     });
     assert.equal(r0.status, 400);
 
-    const r1 = await fetch(`${baseUrl}/api/v1/lots/LOT-2026-003/allocate`, {
+    const r1 = await fetch(`${baseUrl}/api/v1/lots/${createdLot.lotId}/allocate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -383,7 +404,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
     const b1 = (await r1.json()) as { journalId: string };
 
     // Replay with identical payload -> same journalId
-    const r2 = await fetch(`${baseUrl}/api/v1/lots/LOT-2026-003/allocate`, {
+    const r2 = await fetch(`${baseUrl}/api/v1/lots/${createdLot.lotId}/allocate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -397,7 +418,7 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
     assert.equal(b2.journalId, b1.journalId);
 
     // Replay with different payload -> 422 IDEMPOTENCY_KEY_REUSED
-    const r3 = await fetch(`${baseUrl}/api/v1/lots/LOT-2026-003/allocate`, {
+    const r3 = await fetch(`${baseUrl}/api/v1/lots/${createdLot.lotId}/allocate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -500,16 +521,18 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       })
     );
 
-    // SMS_PROVIDER=console in production
-    assert.throws(() =>
-      parseEnvConfig({
-        NODE_ENV: 'production',
-        DATABASE_URL: 'postgres://user:pass@localhost:5432/harbouros',
-        DATABASE_PLATFORM_URL: 'postgres://platform:pass@localhost:5432/harbouros',
-        JWT_ACCESS_SECRET: validSecretA,
-        QR_HMAC_SECRET: validSecretB,
-        SMS_PROVIDER: 'console',
-      })
+    // SMS_PROVIDER=console (and uppercase CONSOLE) in production fails with intended forbidden message
+    assert.throws(
+      () =>
+        parseEnvConfig({
+          NODE_ENV: 'production',
+          DATABASE_URL: 'postgres://user:pass@localhost:5432/harbouros',
+          DATABASE_PLATFORM_URL: 'postgres://platform:pass@localhost:5432/harbouros',
+          JWT_ACCESS_SECRET: validSecretA,
+          QR_HMAC_SECRET: validSecretB,
+          SMS_PROVIDER: 'CONSOLE',
+        }),
+      /SMS_PROVIDER=console is forbidden when NODE_ENV=production/
     );
 
     // Boots cleanly with ONLY the 5 required environment variables

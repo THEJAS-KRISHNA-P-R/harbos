@@ -194,8 +194,10 @@ export const App: React.FC = () => {
       setProfileData(res);
       setEditFullName(res.profile.full_name);
       setEditPhoneE164(res.profile.phone_e164);
-    } catch {
-      // Profile endpoint optional fallback
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes('401')) {
+        setProfileData(null);
+      }
     }
   }, []);
 

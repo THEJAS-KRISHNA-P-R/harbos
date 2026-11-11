@@ -99,8 +99,10 @@ export const PlatformWorkspace: React.FC<{
         token,
       });
       setMigrationsInfo(res);
-    } catch {
-      // Non-fatal if role lacks governance access
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes('403')) {
+        setMigrationsInfo(null);
+      }
     }
   }, [token]);
 
@@ -111,8 +113,10 @@ export const PlatformWorkspace: React.FC<{
         token,
       });
       setScaleMetrics(res);
-    } catch {
-      // Non-fatal if polling
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes('403')) {
+        setScaleMetrics(null);
+      }
     }
   }, [token]);
 

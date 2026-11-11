@@ -89,12 +89,22 @@ export async function verifySqlMigrations(
   return { verifiedCount: records.length, migrations: records };
 }
 
+export const runMigrations = runSqlMigrations;
+
+export async function seedDemo(db: DbPort): Promise<void> {
+  await seedDemoData(db);
+}
+
+/**
+ * Thin wrapper ONLY for PGlite dev/test where a single connection owns the schema and data.
+ * On real PostgreSQL, migrations run via `runMigrations` (owner role) and seeding runs via `seedDemo` (`harbour_platform`).
+ */
 export async function runMigrationsAndSeed(db: DbPort): Promise<void> {
-  await runSqlMigrations(db);
+  await runMigrations(db);
   if (config.NODE_ENV === 'production' && !config.DEMO_MODE) {
     return;
   }
-  await seedDemoData(db);
+  await seedDemo(db);
 }
 
 export async function seedDemoData(db: DbPort): Promise<void> {
