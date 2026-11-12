@@ -535,7 +535,21 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       /SMS_PROVIDER=console is forbidden when NODE_ENV=production/
     );
 
-    // Boots cleanly with ONLY the 5 required environment variables
+    // SMS_PROVIDER=msg91 in production without MSG91 credentials fails
+    assert.throws(
+      () =>
+        parseEnvConfig({
+          NODE_ENV: 'production',
+          DATABASE_URL: 'postgres://harbour_app:secret@localhost:5432/harbour_db',
+          DATABASE_PLATFORM_URL: 'postgres://harbour_platform:secret@localhost:5432/harbour_db',
+          JWT_ACCESS_SECRET: validSecretA,
+          QR_HMAC_SECRET: validSecretB,
+          SMS_PROVIDER: 'msg91',
+        }),
+      /MSG91_AUTH_KEY, MSG91_SENDER_ID, and MSG91_OTP_TEMPLATE_ID are required/
+    );
+
+    // Boots cleanly in production with required variables + MSG91 DLT configuration
     const cleanProdConfig = parseEnvConfig({
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://harbour_app:secret@localhost:5432/harbour_db',
@@ -543,6 +557,9 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
       JWT_ACCESS_SECRET: validSecretA,
       QR_HMAC_SECRET: validSecretB,
       SMS_PROVIDER: 'msg91',
+      MSG91_AUTH_KEY: validSecretA.slice(0, 24),
+      MSG91_SENDER_ID: 'HRBROS',
+      MSG91_OTP_TEMPLATE_ID: '1207160000000000001',
     });
     assert.equal(cleanProdConfig.NODE_ENV, 'production');
     assert.equal(cleanProdConfig.OTP_DEV_ECHO, false);

@@ -11,10 +11,16 @@ import { logger } from '../src/server/platform/logger.ts';
 const DBA_ROLE_PROVISION_SQL = `
 -- Run as PostgreSQL superuser / cluster admin before running migrations:
 CREATE ROLE harbour_app LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD '<HARBOUR_APP_PASSWORD>';
+-- Option A (self-hosted PostgreSQL with BYPASSRLS):
 CREATE ROLE harbour_platform LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS PASSWORD '<HARBOUR_PLATFORM_PASSWORD>';
+-- Option B (managed PostgreSQL / Cloud SQL where BYPASSRLS is restricted; set RLS_PLATFORM_MODE=owner):
+CREATE ROLE harbour_platform LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD '<HARBOUR_PLATFORM_PASSWORD>';
 `.trim();
 
-async function ensurePostgresRoles(db: PgPoolAdapter): Promise<void> {
+async function ensurePostgresRoles(
+  db: PgPoolAdapter,
+  rlsPlatformMode: 'bypassrls' | 'owner'
+): Promise<void> {
   const existing = await db.query<{ rolname: string }>(
     `SELECT rolname FROM pg_roles WHERE rolname IN ('harbour_app', 'harbour_platform')`
   );
@@ -46,16 +52,46 @@ async function ensurePostgresRoles(db: PgPoolAdapter): Promise<void> {
     logger.info('Created database role harbour_app (NOBYPASSRLS)');
   }
   if (missingPlatform) {
-    await db.query(
-      `CREATE ROLE harbour_platform LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS`
-    );
-    logger.info('Created database role harbour_platform (BYPASSRLS)');
+    const bypassAttr = rlsPlatformMode === 'bypassrls' ? 'BYPASSRLS' : 'NOBYPASSRLS';
+    try {
+      await db.query(
+        `CREATE ROLE harbour_platform LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE ${bypassAttr}`
+      );
+      logger.info(`Created database role harbour_platform (${bypassAttr})`);
+    } catch {
+      await db.query(
+        `CREATE ROLE harbour_platform LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`
+      );
+      logger.info('Created database role harbour_platform (NOBYPASSRLS fallback)');
+    }
   }
+}
+
+async function applyOwnerRlsMode(db: PgPoolAdapter): Promise<void> {
+  const schemas = ['core', 'harbour', 'auction', 'ledger', 'sync'];
+  for (const s of schemas) {
+    await db.query(`GRANT ALL ON SCHEMA ${s} TO harbour_platform`);
+  }
+  const tables = await db.query<{ schemaname: string; tablename: string }>(
+    `SELECT schemaname, tablename
+     FROM pg_tables
+     WHERE schemaname IN ('core', 'harbour', 'auction', 'ledger', 'sync')`
+  );
+  for (const t of tables.rows) {
+    const fq = `${t.schemaname}.${t.tablename}`;
+    await db.query(`ALTER TABLE ${fq} OWNER TO harbour_platform`);
+    await db.query(`ALTER TABLE ${fq} NO FORCE ROW LEVEL SECURITY`);
+  }
+  logger.info('Configured RLS_PLATFORM_MODE=owner (table ownership transferred to harbour_platform, NO FORCE RLS)');
 }
 
 async function main(): Promise<void> {
   const verifyOnly = process.argv.includes('--verify');
   const withSeed = process.argv.includes('--seed');
+  const rlsPlatformMode =
+    (process.env.RLS_PLATFORM_MODE as 'bypassrls' | 'owner' | undefined) ??
+    config.RLS_PLATFORM_MODE ??
+    'bypassrls';
   const dbUrl =
     process.env.DATABASE_PLATFORM_URL ||
     process.env.DATABASE_URL ||
@@ -74,7 +110,7 @@ async function main(): Promise<void> {
       });
     } else {
       if (isPg && db instanceof PgPoolAdapter) {
-        await ensurePostgresRoles(db);
+        await ensurePostgresRoles(db, rlsPlatformMode);
       }
 
       if (withSeed) {
@@ -88,13 +124,27 @@ async function main(): Promise<void> {
         });
       }
 
-      if (isPg) {
+      if (isPg && db instanceof PgPoolAdapter) {
         await db.query(
           `ALTER ROLE harbour_app WITH LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`
         );
-        await db.query(
-          `ALTER ROLE harbour_platform WITH LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS`
-        );
+        if (rlsPlatformMode === 'owner') {
+          await db.query(
+            `ALTER ROLE harbour_platform WITH LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`
+          );
+          await applyOwnerRlsMode(db);
+        } else {
+          try {
+            await db.query(
+              `ALTER ROLE harbour_platform WITH LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS`
+            );
+          } catch {
+            logger.warn(
+              'BYPASSRLS unavailable on managed PostgreSQL; falling back to RLS_PLATFORM_MODE=owner'
+            );
+            await applyOwnerRlsMode(db);
+          }
+        }
 
         if (process.env.HARBOUR_APP_PASSWORD) {
           const safePass = process.env.HARBOUR_APP_PASSWORD.replace(/'/g, "''");

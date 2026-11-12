@@ -5,6 +5,7 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'OTP_LOCKED'
+  | 'RATE_LIMIT_EXCEEDED'
   | 'INVALID_SUPERVISOR_PIN'
   | 'IDEMPOTENCY_KEY_REUSED'
   | 'LOT_REJECTED_UNFIT_S21'
@@ -23,13 +24,13 @@ export type ErrorCode =
 export class AppError extends Error {
   public readonly code: ErrorCode;
   public readonly statusCode: number;
-  public readonly details?: Record<string, unknown>;
+  public readonly details?: Record<string, unknown> | undefined;
 
   constructor(
     code: ErrorCode,
     message: string,
     statusCode = 400,
-    details?: Record<string, unknown>
+    details?: Record<string, unknown> | undefined
   ) {
     super(message);
     this.name = 'AppError';

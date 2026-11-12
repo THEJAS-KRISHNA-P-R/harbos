@@ -20,7 +20,9 @@ const RawEnvSchema = z.object({
   AISTUDIO_PREVIEW: boolEnvSchema,
   DATABASE_URL: z.string().optional().default(''),
   DATABASE_PLATFORM_URL: z.string().optional().default(''),
+  DATABASE_READ_URL: z.string().optional().default(''),
   PG_CONNECTION_STRING: z.string().optional().default(''),
+  PG_POOL_MAX: z.coerce.number().int().positive().default(10),
   PGLITE_DATA_DIR: z.string().default('./.data/pglite'),
   JWT_ACCESS_SECRET: z.string().optional().default(''),
   JWT_REFRESH_SECRET: z.string().optional().default(''),
@@ -29,11 +31,22 @@ const RawEnvSchema = z.object({
   TRUST_PROXY: z.string().optional().default('false'),
   OTP_DEV_ECHO: boolEnvSchema,
   DEMO_MODE: boolEnvSchema,
+  AUTH_CACHE_TTL_MS: z.coerce.number().int().nonnegative().default(15000),
+  RLS_PLATFORM_MODE: lowerPreprocess(
+    z.enum(['bypassrls', 'owner']).default('bypassrls')
+  ),
   LLM_PROVIDER: lowerPreprocess(z.enum(['none', 'gemini']).default('none')),
   LLM_MODEL_VISION: z.string().default('gemini-2.5-flash'),
   GEMINI_API_KEY: z.string().optional().default(''),
   SMS_PROVIDER: lowerPreprocess(z.enum(['console', 'noop', 'msg91']).default('console')),
+  MSG91_AUTH_KEY: z.string().optional().default(''),
+  MSG91_SENDER_ID: z.string().optional().default(''),
+  MSG91_OTP_TEMPLATE_ID: z.string().optional().default(''),
+  MSG91_BASE_URL: z.string().optional().default('https://control.msg91.com'),
+  SMS_DAILY_CAP: z.coerce.number().int().positive().default(2000),
   WHATSAPP_PROVIDER: lowerPreprocess(z.enum(['console', 'noop', 'meta']).default('console')),
+  ANCHOR_SINK_DIR: z.string().optional().default(''),
+  ANCHOR_WEBHOOK_URL: z.string().optional().default(''),
   DISABLE_HMR: boolEnvSchema,
   RUN_MIGRATIONS_ON_BOOT: boolEnvSchema,
 });
@@ -44,6 +57,8 @@ export interface AppConfig {
   readonly AISTUDIO_PREVIEW: boolean;
   readonly DATABASE_URL: string;
   readonly DATABASE_PLATFORM_URL: string;
+  readonly DATABASE_READ_URL: string;
+  readonly PG_POOL_MAX: number;
   readonly PGLITE_DATA_DIR: string;
   readonly JWT_ACCESS_SECRET: string;
   readonly JWT_REFRESH_SECRET: string;
@@ -51,11 +66,20 @@ export interface AppConfig {
   readonly TRUST_PROXY: string;
   readonly OTP_DEV_ECHO: boolean;
   readonly DEMO_MODE: boolean;
+  readonly AUTH_CACHE_TTL_MS: number;
+  readonly RLS_PLATFORM_MODE: 'bypassrls' | 'owner';
   readonly LLM_PROVIDER: 'none' | 'gemini';
   readonly LLM_MODEL_VISION: string;
   readonly GEMINI_API_KEY: string;
   readonly SMS_PROVIDER: 'console' | 'noop' | 'msg91';
+  readonly MSG91_AUTH_KEY: string;
+  readonly MSG91_SENDER_ID: string;
+  readonly MSG91_OTP_TEMPLATE_ID: string;
+  readonly MSG91_BASE_URL: string;
+  readonly SMS_DAILY_CAP: number;
   readonly WHATSAPP_PROVIDER: 'console' | 'noop' | 'meta';
+  readonly ANCHOR_SINK_DIR: string;
+  readonly ANCHOR_WEBHOOK_URL: string;
   readonly DISABLE_HMR: boolean;
   readonly RUN_MIGRATIONS_ON_BOOT: boolean;
 }
@@ -67,9 +91,13 @@ export function parseEnvConfig(rawEnv: Record<string, string | undefined>): AppC
   const dbUrl = (parsed.DATABASE_URL || parsed.PG_CONNECTION_STRING).trim();
   const rawPlatformUrl = parsed.DATABASE_PLATFORM_URL.trim();
   const dbPlatformUrl = (rawPlatformUrl || dbUrl).trim();
+  const dbReadUrl = parsed.DATABASE_READ_URL.trim();
   const rawAccess = (parsed.JWT_ACCESS_SECRET || parsed.JWT_HS256_SECRET).trim();
   const rawRefresh = parsed.JWT_REFRESH_SECRET.trim();
   const rawQr = parsed.QR_HMAC_SECRET.trim();
+  const msg91AuthKey = parsed.MSG91_AUTH_KEY.trim();
+  const msg91SenderId = parsed.MSG91_SENDER_ID.trim();
+  const msg91TemplateId = parsed.MSG91_OTP_TEMPLATE_ID.trim();
 
   if (parsed.NODE_ENV === 'production') {
     if (parsed.AISTUDIO_PREVIEW) {
@@ -105,6 +133,14 @@ export function parseEnvConfig(rawEnv: Record<string, string | undefined>): AppC
     if (parsed.SMS_PROVIDER === 'console' || parsed.SMS_PROVIDER === 'noop') {
       throw new Error(
         `FATAL [config]: SMS_PROVIDER=${parsed.SMS_PROVIDER} is forbidden when NODE_ENV=production.`
+      );
+    }
+    if (
+      parsed.SMS_PROVIDER === 'msg91' &&
+      (!msg91AuthKey || !msg91SenderId || !msg91TemplateId)
+    ) {
+      throw new Error(
+        'FATAL [config]: MSG91_AUTH_KEY, MSG91_SENDER_ID, and MSG91_OTP_TEMPLATE_ID are required when NODE_ENV=production and SMS_PROVIDER=msg91.'
       );
     }
     if (Buffer.byteLength(rawQr, 'utf8') < 32) {
@@ -144,6 +180,8 @@ export function parseEnvConfig(rawEnv: Record<string, string | undefined>): AppC
     AISTUDIO_PREVIEW: parsed.NODE_ENV === 'production' ? false : parsed.AISTUDIO_PREVIEW,
     DATABASE_URL: dbUrl,
     DATABASE_PLATFORM_URL: dbPlatformUrl,
+    DATABASE_READ_URL: dbReadUrl,
+    PG_POOL_MAX: parsed.PG_POOL_MAX,
     PGLITE_DATA_DIR: parsed.PGLITE_DATA_DIR,
     JWT_ACCESS_SECRET: parsed.NODE_ENV === 'production' ? rawAccess : ensureSecret(rawAccess),
     JWT_REFRESH_SECRET:
@@ -154,11 +192,20 @@ export function parseEnvConfig(rawEnv: Record<string, string | undefined>): AppC
     TRUST_PROXY: parsed.TRUST_PROXY,
     OTP_DEV_ECHO: parsed.NODE_ENV === 'production' ? false : parsed.OTP_DEV_ECHO,
     DEMO_MODE: parsed.NODE_ENV === 'production' ? false : parsed.DEMO_MODE,
+    AUTH_CACHE_TTL_MS: parsed.AUTH_CACHE_TTL_MS,
+    RLS_PLATFORM_MODE: parsed.RLS_PLATFORM_MODE,
     LLM_PROVIDER: parsed.LLM_PROVIDER,
     LLM_MODEL_VISION: parsed.LLM_MODEL_VISION,
     GEMINI_API_KEY: parsed.GEMINI_API_KEY,
     SMS_PROVIDER: parsed.SMS_PROVIDER,
+    MSG91_AUTH_KEY: msg91AuthKey,
+    MSG91_SENDER_ID: msg91SenderId || 'HRBROS',
+    MSG91_OTP_TEMPLATE_ID: msg91TemplateId || '1207168000000000001',
+    MSG91_BASE_URL: parsed.MSG91_BASE_URL.trim() || 'https://control.msg91.com',
+    SMS_DAILY_CAP: parsed.SMS_DAILY_CAP,
     WHATSAPP_PROVIDER: parsed.WHATSAPP_PROVIDER,
+    ANCHOR_SINK_DIR: parsed.ANCHOR_SINK_DIR.trim(),
+    ANCHOR_WEBHOOK_URL: parsed.ANCHOR_WEBHOOK_URL.trim(),
     DISABLE_HMR: parsed.DISABLE_HMR,
     RUN_MIGRATIONS_ON_BOOT: parsed.RUN_MIGRATIONS_ON_BOOT,
   };

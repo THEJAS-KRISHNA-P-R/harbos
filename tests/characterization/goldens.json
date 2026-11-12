@@ -1,0 +1,2350 @@
+{
+  "GET /healthz :: UNAUTH": {
+    "status": 200,
+    "topKeys": [
+      "status"
+    ],
+    "keyTypes": {
+      "status": "string"
+    }
+  },
+  "GET /readyz :: UNAUTH": {
+    "status": 200,
+    "topKeys": [
+      "database",
+      "service",
+      "status",
+      "timestamp"
+    ],
+    "keyTypes": {
+      "database": "object",
+      "service": "string",
+      "status": "string",
+      "timestamp": "string"
+    }
+  },
+  "GET /api/health :: UNAUTH": {
+    "status": 200,
+    "topKeys": [
+      "database",
+      "service",
+      "status",
+      "timestamp"
+    ],
+    "keyTypes": {
+      "database": "object",
+      "service": "string",
+      "status": "string",
+      "timestamp": "string"
+    }
+  },
+  "POST /api/v1/auth/otp/request :: UNAUTH": {
+    "status": 200,
+    "topKeys": [
+      "message",
+      "status"
+    ],
+    "keyTypes": {
+      "message": "string",
+      "status": "string"
+    }
+  },
+  "POST /api/v1/auth/otp/verify (invalid) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/auth/refresh (missing cookie) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/auth/logout :: UNAUTH": {
+    "status": 200,
+    "topKeys": [
+      "loggedOut"
+    ],
+    "keyTypes": {
+      "loggedOut": "boolean"
+    }
+  },
+  "GET /api/v1/me :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/me :: WEIGHING_OPERATOR": {
+    "status": 200,
+    "topKeys": [
+      "user"
+    ],
+    "keyTypes": {
+      "user": "object"
+    }
+  },
+  "GET /api/v1/me :: LICENSED_AUCTIONEER": {
+    "status": 200,
+    "topKeys": [
+      "user"
+    ],
+    "keyTypes": {
+      "user": "object"
+    }
+  },
+  "GET /api/v1/me :: WHOLESALE_BUYER": {
+    "status": 200,
+    "topKeys": [
+      "user"
+    ],
+    "keyTypes": {
+      "user": "object"
+    }
+  },
+  "GET /api/v1/me :: FISHERMAN_BOAT_OWNER": {
+    "status": 200,
+    "topKeys": [
+      "user"
+    ],
+    "keyTypes": {
+      "user": "object"
+    }
+  },
+  "GET /api/v1/me :: AUTHORIZED_INSPECTOR": {
+    "status": 200,
+    "topKeys": [
+      "user"
+    ],
+    "keyTypes": {
+      "user": "object"
+    }
+  },
+  "GET /api/v1/me :: HARBOUR_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "user"
+    ],
+    "keyTypes": {
+      "user": "object"
+    }
+  },
+  "GET /api/v1/me :: ACCOUNTANT": {
+    "status": 200,
+    "topKeys": [
+      "user"
+    ],
+    "keyTypes": {
+      "user": "object"
+    }
+  },
+  "GET /api/v1/me :: SUPER_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "user"
+    ],
+    "keyTypes": {
+      "user": "object"
+    }
+  },
+  "GET /api/v1/auth/profile :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/auth/profile :: WEIGHING_OPERATOR": {
+    "status": 200,
+    "topKeys": [
+      "claims",
+      "profile",
+      "recentAudit"
+    ],
+    "keyTypes": {
+      "claims": "object",
+      "profile": "object",
+      "recentAudit": "array"
+    }
+  },
+  "GET /api/v1/auth/profile :: LICENSED_AUCTIONEER": {
+    "status": 200,
+    "topKeys": [
+      "claims",
+      "profile",
+      "recentAudit"
+    ],
+    "keyTypes": {
+      "claims": "object",
+      "profile": "object",
+      "recentAudit": "array"
+    }
+  },
+  "GET /api/v1/auth/profile :: WHOLESALE_BUYER": {
+    "status": 200,
+    "topKeys": [
+      "claims",
+      "profile",
+      "recentAudit"
+    ],
+    "keyTypes": {
+      "claims": "object",
+      "profile": "object",
+      "recentAudit": "array"
+    }
+  },
+  "GET /api/v1/auth/profile :: FISHERMAN_BOAT_OWNER": {
+    "status": 200,
+    "topKeys": [
+      "claims",
+      "profile",
+      "recentAudit"
+    ],
+    "keyTypes": {
+      "claims": "object",
+      "profile": "object",
+      "recentAudit": "array"
+    }
+  },
+  "GET /api/v1/auth/profile :: AUTHORIZED_INSPECTOR": {
+    "status": 200,
+    "topKeys": [
+      "claims",
+      "profile",
+      "recentAudit"
+    ],
+    "keyTypes": {
+      "claims": "object",
+      "profile": "object",
+      "recentAudit": "array"
+    }
+  },
+  "GET /api/v1/auth/profile :: HARBOUR_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "claims",
+      "profile",
+      "recentAudit"
+    ],
+    "keyTypes": {
+      "claims": "object",
+      "profile": "object",
+      "recentAudit": "array"
+    }
+  },
+  "GET /api/v1/auth/profile :: ACCOUNTANT": {
+    "status": 200,
+    "topKeys": [
+      "claims",
+      "profile",
+      "recentAudit"
+    ],
+    "keyTypes": {
+      "claims": "object",
+      "profile": "object",
+      "recentAudit": "array"
+    }
+  },
+  "GET /api/v1/auth/profile :: SUPER_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "claims",
+      "profile",
+      "recentAudit"
+    ],
+    "keyTypes": {
+      "claims": "object",
+      "profile": "object",
+      "recentAudit": "array"
+    }
+  },
+  "GET /api/v1/bootstrap :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/bootstrap :: WEIGHING_OPERATOR": {
+    "status": 200,
+    "topKeys": [
+      "accounts",
+      "allTenants",
+      "allocations",
+      "auditLogs",
+      "auditSqlLruCache",
+      "buyers",
+      "entries",
+      "fishermen",
+      "journals",
+      "ledgerVerification",
+      "licences",
+      "lots",
+      "outboxEvents",
+      "payoutBatches",
+      "policies",
+      "reversals",
+      "sessions",
+      "societies",
+      "species",
+      "tenant",
+      "users",
+      "vessels"
+    ],
+    "keyTypes": {
+      "accounts": "array",
+      "allTenants": "array",
+      "allocations": "array",
+      "auditLogs": "array",
+      "auditSqlLruCache": "object",
+      "buyers": "array",
+      "entries": "array",
+      "fishermen": "array",
+      "journals": "array",
+      "ledgerVerification": "object",
+      "licences": "array",
+      "lots": "array",
+      "outboxEvents": "array",
+      "payoutBatches": "array",
+      "policies": "array",
+      "reversals": "array",
+      "sessions": "array",
+      "societies": "array",
+      "species": "array",
+      "tenant": "object",
+      "users": "array",
+      "vessels": "array"
+    }
+  },
+  "GET /api/v1/bootstrap :: LICENSED_AUCTIONEER": {
+    "status": 200,
+    "topKeys": [
+      "accounts",
+      "allTenants",
+      "allocations",
+      "auditLogs",
+      "auditSqlLruCache",
+      "buyers",
+      "entries",
+      "fishermen",
+      "journals",
+      "ledgerVerification",
+      "licences",
+      "lots",
+      "outboxEvents",
+      "payoutBatches",
+      "policies",
+      "reversals",
+      "sessions",
+      "societies",
+      "species",
+      "tenant",
+      "users",
+      "vessels"
+    ],
+    "keyTypes": {
+      "accounts": "array",
+      "allTenants": "array",
+      "allocations": "array",
+      "auditLogs": "array",
+      "auditSqlLruCache": "object",
+      "buyers": "array",
+      "entries": "array",
+      "fishermen": "array",
+      "journals": "array",
+      "ledgerVerification": "object",
+      "licences": "array",
+      "lots": "array",
+      "outboxEvents": "array",
+      "payoutBatches": "array",
+      "policies": "array",
+      "reversals": "array",
+      "sessions": "array",
+      "societies": "array",
+      "species": "array",
+      "tenant": "object",
+      "users": "array",
+      "vessels": "array"
+    }
+  },
+  "GET /api/v1/bootstrap :: WHOLESALE_BUYER": {
+    "status": 200,
+    "topKeys": [
+      "accounts",
+      "allTenants",
+      "allocations",
+      "auditLogs",
+      "auditSqlLruCache",
+      "buyers",
+      "entries",
+      "fishermen",
+      "journals",
+      "ledgerVerification",
+      "licences",
+      "lots",
+      "outboxEvents",
+      "payoutBatches",
+      "policies",
+      "reversals",
+      "sessions",
+      "societies",
+      "species",
+      "tenant",
+      "users",
+      "vessels"
+    ],
+    "keyTypes": {
+      "accounts": "array",
+      "allTenants": "array",
+      "allocations": "array",
+      "auditLogs": "array",
+      "auditSqlLruCache": "object",
+      "buyers": "array",
+      "entries": "array",
+      "fishermen": "array",
+      "journals": "array",
+      "ledgerVerification": "object",
+      "licences": "array",
+      "lots": "array",
+      "outboxEvents": "array",
+      "payoutBatches": "array",
+      "policies": "array",
+      "reversals": "array",
+      "sessions": "array",
+      "societies": "array",
+      "species": "array",
+      "tenant": "object",
+      "users": "array",
+      "vessels": "array"
+    }
+  },
+  "GET /api/v1/bootstrap :: FISHERMAN_BOAT_OWNER": {
+    "status": 200,
+    "topKeys": [
+      "accounts",
+      "allTenants",
+      "allocations",
+      "auditLogs",
+      "auditSqlLruCache",
+      "buyers",
+      "entries",
+      "fishermen",
+      "journals",
+      "ledgerVerification",
+      "licences",
+      "lots",
+      "outboxEvents",
+      "payoutBatches",
+      "policies",
+      "reversals",
+      "sessions",
+      "societies",
+      "species",
+      "tenant",
+      "users",
+      "vessels"
+    ],
+    "keyTypes": {
+      "accounts": "array",
+      "allTenants": "array",
+      "allocations": "array",
+      "auditLogs": "array",
+      "auditSqlLruCache": "object",
+      "buyers": "array",
+      "entries": "array",
+      "fishermen": "array",
+      "journals": "array",
+      "ledgerVerification": "object",
+      "licences": "array",
+      "lots": "array",
+      "outboxEvents": "array",
+      "payoutBatches": "array",
+      "policies": "array",
+      "reversals": "array",
+      "sessions": "array",
+      "societies": "array",
+      "species": "array",
+      "tenant": "object",
+      "users": "array",
+      "vessels": "array"
+    }
+  },
+  "GET /api/v1/bootstrap :: AUTHORIZED_INSPECTOR": {
+    "status": 200,
+    "topKeys": [
+      "accounts",
+      "allTenants",
+      "allocations",
+      "auditLogs",
+      "auditSqlLruCache",
+      "buyers",
+      "entries",
+      "fishermen",
+      "journals",
+      "ledgerVerification",
+      "licences",
+      "lots",
+      "outboxEvents",
+      "payoutBatches",
+      "policies",
+      "reversals",
+      "sessions",
+      "societies",
+      "species",
+      "tenant",
+      "users",
+      "vessels"
+    ],
+    "keyTypes": {
+      "accounts": "array",
+      "allTenants": "array",
+      "allocations": "array",
+      "auditLogs": "array",
+      "auditSqlLruCache": "object",
+      "buyers": "array",
+      "entries": "array",
+      "fishermen": "array",
+      "journals": "array",
+      "ledgerVerification": "object",
+      "licences": "array",
+      "lots": "array",
+      "outboxEvents": "array",
+      "payoutBatches": "array",
+      "policies": "array",
+      "reversals": "array",
+      "sessions": "array",
+      "societies": "array",
+      "species": "array",
+      "tenant": "object",
+      "users": "array",
+      "vessels": "array"
+    }
+  },
+  "GET /api/v1/bootstrap :: HARBOUR_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "accounts",
+      "allTenants",
+      "allocations",
+      "auditLogs",
+      "auditSqlLruCache",
+      "buyers",
+      "entries",
+      "fishermen",
+      "journals",
+      "ledgerVerification",
+      "licences",
+      "lots",
+      "outboxEvents",
+      "payoutBatches",
+      "policies",
+      "reversals",
+      "sessions",
+      "societies",
+      "species",
+      "tenant",
+      "users",
+      "vessels"
+    ],
+    "keyTypes": {
+      "accounts": "array",
+      "allTenants": "array",
+      "allocations": "array",
+      "auditLogs": "array",
+      "auditSqlLruCache": "object",
+      "buyers": "array",
+      "entries": "array",
+      "fishermen": "array",
+      "journals": "array",
+      "ledgerVerification": "object",
+      "licences": "array",
+      "lots": "array",
+      "outboxEvents": "array",
+      "payoutBatches": "array",
+      "policies": "array",
+      "reversals": "array",
+      "sessions": "array",
+      "societies": "array",
+      "species": "array",
+      "tenant": "object",
+      "users": "array",
+      "vessels": "array"
+    }
+  },
+  "GET /api/v1/bootstrap :: ACCOUNTANT": {
+    "status": 200,
+    "topKeys": [
+      "accounts",
+      "allTenants",
+      "allocations",
+      "auditLogs",
+      "auditSqlLruCache",
+      "buyers",
+      "entries",
+      "fishermen",
+      "journals",
+      "ledgerVerification",
+      "licences",
+      "lots",
+      "outboxEvents",
+      "payoutBatches",
+      "policies",
+      "reversals",
+      "sessions",
+      "societies",
+      "species",
+      "tenant",
+      "users",
+      "vessels"
+    ],
+    "keyTypes": {
+      "accounts": "array",
+      "allTenants": "array",
+      "allocations": "array",
+      "auditLogs": "array",
+      "auditSqlLruCache": "object",
+      "buyers": "array",
+      "entries": "array",
+      "fishermen": "array",
+      "journals": "array",
+      "ledgerVerification": "object",
+      "licences": "array",
+      "lots": "array",
+      "outboxEvents": "array",
+      "payoutBatches": "array",
+      "policies": "array",
+      "reversals": "array",
+      "sessions": "array",
+      "societies": "array",
+      "species": "array",
+      "tenant": "object",
+      "users": "array",
+      "vessels": "array"
+    }
+  },
+  "GET /api/v1/bootstrap :: SUPER_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "accounts",
+      "allTenants",
+      "allocations",
+      "auditLogs",
+      "auditSqlLruCache",
+      "buyers",
+      "entries",
+      "fishermen",
+      "journals",
+      "ledgerVerification",
+      "licences",
+      "lots",
+      "outboxEvents",
+      "payoutBatches",
+      "policies",
+      "reversals",
+      "sessions",
+      "societies",
+      "species",
+      "tenant",
+      "users",
+      "vessels"
+    ],
+    "keyTypes": {
+      "accounts": "array",
+      "allTenants": "array",
+      "allocations": "array",
+      "auditLogs": "array",
+      "auditSqlLruCache": "object",
+      "buyers": "array",
+      "entries": "array",
+      "fishermen": "array",
+      "journals": "array",
+      "ledgerVerification": "object",
+      "licences": "array",
+      "lots": "array",
+      "outboxEvents": "array",
+      "payoutBatches": "array",
+      "policies": "array",
+      "reversals": "array",
+      "sessions": "array",
+      "societies": "array",
+      "species": "array",
+      "tenant": "object",
+      "users": "array",
+      "vessels": "array"
+    }
+  },
+  "GET /api/v1/metrics :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/metrics :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/metrics :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/metrics :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/metrics :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/metrics :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/metrics :: HARBOUR_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "alerts",
+      "avgLatencyMs",
+      "batchedSqlQueriesSaved",
+      "bulkheadRejected",
+      "cacheHitRatioPct",
+      "cacheHits",
+      "cacheMisses",
+      "cacheShards",
+      "dbProtection",
+      "generatedAtIso",
+      "goMaxProcs",
+      "goroutines",
+      "gzipCompressedResponses",
+      "heapAllocMb",
+      "inFlightRequests",
+      "logs",
+      "p50LatencyMs",
+      "p95LatencyMs",
+      "p99LatencyMs",
+      "queryExecutionSeries",
+      "rateLimitBurst",
+      "rateLimitRpsPerClient",
+      "rateLimitedRejected",
+      "rateLimiting",
+      "readBulkheadCap",
+      "scaleProfile",
+      "singleflightCoalesced",
+      "sysMemMb",
+      "totalRequests",
+      "uptimeSeconds",
+      "writeBulkheadCap"
+    ],
+    "keyTypes": {
+      "alerts": "array",
+      "avgLatencyMs": "number",
+      "batchedSqlQueriesSaved": "number",
+      "bulkheadRejected": "number",
+      "cacheHitRatioPct": "number",
+      "cacheHits": "number",
+      "cacheMisses": "number",
+      "cacheShards": "number",
+      "dbProtection": "object",
+      "generatedAtIso": "string",
+      "goMaxProcs": "number",
+      "goroutines": "number",
+      "gzipCompressedResponses": "number",
+      "heapAllocMb": "number",
+      "inFlightRequests": "number",
+      "logs": "array",
+      "p50LatencyMs": "number",
+      "p95LatencyMs": "number",
+      "p99LatencyMs": "number",
+      "queryExecutionSeries": "array",
+      "rateLimitBurst": "number",
+      "rateLimitRpsPerClient": "number",
+      "rateLimitedRejected": "number",
+      "rateLimiting": "object",
+      "readBulkheadCap": "number",
+      "scaleProfile": "object",
+      "singleflightCoalesced": "number",
+      "sysMemMb": "number",
+      "totalRequests": "number",
+      "uptimeSeconds": "number",
+      "writeBulkheadCap": "number"
+    }
+  },
+  "GET /api/v1/metrics :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/metrics :: SUPER_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "alerts",
+      "avgLatencyMs",
+      "batchedSqlQueriesSaved",
+      "bulkheadRejected",
+      "cacheHitRatioPct",
+      "cacheHits",
+      "cacheMisses",
+      "cacheShards",
+      "dbProtection",
+      "generatedAtIso",
+      "goMaxProcs",
+      "goroutines",
+      "gzipCompressedResponses",
+      "heapAllocMb",
+      "inFlightRequests",
+      "logs",
+      "p50LatencyMs",
+      "p95LatencyMs",
+      "p99LatencyMs",
+      "queryExecutionSeries",
+      "rateLimitBurst",
+      "rateLimitRpsPerClient",
+      "rateLimitedRejected",
+      "rateLimiting",
+      "readBulkheadCap",
+      "scaleProfile",
+      "singleflightCoalesced",
+      "sysMemMb",
+      "totalRequests",
+      "uptimeSeconds",
+      "writeBulkheadCap"
+    ],
+    "keyTypes": {
+      "alerts": "array",
+      "avgLatencyMs": "number",
+      "batchedSqlQueriesSaved": "number",
+      "bulkheadRejected": "number",
+      "cacheHitRatioPct": "number",
+      "cacheHits": "number",
+      "cacheMisses": "number",
+      "cacheShards": "number",
+      "dbProtection": "object",
+      "generatedAtIso": "string",
+      "goMaxProcs": "number",
+      "goroutines": "number",
+      "gzipCompressedResponses": "number",
+      "heapAllocMb": "number",
+      "inFlightRequests": "number",
+      "logs": "array",
+      "p50LatencyMs": "number",
+      "p95LatencyMs": "number",
+      "p99LatencyMs": "number",
+      "queryExecutionSeries": "array",
+      "rateLimitBurst": "number",
+      "rateLimitRpsPerClient": "number",
+      "rateLimitedRejected": "number",
+      "rateLimiting": "object",
+      "readBulkheadCap": "number",
+      "scaleProfile": "object",
+      "singleflightCoalesced": "number",
+      "sysMemMb": "number",
+      "totalRequests": "number",
+      "uptimeSeconds": "number",
+      "writeBulkheadCap": "number"
+    }
+  },
+  "GET /api/v1/governance/migrations :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/governance/migrations :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/governance/migrations :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/governance/migrations :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/governance/migrations :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/governance/migrations :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/governance/migrations :: HARBOUR_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "journalBalanceAudit",
+      "migrations"
+    ],
+    "keyTypes": {
+      "journalBalanceAudit": "array",
+      "migrations": "array"
+    }
+  },
+  "GET /api/v1/governance/migrations :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/governance/migrations :: SUPER_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "journalBalanceAudit",
+      "migrations"
+    ],
+    "keyTypes": {
+      "journalBalanceAudit": "array",
+      "migrations": "array"
+    }
+  },
+  "GET /api/v1/benchmarks/harbours :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/benchmarks/harbours :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/benchmarks/harbours :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/benchmarks/harbours :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/benchmarks/harbours :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/benchmarks/harbours :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/benchmarks/harbours :: HARBOUR_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "benchmarks",
+      "harbourCount",
+      "sdkStarterCode",
+      "sdkVersion"
+    ],
+    "keyTypes": {
+      "benchmarks": "array",
+      "harbourCount": "number",
+      "sdkStarterCode": "string",
+      "sdkVersion": "string"
+    }
+  },
+  "GET /api/v1/benchmarks/harbours :: ACCOUNTANT": {
+    "status": 200,
+    "topKeys": [
+      "benchmarks",
+      "harbourCount",
+      "sdkStarterCode",
+      "sdkVersion"
+    ],
+    "keyTypes": {
+      "benchmarks": "array",
+      "harbourCount": "number",
+      "sdkStarterCode": "string",
+      "sdkVersion": "string"
+    }
+  },
+  "GET /api/v1/benchmarks/harbours :: SUPER_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "benchmarks",
+      "harbourCount",
+      "sdkStarterCode",
+      "sdkVersion"
+    ],
+    "keyTypes": {
+      "benchmarks": "array",
+      "harbourCount": "number",
+      "sdkStarterCode": "string",
+      "sdkVersion": "string"
+    }
+  },
+  "GET /api/v1/ledger/audit-imports :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/audit-imports :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/audit-imports :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/audit-imports :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/audit-imports :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/audit-imports :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/audit-imports :: HARBOUR_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "auditLogs",
+      "cacheStatus",
+      "cachedAtIso",
+      "payoutBatches",
+      "stats",
+      "tenantId",
+      "view"
+    ],
+    "keyTypes": {
+      "auditLogs": "array",
+      "cacheStatus": "string",
+      "cachedAtIso": "string",
+      "payoutBatches": "array",
+      "stats": "object",
+      "tenantId": "string",
+      "view": "string"
+    }
+  },
+  "GET /api/v1/ledger/audit-imports :: ACCOUNTANT": {
+    "status": 200,
+    "topKeys": [
+      "auditLogs",
+      "cacheStatus",
+      "cachedAtIso",
+      "payoutBatches",
+      "stats",
+      "tenantId",
+      "view"
+    ],
+    "keyTypes": {
+      "auditLogs": "array",
+      "cacheStatus": "string",
+      "cachedAtIso": "string",
+      "payoutBatches": "array",
+      "stats": "object",
+      "tenantId": "string",
+      "view": "string"
+    }
+  },
+  "GET /api/v1/ledger/audit-imports :: SUPER_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "auditLogs",
+      "cacheStatus",
+      "cachedAtIso",
+      "payoutBatches",
+      "stats",
+      "tenantId",
+      "view"
+    ],
+    "keyTypes": {
+      "auditLogs": "array",
+      "cacheStatus": "string",
+      "cachedAtIso": "string",
+      "payoutBatches": "array",
+      "stats": "object",
+      "tenantId": "string",
+      "view": "string"
+    }
+  },
+  "GET /api/v1/ledger/verify :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/verify :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/verify :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/verify :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/verify :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/verify :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "GET /api/v1/ledger/verify :: HARBOUR_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "entryCount",
+      "headHash",
+      "lastEntrySeq",
+      "verified"
+    ],
+    "keyTypes": {
+      "entryCount": "number",
+      "headHash": "string",
+      "lastEntrySeq": "string",
+      "verified": "boolean"
+    }
+  },
+  "GET /api/v1/ledger/verify :: ACCOUNTANT": {
+    "status": 200,
+    "topKeys": [
+      "entryCount",
+      "headHash",
+      "lastEntrySeq",
+      "verified"
+    ],
+    "keyTypes": {
+      "entryCount": "number",
+      "headHash": "string",
+      "lastEntrySeq": "string",
+      "verified": "boolean"
+    }
+  },
+  "GET /api/v1/ledger/verify :: SUPER_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "entryCount",
+      "headHash",
+      "lastEntrySeq",
+      "verified"
+    ],
+    "keyTypes": {
+      "entryCount": "number",
+      "headHash": "string",
+      "lastEntrySeq": "string",
+      "verified": "boolean"
+    }
+  },
+  "POST /api/v1/lots (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/sync/commands (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/sync/commands (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/sync/commands (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/sync/commands (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/sync/commands (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/sync/commands (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/sync/commands (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/sync/commands (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/sync/commands (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/inspect (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/inspect (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/inspect (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/inspect (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/inspect (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/inspect (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/inspect (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/inspect (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/inspect (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/ai-assist :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/ai-assist :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/ai-assist :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/ai-assist :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/ai-assist :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/ai-assist :: AUTHORIZED_INSPECTOR": {
+    "status": 200,
+    "topKeys": [
+      "advisoryDisclaimer",
+      "available"
+    ],
+    "keyTypes": {
+      "advisoryDisclaimer": "string",
+      "available": "boolean"
+    }
+  },
+  "POST /api/v1/lots/:lotId/ai-assist :: HARBOUR_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "advisoryDisclaimer",
+      "available"
+    ],
+    "keyTypes": {
+      "advisoryDisclaimer": "string",
+      "available": "boolean"
+    }
+  },
+  "POST /api/v1/lots/:lotId/ai-assist :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/ai-assist :: SUPER_ADMIN": {
+    "status": 200,
+    "topKeys": [
+      "advisoryDisclaimer",
+      "available"
+    ],
+    "keyTypes": {
+      "advisoryDisclaimer": "string",
+      "available": "boolean"
+    }
+  },
+  "POST /api/v1/lots/:lotId/allocate (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/allocate (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/allocate (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/allocate (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/allocate (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/allocate (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/allocate (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/allocate (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/lots/:lotId/allocate (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/floor-prices (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/floor-prices (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/floor-prices (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/floor-prices (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/floor-prices (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/floor-prices (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/floor-prices (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/floor-prices (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/floor-prices (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/:batchId/reconcile (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/:batchId/reconcile (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/:batchId/reconcile (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/:batchId/reconcile (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/:batchId/reconcile (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/:batchId/reconcile (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/:batchId/reconcile (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/:batchId/reconcile (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/:batchId/reconcile (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/bulk-reconcile (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/bulk-reconcile (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/bulk-reconcile (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/bulk-reconcile (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/bulk-reconcile (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/bulk-reconcile (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/bulk-reconcile (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/bulk-reconcile (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/payout-batches/bulk-reconcile (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/buyers/:buyerId/receipts (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/buyers/:buyerId/receipts (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/buyers/:buyerId/receipts (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/buyers/:buyerId/receipts (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/buyers/:buyerId/receipts (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/buyers/:buyerId/receipts (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/buyers/:buyerId/receipts (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/buyers/:buyerId/receipts (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/buyers/:buyerId/receipts (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/ledger/reversals (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/ledger/reversals (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/ledger/reversals (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/ledger/reversals (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/ledger/reversals (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/ledger/reversals (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/ledger/reversals (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/ledger/reversals (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/ledger/reversals (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants/:tenantId/users (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants/:tenantId/users (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants/:tenantId/users (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants/:tenantId/users (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants/:tenantId/users (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants/:tenantId/users (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants/:tenantId/users (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants/:tenantId/users (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/tenants/:tenantId/users (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 400,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/policies (validation/RBAC probe) :: UNAUTH": {
+    "status": 401,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/policies (validation/RBAC probe) :: WEIGHING_OPERATOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/policies (validation/RBAC probe) :: LICENSED_AUCTIONEER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/policies (validation/RBAC probe) :: WHOLESALE_BUYER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/policies (validation/RBAC probe) :: FISHERMAN_BOAT_OWNER": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/policies (validation/RBAC probe) :: AUTHORIZED_INSPECTOR": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/policies (validation/RBAC probe) :: HARBOUR_ADMIN": {
+    "status": 422,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/policies (validation/RBAC probe) :: ACCOUNTANT": {
+    "status": 403,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  },
+  "POST /api/v1/policies (validation/RBAC probe) :: SUPER_ADMIN": {
+    "status": 422,
+    "topKeys": [
+      "error"
+    ],
+    "keyTypes": {
+      "error": "object"
+    }
+  }
+}

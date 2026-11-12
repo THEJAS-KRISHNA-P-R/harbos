@@ -1,0 +1,30 @@
+export {
+  upsertAuthRateLimitBucketInTx,
+  fetchLatestOtpLockout,
+  consumePriorOtpChallengesAndInsertNew,
+  fetchLatestOtpChallengeRow,
+  updateOtpChallengeAttemptOrLock,
+  consumeOtpChallengeRow,
+  insertRefreshTokenRowInTx,
+  lockRefreshTokenByHashInTx,
+  revokeRefreshTokenFamilyInTx,
+  markRefreshTokenRotatedInTx,
+  revokeRefreshTokenByHashInTx,
+  revokeAllUserRefreshTokensInTx,
+  fetchUserByIdInTx,
+  fetchUserActiveStatusInTenantTx,
+  findActiveUserByPhoneInTx,
+} from './repo.ts';
+export {
+  getDemoOperators,
+  requestOtpForPhone,
+  verifyOtpAndIssueSession,
+  switchDemoPersona,
+  getOperatorProfile,
+  updateOperatorProfile,
+  updateOperatorLocale,
+  recordOperatorConsent,
+  exportPersonalData,
+  erasePersonalData,
+} from './service.ts';
+export { identityRoutes, resolveClientIpFromHeaders } from './routes.ts';

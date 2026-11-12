@@ -1,8 +1,11 @@
 import pg from 'pg';
-import type { DbPort, DbQueryResult } from '@server/ports/db.ts';
+import { config } from '@server/config.ts';
+import type {
+  DbPort,
+  DbQueryResult,
+  DbTransactionOptions,
+} from '@server/ports/db.ts';
 import {
-  DEFAULT_PG_IDLE_IN_TX_TIMEOUT_MS,
-  DEFAULT_PG_LOCK_TIMEOUT_MS,
   DEFAULT_PG_STATEMENT_TIMEOUT_MS,
   recordCentralizedLog,
   recordQueryExecution,
@@ -44,23 +47,23 @@ export async function executeWithStatementTimeout<T>(
 }
 
 export class PgPoolAdapter implements DbPort {
+  public readonly isPglite = false;
   private readonly pool: pg.Pool;
   public readonly statementTimeoutMs: number;
 
   constructor(
     connectionString: string,
-    statementTimeoutMs = DEFAULT_PG_STATEMENT_TIMEOUT_MS
+    statementTimeoutMs = DEFAULT_PG_STATEMENT_TIMEOUT_MS,
+    poolMax = config.PG_POOL_MAX
   ) {
     this.statementTimeoutMs = statementTimeoutMs;
+    // Phase 2.8: Zero startup GUC options on Pool so PgBouncer in transaction mode works cleanly.
+    // Timeouts are enforced on role `harbour_app` / `harbour_platform` via migration 012.
     this.pool = new Pool({
       connectionString,
-      max: 20,
+      max: poolMax,
       connectionTimeoutMillis: 15_000,
       idleTimeoutMillis: 30_000,
-      statement_timeout: this.statementTimeoutMs,
-      query_timeout: this.statementTimeoutMs,
-      lock_timeout: DEFAULT_PG_LOCK_TIMEOUT_MS,
-      idle_in_transaction_session_timeout: DEFAULT_PG_IDLE_IN_TX_TIMEOUT_MS,
     });
 
     this.pool.on('error', (err) => {
@@ -89,8 +92,16 @@ export class PgPoolAdapter implements DbPort {
     });
   }
 
-  public async transaction<T>(fn: (tx: DbPort) => Promise<T>): Promise<T> {
+  public async transaction<T>(
+    fn: (tx: DbPort) => Promise<T>,
+    options?: DbTransactionOptions
+  ): Promise<T> {
     const client = await this.pool.connect();
+    const stats = options?.stats;
+    const beginSql = options?.readOnly
+      ? 'BEGIN READ ONLY ISOLATION LEVEL REPEATABLE READ'
+      : 'BEGIN';
+
     let txChain: Promise<unknown> = Promise.resolve();
     const enqueue = <R>(work: () => Promise<R>): Promise<R> => {
       const next = txChain.then(work, work);
@@ -101,36 +112,69 @@ export class PgPoolAdapter implements DbPort {
       return next;
     };
 
+    const runTracked = async <R>(
+      stmtLabel: string,
+      isAppQuery: boolean,
+      work: () => Promise<R>
+    ): Promise<R> => {
+      const startNs = process.hrtime.bigint();
+      try {
+        return await work();
+      } finally {
+        if (stats) {
+          const ms = Number(process.hrtime.bigint() - startNs) / 1_000_000;
+          stats.roundTrips += 1;
+          stats.dbMs += ms;
+          stats.statements.push(stmtLabel);
+          if (isAppQuery) {
+            stats.queries += 1;
+          }
+        }
+      }
+    };
+
     try {
       await enqueue(() =>
-        client.query(`BEGIN; SET LOCAL statement_timeout = ${this.statementTimeoutMs};`)
+        runTracked(beginSql, false, () => client.query(beginSql))
       );
+
       const txPort: DbPort = {
+        isPglite: false,
         query: async <R = Record<string, unknown>>(
           sql: string,
           params: ReadonlyArray<unknown> = []
         ): Promise<DbQueryResult<R>> =>
           enqueue(() =>
-            executeWithStatementTimeout(sql, this.statementTimeoutMs, async () => {
-              const res = await client.query(sql, [...params]);
-              return { rows: res.rows as R[] };
-            })
+            runTracked(sql, true, () =>
+              executeWithStatementTimeout(sql, this.statementTimeoutMs, async () => {
+                const res = await client.query(sql, [...params]);
+                return { rows: res.rows as R[] };
+              })
+            )
           ),
         exec: async (sql: string): Promise<void> => {
           await enqueue(() =>
-            executeWithStatementTimeout(sql, this.statementTimeoutMs, async () => {
-              await client.query(sql);
-            })
+            runTracked(sql, true, () =>
+              executeWithStatementTimeout(sql, this.statementTimeoutMs, async () => {
+                await client.query(sql);
+              })
+            )
           );
         },
-        transaction: async <R>(nestedFn: (nestedTx: DbPort) => Promise<R>): Promise<R> =>
-          nestedFn(txPort),
+        transaction: async <R>(
+          nestedFn: (nestedTx: DbPort) => Promise<R>
+        ): Promise<R> => nestedFn(txPort),
       };
+
       const result = await fn(txPort);
-      await enqueue(() => client.query('COMMIT'));
+      await enqueue(() =>
+        runTracked('COMMIT', false, () => client.query('COMMIT'))
+      );
       return result;
     } catch (err) {
-      await enqueue(() => client.query('ROLLBACK')).catch(() => {});
+      await enqueue(() =>
+        runTracked('ROLLBACK', false, () => client.query('ROLLBACK'))
+      ).catch(() => undefined);
       throw err;
     } finally {
       client.release();

@@ -1,0 +1,2768 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "HarbourOS Statutory Clearing & Auction Monolith API",
+    "version": "1.0.0-pilot",
+    "description": "Generated directly from declarative Zod route schemas (src/server/modules/**/routes.ts) and ROUTE_RBAC_MATRIX (src/shared/contracts/rbac.ts)."
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Liveness probe (zero DB work)",
+        "tags": [
+          "platform"
+        ],
+        "security": [],
+        "x-rbac-roles": "PUBLIC",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "summary": "Readiness probe (DB ping + migration version)",
+        "tags": [
+          "platform"
+        ],
+        "security": [],
+        "x-rbac-roles": "PUBLIC",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "API health & readiness summary",
+        "tags": [
+          "platform"
+        ],
+        "security": [],
+        "x-rbac-roles": "PUBLIC",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "summary": "Process and SQL metrics (Prometheus or JSON)",
+        "tags": [
+          "platform"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/governance/migrations": {
+      "get": {
+        "summary": "Schema governance migrations and journal balance audit",
+        "tags": [
+          "platform"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/benchmarks/harbours": {
+      "get": {
+        "summary": "Cross-harbour benchmarks and SDK metadata",
+        "tags": [
+          "platform"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "ACCOUNTANT"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit-logs": {
+      "get": {
+        "summary": "List immutable audit logs (keyset paginated)",
+        "tags": [
+          "platform"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/demo/operators": {
+      "get": {
+        "summary": "List demo operators (DEMO_MODE && non-production only)",
+        "tags": [
+          "identity"
+        ],
+        "security": [],
+        "x-rbac-roles": "PUBLIC",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/otp/request": {
+      "post": {
+        "summary": "Request 6-digit OTP challenge (enumeration-safe)",
+        "tags": [
+          "identity"
+        ],
+        "security": [],
+        "x-rbac-roles": "PUBLIC",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneE164": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/otp/verify": {
+      "post": {
+        "summary": "Verify OTP challenge and issue access JWT + refresh cookie",
+        "tags": [
+          "identity"
+        ],
+        "security": [],
+        "x-rbac-roles": "PUBLIC",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneE164": {
+                    "type": "string"
+                  },
+                  "otpCode": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "summary": "Rotate refresh token cookie and issue fresh access JWT",
+        "tags": [
+          "identity"
+        ],
+        "security": [],
+        "x-rbac-roles": "PUBLIC",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "summary": "Revoke refresh token and clear session cookie",
+        "tags": [
+          "identity"
+        ],
+        "security": [],
+        "x-rbac-roles": "PUBLIC",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/persona-switch": {
+      "post": {
+        "summary": "Switch demo persona (DEMO_MODE && non-production only)",
+        "tags": [
+          "identity"
+        ],
+        "security": [],
+        "x-rbac-roles": "PUBLIC",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string"
+                  },
+                  "tenantId": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "summary": "Return current authenticated user claims",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "FISHERMAN_BOAT_OWNER",
+          "WHOLESALE_BUYER",
+          "WEIGHING_OPERATOR",
+          "ACCOUNTANT",
+          "AUTHORIZED_INSPECTOR"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/profile": {
+      "get": {
+        "summary": "Fetch operator profile and personal audit trail",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "FISHERMAN_BOAT_OWNER",
+          "WHOLESALE_BUYER",
+          "WEIGHING_OPERATOR",
+          "ACCOUNTANT",
+          "AUTHORIZED_INSPECTOR"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Update operator profile fullName and phoneE164",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "FISHERMAN_BOAT_OWNER",
+          "WHOLESALE_BUYER",
+          "WEIGHING_OPERATOR",
+          "ACCOUNTANT",
+          "AUTHORIZED_INSPECTOR"
+        ],
+        "x-audit-code": "USER_PROFILE_UPDATED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fullName": {
+                    "type": "string"
+                  },
+                  "phoneE164": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/locale": {
+      "post": {
+        "summary": "Persist operator preferred locale (ml | en)",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "FISHERMAN_BOAT_OWNER",
+          "WHOLESALE_BUYER",
+          "WEIGHING_OPERATOR",
+          "ACCOUNTANT",
+          "AUTHORIZED_INSPECTOR"
+        ],
+        "x-audit-code": "USER_LOCALE_UPDATED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locale": {
+                    "type": "string",
+                    "enum": [
+                      "ml",
+                      "en"
+                    ]
+                  }
+                },
+                "required": [
+                  "locale"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/consent": {
+      "post": {
+        "summary": "Record DPDP Act 2023 personal data consent",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "FISHERMAN_BOAT_OWNER",
+          "WHOLESALE_BUYER",
+          "WEIGHING_OPERATOR",
+          "ACCOUNTANT",
+          "AUTHORIZED_INSPECTOR"
+        ],
+        "x-audit-code": "DPDP_CONSENT_RECORDED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "consentVersion": {
+                    "default": "DPDP-2023-v1.0",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                "required": [
+                  "consentVersion"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/privacy/export": {
+      "get": {
+        "summary": "Export caller personal data under DPDP Act 2023",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "FISHERMAN_BOAT_OWNER",
+          "WHOLESALE_BUYER",
+          "WEIGHING_OPERATOR",
+          "ACCOUNTANT",
+          "AUTHORIZED_INSPECTOR"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/privacy/erase": {
+      "post": {
+        "summary": "Pseudonymize caller PII under DPDP Act 2023 while preserving statutory ledger rows",
+        "tags": [
+          "identity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "FISHERMAN_BOAT_OWNER",
+          "WHOLESALE_BUYER",
+          "WEIGHING_OPERATOR",
+          "ACCOUNTANT",
+          "AUTHORIZED_INSPECTOR"
+        ],
+        "x-audit-code": "DPDP_PERSONAL_DATA_PSEUDONYMIZED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "default": "User requested DPDP personal data erasure",
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bootstrap": {
+      "get": {
+        "summary": "Fetch role-scoped workspace bootstrap state (bounded to 50 rows)",
+        "tags": [
+          "tenancy"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "FISHERMAN_BOAT_OWNER",
+          "WHOLESALE_BUYER",
+          "WEIGHING_OPERATOR",
+          "ACCOUNTANT",
+          "AUTHORIZED_INSPECTOR"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants": {
+      "post": {
+        "summary": "Provision new harbour tenant with policy v1, ledger head, and 5 institutional accounts",
+        "tags": [
+          "tenancy"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "TENANT_PROVISIONED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  },
+                  "nameEn": {
+                    "type": "string"
+                  },
+                  "nameMl": {
+                    "type": "string"
+                  },
+                  "centreType": {
+                    "type": "string",
+                    "enum": [
+                      "KERALA_HARBOUR",
+                      "KERALA_MARKET"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenantId}/users": {
+      "post": {
+        "summary": "Provision operator user for a harbour tenant",
+        "tags": [
+          "tenancy"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN"
+        ],
+        "x-audit-code": "TENANT_USER_PROVISIONED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneE164": {
+                    "type": "string"
+                  },
+                  "fullName": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "entityRefId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "pinCode": {
+                    "type": "string"
+                  },
+                  "preferredLocale": {
+                    "type": "string",
+                    "enum": [
+                      "ml",
+                      "en"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/policies": {
+      "post": {
+        "summary": "Create versioned commission policy (enforces C7 legal sign-off gate)",
+        "tags": [
+          "tenancy"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN"
+        ],
+        "x-audit-code": "COMMISSION_POLICY_CREATED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "commercialMode": {
+                    "type": "string"
+                  },
+                  "commissionBps": {
+                    "type": "number"
+                  },
+                  "auctioneerShareBps": {
+                    "type": "number"
+                  },
+                  "hmsShareBps": {
+                    "type": "number"
+                  },
+                  "fisherBonusShareBps": {
+                    "type": "number"
+                  },
+                  "coopShareBps": {
+                    "type": "number"
+                  },
+                  "notificationRef": {
+                    "type": "string"
+                  },
+                  "legalSignoffRef": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "legalSignoffDate": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/masterdata/{entityType}": {
+      "get": {
+        "summary": "List masterdata entities for the caller tenant",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "ACCOUNTANT",
+          "SUPER_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/masterdata/coop-societies": {
+      "post": {
+        "summary": "Create or update co-operative society",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "MASTERDATA_SOCIETY_UPSERTED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "societyId": {
+                    "type": "string"
+                  },
+                  "regNo": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 80
+                  },
+                  "nameEn": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 160
+                  },
+                  "nameMl": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "regNo",
+                  "nameEn"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/masterdata/fishermen": {
+      "post": {
+        "summary": "Create or update fisherman and auto-provision payable & bonus escrow accounts",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "MASTERDATA_FISHERMAN_UPSERTED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fishermanId": {
+                    "type": "string"
+                  },
+                  "fullName": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 160
+                  },
+                  "phoneE164": {
+                    "type": "string",
+                    "pattern": "^\\+[1-9]\\d{9,14}$"
+                  },
+                  "welfareBoardNo": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 80
+                  },
+                  "coopSocietyId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "nfdpId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "bankAccountRef": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "fullName",
+                  "phoneE164",
+                  "welfareBoardNo"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/masterdata/vessels": {
+      "post": {
+        "summary": "Create or update vessel and generate signed dockside QR token",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "MASTERDATA_VESSEL_UPSERTED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "vesselId": {
+                    "type": "string"
+                  },
+                  "registrationNo": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 80
+                  },
+                  "vesselNameEn": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 160
+                  },
+                  "vesselNameMl": {
+                    "type": "string"
+                  },
+                  "ownerFishermanId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "hasActiveSocietyLoan": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "loanCoopSocietyId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "registrationNo",
+                  "vesselNameEn",
+                  "ownerFishermanId",
+                  "hasActiveSocietyLoan"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/masterdata/buyers": {
+      "post": {
+        "summary": "Create or update wholesale buyer (validates GSTIN mod-36 checksum & provisions receivable account)",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "ACCOUNTANT",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "MASTERDATA_BUYER_UPSERTED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "buyerId": {
+                    "type": "string"
+                  },
+                  "buyerName": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 160
+                  },
+                  "paddleNo": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "gstin": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "exportRegNo": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "escrowBalancePaise": {
+                    "default": 0,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^\\d+$"
+                      }
+                    ]
+                  },
+                  "approvedCreditPaise": {
+                    "default": 0,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^\\d+$"
+                      }
+                    ]
+                  },
+                  "bankGuaranteeRef": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "bankGuaranteePaise": {
+                    "default": 0,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^\\d+$"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "buyerName",
+                  "paddleNo",
+                  "escrowBalancePaise",
+                  "approvedCreditPaise",
+                  "bankGuaranteePaise"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/masterdata/licences": {
+      "post": {
+        "summary": "Create or update auctioneer licence (enforces s.5 1-year validity & provisions payable account)",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "MASTERDATA_LICENCE_UPSERTED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "licenceId": {
+                    "type": "string"
+                  },
+                  "auctioneerUserId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "auctioneerName": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 160
+                  },
+                  "licenceNo": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 80
+                  },
+                  "status": {
+                    "default": "ACTIVE",
+                    "type": "string",
+                    "enum": [
+                      "ACTIVE",
+                      "SUSPENDED",
+                      "EXPIRED"
+                    ]
+                  },
+                  "validFrom": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "validUntil": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "deputedBySocietyId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "auctioneerUserId",
+                  "auctioneerName",
+                  "licenceNo",
+                  "status",
+                  "validFrom",
+                  "validUntil"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/masterdata/species": {
+      "post": {
+        "summary": "Create or update species and append floor price change to harbour.floor_price_history",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "MASTERDATA_SPECIES_UPSERTED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "speciesId": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 32
+                  },
+                  "nameEn": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 160
+                  },
+                  "nameMl": {
+                    "type": "string"
+                  },
+                  "scientificName": {
+                    "default": "Marine Teleost",
+                    "type": "string"
+                  },
+                  "floorPricePaisePerKg": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9]\\d*$"
+                      }
+                    ]
+                  },
+                  "exportEligible": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "code",
+                  "nameEn",
+                  "scientificName",
+                  "floorPricePaisePerKg",
+                  "exportEligible"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/masterdata/sessions": {
+      "post": {
+        "summary": "Create or update auction session",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "MASTERDATA_SESSION_UPSERTED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "sessionCode": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 80
+                  },
+                  "auctionMode": {
+                    "default": "PHYSICAL_SHOUT",
+                    "type": "string",
+                    "enum": [
+                      "PHYSICAL_SHOUT",
+                      "DUTCH_IDEAL",
+                      "HYBRID_REMOTE",
+                      "COOP_PROCUREMENT",
+                      "HMS_DIRECT_TAKEOVER"
+                    ]
+                  },
+                  "leaderDeviceId": {
+                    "default": "PIT-PAD-01",
+                    "type": "string"
+                  },
+                  "fencingToken": {
+                    "default": 1,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "dutchStartPricePaise": {
+                    "default": 75000,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9]\\d*$"
+                      }
+                    ]
+                  },
+                  "dutchFloorPricePaise": {
+                    "default": 60000,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9]\\d*$"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "default": "OPEN",
+                    "type": "string",
+                    "enum": [
+                      "OPEN",
+                      "PAUSED",
+                      "CLOSED"
+                    ]
+                  }
+                },
+                "required": [
+                  "sessionCode",
+                  "auctionMode",
+                  "leaderDeviceId",
+                  "fencingToken",
+                  "dutchStartPricePaise",
+                  "dutchFloorPricePaise",
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/masterdata/{entityType}/{id}/deactivate": {
+      "post": {
+        "summary": "Soft-deactivate masterdata entity (is_active = false)",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "MASTERDATA_DEACTIVATED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/masterdata/import/{entityType}": {
+      "post": {
+        "summary": "Bulk CSV import for masterdata with dryRun validation and formula-injection guard",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "MASTERDATA_CSV_IMPORT",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csvText": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "dryRun": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "csvText",
+                  "dryRun"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/floor-prices": {
+      "post": {
+        "summary": "Update Section 19 floor price and enforcement mode",
+        "tags": [
+          "masterdata"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "FLOOR_SCHEDULE_UPDATED_S19",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "floorEnforcement": {
+                    "type": "string",
+                    "enum": [
+                      "BLOCK",
+                      "WARN"
+                    ]
+                  },
+                  "speciesId": {
+                    "type": "string"
+                  },
+                  "floorPricePaisePerKg": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lots": {
+      "get": {
+        "summary": "List weighed and auction lots (keyset paginated)",
+        "tags": [
+          "lots"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "FISHERMAN_BOAT_OWNER",
+          "WHOLESALE_BUYER",
+          "WEIGHING_OPERATOR",
+          "ACCOUNTANT",
+          "AUTHORIZED_INSPECTOR"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create and tag weighed lot (creates WEIGHED_PENDING_INSPECTION)",
+        "tags": [
+          "lots"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "WEIGHING_OPERATOR",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "LOT_WEIGHED_AND_TAGGED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "vesselId": {
+                    "type": "string"
+                  },
+                  "speciesId": {
+                    "type": "string"
+                  },
+                  "totalBoxes": {
+                    "type": "number"
+                  },
+                  "netGrams": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  },
+                  "coreTempC": {
+                    "type": "number"
+                  },
+                  "weightSource": {
+                    "type": "string"
+                  },
+                  "supervisorPin": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lots/{lotId}/inspect": {
+      "post": {
+        "summary": "Perform Section 21 organoleptic & core temperature quality inspection",
+        "tags": [
+          "lots"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "AUTHORIZED_INSPECTOR",
+          "HARBOUR_ADMIN"
+        ],
+        "x-audit-code": "QUALITY_INSPECTION_S21",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grade": {
+                    "type": "string",
+                    "enum": [
+                      "A_EXPORT",
+                      "A_DOMESTIC",
+                      "B_PROCESS",
+                      "REJECTED_UNFIT"
+                    ]
+                  },
+                  "inspectionGrade": {
+                    "type": "string",
+                    "enum": [
+                      "A_EXPORT",
+                      "A_DOMESTIC",
+                      "B_PROCESS",
+                      "REJECTED_UNFIT"
+                    ]
+                  },
+                  "coreTempC": {
+                    "default": 2,
+                    "type": "number",
+                    "minimum": -30,
+                    "maximum": 50
+                  },
+                  "notes": {
+                    "default": "Inspected under Kerala Act 16 of 2021 s.21",
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "overrideReason": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "coreTempC",
+                  "notes"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lots/{lotId}/ai-assist": {
+      "post": {
+        "summary": "Optional advisory catch quality AI assist (ADR-009: never auto-grades)",
+        "tags": [
+          "lots"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "AUTHORIZED_INSPECTOR",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "speciesNameEn": {
+                    "type": "string"
+                  },
+                  "coreTempC": {
+                    "type": "number"
+                  },
+                  "inspectorNotes": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lots/{lotId}/reprint": {
+      "post": {
+        "summary": "Audit and authorize dockside slip reprint with REPRINT watermark",
+        "tags": [
+          "lots"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "WEIGHING_OPERATOR",
+          "LICENSED_AUCTIONEER",
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "LOT_SLIP_REPRINTED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slipType": {
+                    "default": "LOT_LABEL",
+                    "type": "string",
+                    "enum": [
+                      "LOT_LABEL",
+                      "BUYER_SALE_SLIP",
+                      "FISHERMAN_SETTLEMENT_SLIP"
+                    ]
+                  },
+                  "paperSize": {
+                    "default": "80mm",
+                    "type": "string",
+                    "enum": [
+                      "58mm",
+                      "80mm",
+                      "A4"
+                    ]
+                  },
+                  "reason": {
+                    "default": "Dockside thermal slip reprint",
+                    "type": "string",
+                    "maxLength": 250
+                  }
+                },
+                "required": [
+                  "slipType",
+                  "paperSize",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/allocations": {
+      "get": {
+        "summary": "List statutory sale allocations (keyset paginated)",
+        "tags": [
+          "auction"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "SUPER_ADMIN",
+          "HARBOUR_ADMIN",
+          "LICENSED_AUCTIONEER",
+          "FISHERMAN_BOAT_OWNER",
+          "WHOLESALE_BUYER",
+          "WEIGHING_OPERATOR",
+          "ACCOUNTANT",
+          "AUTHORIZED_INSPECTOR"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lots/{lotId}/allocate": {
+      "post": {
+        "summary": "Execute atomic statutory lot sale allocation and 5% split journal (§7)",
+        "tags": [
+          "auction"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "LICENSED_AUCTIONEER",
+          "HARBOUR_ADMIN"
+        ],
+        "x-idempotency": "required",
+        "x-audit-code": "LOT_SALE_ALLOCATED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "auctionMode": {
+                    "type": "string",
+                    "enum": [
+                      "PHYSICAL_SHOUT",
+                      "DUTCH_IDEAL",
+                      "HYBRID_REMOTE",
+                      "COOP_PROCUREMENT",
+                      "HMS_DIRECT_TAKEOVER"
+                    ]
+                  },
+                  "auctioneerLicenceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "buyerId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "boxesAllocated": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "boxesRequested": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "pricePerKgPaise": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9]\\d*$"
+                      }
+                    ]
+                  },
+                  "fencingToken": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "governmentPermissionRef": {
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sessionId",
+                  "auctionMode",
+                  "auctioneerLicenceId",
+                  "buyerId",
+                  "pricePerKgPaise",
+                  "fencingToken"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payout-batches": {
+      "post": {
+        "summary": "Generate atomic fisherman net settlement payout batch",
+        "tags": [
+          "payouts"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "PAYOUT_BATCH_GENERATED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payout-batches/{batchId}/reconcile": {
+      "post": {
+        "summary": "Reconcile single payout batch with bank UTR",
+        "tags": [
+          "payouts"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN"
+        ],
+        "x-audit-code": "PAYOUT_BATCH_UTR_RECONCILED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bankUtr": {},
+                  "confirmTotalPaise": {}
+                },
+                "required": [
+                  "bankUtr"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payout-batches/bulk-reconcile": {
+      "post": {
+        "summary": "Bulk reconcile payout batches from bank UTR CSV",
+        "tags": [
+          "payouts"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN"
+        ],
+        "x-idempotency": "optional",
+        "x-audit-code": "PAYOUT_BATCH_BULK_UTR_RECONCILED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/buyers/{buyerId}/receipts": {
+      "post": {
+        "summary": "Record buyer settlement receipt and post journal",
+        "tags": [
+          "payouts"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN"
+        ],
+        "x-idempotency": "required",
+        "x-audit-code": "BUYER_RECEIPT_RECORDED",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "amountPaise": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[1-9]\\d*$"
+                      }
+                    ]
+                  },
+                  "paymentChannel": {
+                    "default": "NEFT",
+                    "type": "string",
+                    "enum": [
+                      "UPI_ESCROW",
+                      "NEFT",
+                      "RTGS",
+                      "IMPS",
+                      "NODAL_TRANSFER"
+                    ]
+                  },
+                  "referenceNo": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "paymentReference": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "amountPaise",
+                  "paymentChannel"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/bank-nodal": {
+      "post": {
+        "summary": "Automated ISO 20022 / NEFT / RTGS nodal bank webhook callback",
+        "tags": [
+          "payouts"
+        ],
+        "security": [],
+        "x-rbac-roles": "PUBLIC",
+        "x-idempotency": "optional",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ledger/journals": {
+      "get": {
+        "summary": "List double-entry journals (keyset paginated)",
+        "tags": [
+          "ledger"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ledger/audit-imports": {
+      "get": {
+        "summary": "Fetch LRU-cached audit logs and payout batches",
+        "tags": [
+          "ledger"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ledger/reversals": {
+      "post": {
+        "summary": "Request or approve a dual-key compensating journal reversal (§7)",
+        "tags": [
+          "ledger"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "DUAL_KEY_REVERSAL",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "default": "APPROVE",
+                    "type": "string",
+                    "enum": [
+                      "REQUEST",
+                      "APPROVE"
+                    ]
+                  },
+                  "originalJournalId": {
+                    "type": "string"
+                  },
+                  "reasonNote": {
+                    "type": "string"
+                  },
+                  "reversalId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ledger/verify": {
+      "get": {
+        "summary": "Verify tenant SHA-256 ledger hash chain",
+        "tags": [
+          "ledger"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sync/commands": {
+      "post": {
+        "summary": "Apply dockside sync commands (creates WEIGHED_PENDING_INSPECTION lots)",
+        "tags": [
+          "sync"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "WEIGHING_OPERATOR",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "x-audit-code": "LOT_SYNCED_PENDING_INSPECTION",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "commands": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/outbox": {
+      "get": {
+        "summary": "List transactional SMS outbox events for the caller tenant",
+        "tags": [
+          "notifications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "HARBOUR_ADMIN",
+          "ACCOUNTANT",
+          "SUPER_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/{reportType}": {
+      "get": {
+        "summary": "Generate statutory Section 22 & financial reports (JSON or RFC 4180 formula-safe CSV)",
+        "tags": [
+          "reports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/shadow-diff": {
+      "post": {
+        "summary": "Compare paper-register daily totals CSV against HarbourOS sale allocations (0-paise divergence check)",
+        "tags": [
+          "reports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-rbac-roles": [
+          "ACCOUNTANT",
+          "HARBOUR_ADMIN",
+          "SUPER_ADMIN"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csvText": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "csvText"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

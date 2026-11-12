@@ -490,6 +490,7 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
       'core.otp_challenges',
       'core.refresh_tokens',
       'core.schema_migrations',
+      'core.auth_rate_limits',
     ]);
 
     assert.ok(
@@ -515,7 +516,7 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
     }
   });
 
-  it('D7: Fresh tenant API-only happy path: provision -> invite users -> weigh -> inspect -> allocate -> payout -> reconcile UTR -> buyer receipt -> verify-ledger verified=true, zero drift', async () => {
+  it('D7: Fresh tenant API-only happy path: provision -> invite users -> masterdata setup -> weigh -> inspect -> allocate -> payout -> reconcile UTR -> buyer receipt -> verify-ledger verified=true, zero drift', async () => {
     const superAdminToken = await signAccessJwt({
       sub: 'USR-SUPER-01',
       tenantId: DEMO_TENANT_ID,
@@ -525,7 +526,7 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
     });
 
     const uniqueSlug = `neendakara-${crypto.randomUUID().slice(0, 6)}`;
-    // 1. Provision fresh tenant via API
+    // 1. Provision fresh tenant via honest POST /api/v1/tenants (creates ONLY tenant, policy v1, ledger head, 5 institutional accounts)
     const provRes = await fetch(`${baseUrl}/api/v1/tenants`, {
       method: 'POST',
       headers: {
@@ -542,19 +543,10 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
     assert.equal(provRes.status, 201);
     const provBody = (await provRes.json()) as {
       tenantId: string;
-      defaults: {
-        fishermanId: string;
-        vesselId: string;
-        licenceId: string;
-        buyerId: string;
-        speciesId: string;
-        sessionId: string;
-      };
     };
     const newTenantId = provBody.tenantId;
-    const defs = provBody.defaults;
 
-    // 2. Invite operator users via API (Weigher, Inspector, Auctioneer, Accountant)
+    // 2. Invite operator users via API (Harbour Admin, Weigher, Inspector, Auctioneer, Accountant)
     const inviteUser = async (role: string, phoneSuffix: string, entityRefId?: string) => {
       const res = await fetch(`${baseUrl}/api/v1/tenants/${newTenantId}/users`, {
         method: 'POST',
@@ -581,15 +573,24 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
     };
 
     const randBase = String(Math.floor(100000 + Math.random() * 800000));
+    const harbourAdmin = await inviteUser('HARBOUR_ADMIN', `${randBase.slice(0, 5)}0`);
     const weigher = await inviteUser('WEIGHING_OPERATOR', `${randBase.slice(0, 5)}1`);
     const inspector = await inviteUser('AUTHORIZED_INSPECTOR', `${randBase.slice(0, 5)}2`);
+    const licenceId = `LIC-NDK-${randBase.slice(0, 4)}`;
     const auctioneer = await inviteUser(
       'LICENSED_AUCTIONEER',
       `${randBase.slice(0, 5)}3`,
-      defs.licenceId
+      licenceId
     );
     const accountant = await inviteUser('ACCOUNTANT', `${randBase.slice(0, 5)}4`);
 
+    const hadminJwt = await signAccessJwt({
+      sub: harbourAdmin.userId,
+      tenantId: newTenantId,
+      role: harbourAdmin.role,
+      fullName: harbourAdmin.fullName,
+      phoneE164: harbourAdmin.phoneE164,
+    });
     const wghJwt = await signAccessJwt({
       sub: weigher.userId,
       tenantId: newTenantId,
@@ -610,7 +611,7 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
       role: auctioneer.role,
       fullName: auctioneer.fullName,
       phoneE164: auctioneer.phoneE164,
-      entityRefId: defs.licenceId,
+      entityRefId: licenceId,
     });
     const acctJwt = await signAccessJwt({
       sub: accountant.userId,
@@ -619,6 +620,106 @@ describe('Phase A1–A7, B1–B2, C2 & D — Tenant Isolation, Section 21 Gate, 
       fullName: accountant.fullName,
       phoneE164: accountant.phoneE164,
     });
+
+    // 2b. Create masterdata via Phase 3.2 endpoints (society, fisherman, vessel, buyer, licence, species, session)
+    const mdHeaders = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${hadminJwt}`,
+    };
+    const socRes = await fetch(`${baseUrl}/api/v1/masterdata/coop-societies`, {
+      method: 'POST',
+      headers: mdHeaders,
+      body: JSON.stringify({
+        regNo: `KL-KLM-SOC-${randBase.slice(0, 4)}`,
+        nameEn: 'Neendakara Matsya Co-op Society',
+      }),
+    });
+    assert.equal(socRes.status, 201);
+    const socBody = (await socRes.json()) as { societyId: string };
+
+    const fshRes = await fetch(`${baseUrl}/api/v1/masterdata/fishermen`, {
+      method: 'POST',
+      headers: mdHeaders,
+      body: JSON.stringify({
+        fullName: 'Varghese Panicker',
+        phoneE164: `+919448${randBase.slice(0, 5)}9`,
+        welfareBoardNo: `KFWFB-KLM-${randBase.slice(0, 4)}`,
+        coopSocietyId: socBody.societyId,
+      }),
+    });
+    assert.equal(fshRes.status, 201);
+    const fshBody = (await fshRes.json()) as { fishermanId: string };
+
+    const vslRes = await fetch(`${baseUrl}/api/v1/masterdata/vessels`, {
+      method: 'POST',
+      headers: mdHeaders,
+      body: JSON.stringify({
+        registrationNo: `IND-KL-02-MM-${randBase.slice(0, 4)}`,
+        vesselNameEn: 'Sagaraputhri',
+        ownerFishermanId: fshBody.fishermanId,
+      }),
+    });
+    assert.equal(vslRes.status, 201);
+    const vslBody = (await vslRes.json()) as { vesselId: string };
+
+    const buyRes = await fetch(`${baseUrl}/api/v1/masterdata/buyers`, {
+      method: 'POST',
+      headers: mdHeaders,
+      body: JSON.stringify({
+        buyerName: 'Quilon Marine Exports',
+        paddleNo: 101,
+        escrowBalancePaise: '50000000',
+        approvedCreditPaise: '50000000',
+      }),
+    });
+    assert.equal(buyRes.status, 201);
+    const buyBody = (await buyRes.json()) as { buyerId: string };
+
+    const licRes = await fetch(`${baseUrl}/api/v1/masterdata/licences`, {
+      method: 'POST',
+      headers: mdHeaders,
+      body: JSON.stringify({
+        licenceId,
+        auctioneerUserId: auctioneer.userId,
+        auctioneerName: auctioneer.fullName,
+        licenceNo: `KL-HMS-NDK-${randBase.slice(0, 4)}`,
+        validFrom: '2026-01-01',
+        validUntil: '2026-12-31',
+      }),
+    });
+    assert.equal(licRes.status, 201);
+
+    const spcRes = await fetch(`${baseUrl}/api/v1/masterdata/species`, {
+      method: 'POST',
+      headers: mdHeaders,
+      body: JSON.stringify({
+        code: 'NEYMEEN',
+        nameEn: 'Seer Fish',
+        floorPricePaisePerKg: '60000',
+      }),
+    });
+    assert.equal(spcRes.status, 201);
+    const spcBody = (await spcRes.json()) as { speciesId: string };
+
+    const sesRes = await fetch(`${baseUrl}/api/v1/masterdata/sessions`, {
+      method: 'POST',
+      headers: mdHeaders,
+      body: JSON.stringify({
+        sessionCode: 'PIT-NDK-MORNING',
+        fencingToken: 1,
+      }),
+    });
+    assert.equal(sesRes.status, 201);
+    const sesBody = (await sesRes.json()) as { sessionId: string };
+
+    const defs = {
+      fishermanId: fshBody.fishermanId,
+      vesselId: vslBody.vesselId,
+      licenceId,
+      buyerId: buyBody.buyerId,
+      speciesId: spcBody.speciesId,
+      sessionId: sesBody.sessionId,
+    };
 
     // 3. Weigh lot
     const weighRes = await fetch(`${baseUrl}/api/v1/lots`, {

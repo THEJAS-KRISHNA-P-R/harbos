@@ -2,8 +2,30 @@ import crypto from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import type { Request, Response, NextFunction } from 'express';
 import { config } from '@server/config.ts';
-import { createTenantBoundDb, withPlatform, withTenant, type DbPort } from '@server/ports/db.ts';
+import {
+  createTenantBoundDb,
+  withPlatform,
+  withTenant,
+  type DbPort,
+} from '@server/ports/db.ts';
 import { AppError } from '@server/platform/errors.ts';
+import { recordRateLimitEvent } from '@server/platform/observability.ts';
+import {
+  consumeOtpChallengeRow,
+  consumePriorOtpChallengesAndInsertNew,
+  fetchLatestOtpChallengeRow,
+  fetchLatestOtpLockout,
+  fetchUserActiveStatusInTenantTx,
+  fetchUserByIdInTx,
+  insertRefreshTokenRowInTx,
+  lockRefreshTokenByHashInTx,
+  markRefreshTokenRotatedInTx,
+  revokeAllUserRefreshTokensInTx,
+  revokeRefreshTokenByHashInTx,
+  revokeRefreshTokenFamilyInTx,
+  updateOtpChallengeAttemptOrLock,
+  upsertAuthRateLimitBucketInTx,
+} from '@server/modules/identity/index.ts';
 import type { Role } from '@shared/contracts/rbac.ts';
 
 export interface AuthSessionClaims {
@@ -21,13 +43,12 @@ const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_LOCKOUT_MS = 15 * 60 * 1000;
 const REFRESH_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
-const USER_STATUS_CACHE_TTL_MS = 15_000; // <= 15s
 
 export const REFRESH_COOKIE_NAME = 'harbouros_refresh';
 
 const secretKey = new TextEncoder().encode(config.JWT_ACCESS_SECRET);
 
-interface CachedUserStatus {
+export interface CachedUserStatus {
   exists: boolean;
   isActive: boolean;
   role: Role;
@@ -39,7 +60,11 @@ const authUserCache = new Map<string, CachedUserStatus>();
 
 export function clearAuthUserCache(userId?: string): void {
   if (userId) {
-    authUserCache.delete(userId);
+    for (const k of authUserCache.keys()) {
+      if (k === userId || k.endsWith(`:${userId}`)) {
+        authUserCache.delete(k);
+      }
+    }
   } else {
     authUserCache.clear();
   }
@@ -69,9 +94,55 @@ function constantTimeHexEqual(hexA: string, hexB: string): boolean {
 }
 
 /**
- * Issues a CSPRNG 6-digit OTP challenge persisted in `core.otp_challenges`
- * with a per-challenge salt, SHA-256 hash, 5-minute TTL, and attempt counter.
+ * Phase 2.5: Multi-instance auth rate limit check backed by `core.auth_rate_limits` UNLOGGED table.
  */
+export async function enforceCrossInstanceAuthRateLimit(
+  platformDb: DbPort,
+  params: {
+    clientIp: string;
+    path: string;
+    windowSeconds?: number;
+    maxRequests?: number;
+  }
+): Promise<void> {
+  const windowSeconds = params.windowSeconds ?? 900;
+  const maxRequests = params.maxRequests ?? 25;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const windowSlot = Math.floor(nowSec / windowSeconds) * windowSeconds;
+  const bucketKey = `auth:${params.clientIp}:${windowSlot}`;
+  const windowStartIso = new Date(windowSlot * 1000).toISOString();
+  const expiresAtIso = new Date((windowSlot + windowSeconds) * 1000).toISOString();
+
+  const hitCount = await withPlatform(platformDb, (tx) =>
+    upsertAuthRateLimitBucketInTx(tx, {
+      bucketKey,
+      windowStartIso,
+      expiresAtIso,
+    })
+  );
+
+  if (hitCount > maxRequests) {
+    recordRateLimitEvent({
+      scope: 'AUTH',
+      allowed: false,
+      clientIp: params.clientIp,
+      path: params.path,
+    });
+    throw new AppError(
+      'RATE_LIMIT_EXCEEDED',
+      'Too many authentication attempts from this IP. Please wait 15 minutes before retrying.',
+      429
+    );
+  }
+
+  recordRateLimitEvent({
+    scope: 'AUTH',
+    allowed: true,
+    clientIp: params.clientIp,
+    path: params.path,
+  });
+}
+
 export async function issueOtpChallenge(
   db: DbPort,
   phoneE164: string
@@ -80,15 +151,7 @@ export async function issueOtpChallenge(
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
 
-  // Check if phone currently has an active lockout
-  const lockRes = await db.query<{ locked_until: string | null }>(
-    `SELECT locked_until::text AS locked_until
-     FROM core.otp_challenges
-     WHERE phone_e164 = $1 AND locked_until IS NOT NULL
-     ORDER BY created_at DESC LIMIT 1`,
-    [clean]
-  );
-  const lockedUntil = lockRes.rows[0]?.locked_until;
+  const lockedUntil = await fetchLatestOtpLockout(db, clean);
   if (lockedUntil && new Date(lockedUntil).getTime() > nowMs) {
     throw new AppError(
       'OTP_LOCKED',
@@ -97,34 +160,25 @@ export async function issueOtpChallenge(
     );
   }
 
-  // Expire any previous unconsumed challenges for this phone
-  await db.query(
-    `UPDATE core.otp_challenges
-     SET consumed_at = $2
-     WHERE phone_e164 = $1 AND consumed_at IS NULL`,
-    [clean, nowIso]
-  );
-
   const otpCode = String(crypto.randomInt(100_000, 1_000_000));
   const saltHex = crypto.randomBytes(16).toString('hex');
   const codeHash = hashOtpWithSalt(otpCode, saltHex);
   const challengeId = `OTP-CH-${crypto.randomUUID()}`;
   const expiresAtIso = new Date(nowMs + OTP_TTL_MS).toISOString();
 
-  await db.query(
-    `INSERT INTO core.otp_challenges (
-      challenge_id, phone_e164, code_hash, salt, expires_at,
-      attempts, max_attempts, consumed_at, locked_until, created_at
-    ) VALUES ($1, $2, $3, $4, $5, 0, $6, NULL, NULL, $7)`,
-    [challengeId, clean, codeHash, saltHex, expiresAtIso, OTP_MAX_ATTEMPTS, nowIso]
-  );
+  await consumePriorOtpChallengesAndInsertNew(db, {
+    challengeId,
+    phoneE164: clean,
+    codeHash,
+    saltHex,
+    expiresAtIso,
+    maxAttempts: OTP_MAX_ATTEMPTS,
+    nowIso,
+  });
 
   return { otpCode, challengeId, expiresAtIso };
 }
 
-/**
- * Verifies a 6-digit OTP code against `core.otp_challenges`.
- */
 export async function verifyOtpChallenge(
   db: DbPort,
   phoneE164: string,
@@ -135,32 +189,15 @@ export async function verifyOtpChallenge(
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
 
-  const latestRes = await db.query<{
-    challenge_id: string;
-    code_hash: string;
-    salt: string;
-    expires_at: string;
-    attempts: number;
-    max_attempts: number;
-    consumed_at: string | null;
-    locked_until: string | null;
-  }>(
-    `SELECT challenge_id, code_hash, salt, expires_at::text AS expires_at,
-            attempts, max_attempts, consumed_at::text AS consumed_at,
-            locked_until::text AS locked_until
-     FROM core.otp_challenges
-     WHERE phone_e164 = $1
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [clean]
-  );
-
-  const challenge = latestRes.rows[0];
+  const challenge = await fetchLatestOtpChallengeRow(db, clean);
   if (!challenge) {
     return false;
   }
 
-  if (challenge.locked_until && new Date(challenge.locked_until).getTime() > nowMs) {
+  if (
+    challenge.locked_until &&
+    new Date(challenge.locked_until).getTime() > nowMs
+  ) {
     throw new AppError(
       'OTP_LOCKED',
       'Too many failed OTP verification attempts. Phone is temporarily locked.',
@@ -168,11 +205,10 @@ export async function verifyOtpChallenge(
     );
   }
 
-  if (challenge.consumed_at !== null) {
-    return false;
-  }
-
-  if (new Date(challenge.expires_at).getTime() < nowMs) {
+  if (
+    challenge.consumed_at !== null ||
+    new Date(challenge.expires_at).getTime() < nowMs
+  ) {
     return false;
   }
 
@@ -183,12 +219,11 @@ export async function verifyOtpChallenge(
     const nextAttempts = challenge.attempts + 1;
     if (nextAttempts >= challenge.max_attempts) {
       const lockUntilIso = new Date(nowMs + OTP_LOCKOUT_MS).toISOString();
-      await db.query(
-        `UPDATE core.otp_challenges
-         SET attempts = $1, locked_until = $2
-         WHERE challenge_id = $3`,
-        [nextAttempts, lockUntilIso, challenge.challenge_id]
-      );
+      await updateOtpChallengeAttemptOrLock(db, {
+        challengeId: challenge.challenge_id,
+        attempts: nextAttempts,
+        lockedUntilIso: lockUntilIso,
+      });
       throw new AppError(
         'OTP_LOCKED',
         'Maximum OTP verification attempts exceeded. Challenge locked for 15 minutes.',
@@ -196,22 +231,14 @@ export async function verifyOtpChallenge(
       );
     }
 
-    await db.query(
-      `UPDATE core.otp_challenges SET attempts = $1 WHERE challenge_id = $2`,
-      [nextAttempts, challenge.challenge_id]
-    );
+    await updateOtpChallengeAttemptOrLock(db, {
+      challengeId: challenge.challenge_id,
+      attempts: nextAttempts,
+    });
     return false;
   }
 
-  const consumeRes = await db.query<{ challenge_id: string }>(
-    `UPDATE core.otp_challenges
-     SET consumed_at = $1
-     WHERE challenge_id = $2 AND consumed_at IS NULL
-     RETURNING challenge_id`,
-    [nowIso, challenge.challenge_id]
-  );
-
-  return consumeRes.rows.length > 0;
+  return consumeOtpChallengeRow(db, challenge.challenge_id, nowIso);
 }
 
 export async function issueRefreshToken(
@@ -234,14 +261,16 @@ export async function issueRefreshToken(
   const nowIso = new Date(nowMs).toISOString();
   const expiresAtIso = new Date(nowMs + REFRESH_TTL_MS).toISOString();
 
-  await withPlatform(db, async (tx) => {
-    await tx.query(
-      `INSERT INTO core.refresh_tokens (
-        token_hash, user_id, tenant_id, family_id, expires_at, rotated_at, revoked_at, created_at
-      ) VALUES ($1, $2, $3, $4, $5, NULL, NULL, $6)`,
-      [tokenHash, params.userId, params.tenantId, familyId, expiresAtIso, nowIso]
-    );
-  });
+  await withPlatform(db, (tx) =>
+    insertRefreshTokenRowInTx(tx, {
+      tokenHash,
+      userId: params.userId,
+      tenantId: params.tenantId,
+      familyId,
+      expiresAtIso,
+      nowIso,
+    })
+  );
 
   return { rawToken, tokenHash, familyId, expiresAtIso };
 }
@@ -267,94 +296,49 @@ export async function rotateRefreshToken(
   const tokenHash = hashRefreshToken(rawToken);
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
-
   let reuseDetected = false;
 
   const result = await withPlatform(db, async (tx) => {
-    const tokenRes = await tx.query<{
-      token_hash: string;
-      user_id: string;
-      tenant_id: string;
-      family_id: string;
-      expires_at: string;
-      rotated_at: string | null;
-      revoked_at: string | null;
-    }>(
-      `SELECT token_hash, user_id, tenant_id, family_id,
-              expires_at::text AS expires_at,
-              rotated_at::text AS rotated_at,
-              revoked_at::text AS revoked_at
-       FROM core.refresh_tokens
-       WHERE token_hash = $1
-       FOR UPDATE`,
-      [tokenHash]
-    );
-
-    const row = tokenRes.rows[0];
+    const row = await lockRefreshTokenByHashInTx(tx, tokenHash);
     if (!row) {
       throw new AppError('UNAUTHORIZED', 'Invalid refresh token', 401);
     }
 
-    // Reuse detection: if an already-rotated token is presented again, revoke the entire family!
     if (row.rotated_at !== null) {
-      await tx.query(
-        `UPDATE core.refresh_tokens
-         SET revoked_at = $1
-         WHERE family_id = $2 AND revoked_at IS NULL`,
-        [nowIso, row.family_id]
-      );
+      await revokeRefreshTokenFamilyInTx(tx, row.family_id, nowIso);
       reuseDetected = true;
       return null;
     }
 
     if (row.revoked_at !== null || new Date(row.expires_at).getTime() <= nowMs) {
-      throw new AppError('UNAUTHORIZED', 'Refresh token is expired or revoked', 401);
+      throw new AppError(
+        'UNAUTHORIZED',
+        'Refresh token is expired or revoked',
+        401
+      );
     }
 
-    const userRes = await tx.query<{
-      user_id: string;
-      tenant_id: string;
-      phone_e164: string;
-      full_name: string;
-      role: Role;
-      entity_ref_id: string | null;
-      is_active: boolean;
-    }>(
-      `SELECT user_id, tenant_id, phone_e164, full_name, role, entity_ref_id, is_active
-       FROM core.users
-       WHERE user_id = $1
-       LIMIT 1`,
-      [row.user_id]
-    );
-    const user = userRes.rows[0];
+    const user = await fetchUserByIdInTx(tx, row.user_id);
     if (!user || !user.is_active) {
-      await tx.query(
-        `UPDATE core.refresh_tokens
-         SET revoked_at = $1
-         WHERE family_id = $2 AND revoked_at IS NULL`,
-        [nowIso, row.family_id]
-      );
+      await revokeRefreshTokenFamilyInTx(tx, row.family_id, nowIso);
       reuseDetected = true;
       return null;
     }
 
-    await tx.query(
-      `UPDATE core.refresh_tokens
-       SET rotated_at = $1
-       WHERE token_hash = $2`,
-      [nowIso, tokenHash]
-    );
+    await markRefreshTokenRotatedInTx(tx, tokenHash, nowIso);
 
     const newRawRefreshToken = crypto.randomBytes(32).toString('hex');
     const newTokenHash = hashRefreshToken(newRawRefreshToken);
     const newExpiresAtIso = new Date(nowMs + REFRESH_TTL_MS).toISOString();
 
-    await tx.query(
-      `INSERT INTO core.refresh_tokens (
-        token_hash, user_id, tenant_id, family_id, expires_at, rotated_at, revoked_at, created_at
-      ) VALUES ($1, $2, $3, $4, $5, NULL, NULL, $6)`,
-      [newTokenHash, user.user_id, user.tenant_id, row.family_id, newExpiresAtIso, nowIso]
-    );
+    await insertRefreshTokenRowInTx(tx, {
+      tokenHash: newTokenHash,
+      userId: user.user_id,
+      tenantId: user.tenant_id,
+      familyId: row.family_id,
+      expiresAtIso: newExpiresAtIso,
+      nowIso,
+    });
 
     const accessToken = await signAccessJwt({
       sub: user.user_id,
@@ -390,31 +374,27 @@ export async function rotateRefreshToken(
   return result;
 }
 
-export async function revokeRefreshToken(db: DbPort, rawToken: string): Promise<void> {
+export async function revokeRefreshToken(
+  db: DbPort,
+  rawToken: string
+): Promise<void> {
   if (!rawToken || !rawToken.trim()) return;
   const tokenHash = hashRefreshToken(rawToken);
   const nowIso = new Date().toISOString();
-  await withPlatform(db, async (tx) => {
-    await tx.query(
-      `UPDATE core.refresh_tokens
-       SET revoked_at = $1
-       WHERE token_hash = $2 AND revoked_at IS NULL`,
-      [nowIso, tokenHash]
-    );
-  });
+  await withPlatform(db, (tx) =>
+    revokeRefreshTokenByHashInTx(tx, tokenHash, nowIso)
+  );
 }
 
-export async function revokeAllUserRefreshTokens(db: DbPort, userId: string): Promise<void> {
+export async function revokeAllUserRefreshTokens(
+  db: DbPort,
+  userId: string
+): Promise<void> {
   clearAuthUserCache(userId);
   const nowIso = new Date().toISOString();
-  await withPlatform(db, async (tx) => {
-    await tx.query(
-      `UPDATE core.refresh_tokens
-       SET revoked_at = $1
-       WHERE user_id = $2 AND revoked_at IS NULL`,
-      [nowIso, userId]
-    );
-  });
+  await withPlatform(db, (tx) =>
+    revokeAllUserRefreshTokensInTx(tx, userId, nowIso)
+  );
 }
 
 export function setRefreshTokenCookie(res: Response, rawToken: string): void {
@@ -434,8 +414,7 @@ export function clearRefreshTokenCookie(res: Response): void {
 export function parseRefreshTokenCookie(req: Request): string | null {
   const cookieHeader = req.headers.cookie;
   if (!cookieHeader) return null;
-  const parts = cookieHeader.split(';');
-  for (const part of parts) {
+  for (const part of cookieHeader.split(';')) {
     const [k, ...vParts] = part.trim().split('=');
     if (k === REFRESH_COOKIE_NAME) {
       return vParts.join('=').trim() || null;
@@ -469,16 +448,23 @@ export async function verifyAccessJwt(token: string): Promise<AuthSessionClaims>
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });
-    if (!payload.sub || typeof payload.tenantId !== 'string' || typeof payload.role !== 'string') {
+    if (
+      !payload.sub ||
+      typeof payload.tenantId !== 'string' ||
+      typeof payload.role !== 'string'
+    ) {
       throw new AppError('UNAUTHORIZED', 'Malformed JWT claims', 401);
     }
     return {
       sub: payload.sub,
       tenantId: payload.tenantId,
       role: payload.role as Role,
-      fullName: typeof payload.fullName === 'string' ? payload.fullName : 'Operator',
-      phoneE164: typeof payload.phoneE164 === 'string' ? payload.phoneE164 : '',
-      entityRefId: typeof payload.entityRefId === 'string' ? payload.entityRefId : null,
+      fullName:
+        typeof payload.fullName === 'string' ? payload.fullName : 'Operator',
+      phoneE164:
+        typeof payload.phoneE164 === 'string' ? payload.phoneE164 : '',
+      entityRefId:
+        typeof payload.entityRefId === 'string' ? payload.entityRefId : null,
     };
   } catch {
     throw new AppError('UNAUTHORIZED', 'Invalid or expired access token', 401);
@@ -498,23 +484,18 @@ export function verifySupervisorPin(
 ): boolean {
   const cleanCandidate = candidatePin.trim();
   if (!cleanCandidate) return false;
-
   if (storedPinHash && storedPinHash.startsWith('scrypt:')) {
-    const parts = storedPinHash.split(':');
-    const salt = parts[1];
-    const expectedHex = parts[2];
+    const [, salt, expectedHex] = storedPinHash.split(':');
     if (!salt || !expectedHex) return false;
     const actualHex = crypto.scryptSync(cleanCandidate, salt, 32).toString('hex');
     return constantTimeHexEqual(actualHex, expectedHex);
   }
-
   if (legacyPinCode) {
     return constantTimeHexEqual(
       crypto.createHash('sha256').update(cleanCandidate).digest('hex'),
       crypto.createHash('sha256').update(legacyPinCode.trim()).digest('hex')
     );
   }
-
   return false;
 }
 
@@ -523,51 +504,31 @@ export interface AuthenticatedRequest extends Request {
   db?: DbPort;
 }
 
-async function resolveUserActiveStatus(
+export async function resolveUserActiveStatusForAuth(
   baseDb: DbPort,
   tenantId: string,
   userId: string
 ): Promise<CachedUserStatus> {
+  const ttlMs = config.AUTH_CACHE_TTL_MS;
   const cacheKey = `${tenantId}:${userId}`;
   const nowMs = Date.now();
-  const cached = authUserCache.get(cacheKey);
-  if (cached && cached.expiresAtMs > nowMs) {
-    return cached;
+  if (ttlMs > 0) {
+    const cached = authUserCache.get(cacheKey);
+    if (cached && cached.expiresAtMs > nowMs) return cached;
   }
 
-  const row = await withTenant(baseDb, tenantId, async (tx) => {
-    const res = await tx.query<{
-      user_id: string;
-      tenant_id: string;
-      role: Role;
-      is_active: boolean;
-    }>(
-      `SELECT user_id, tenant_id, role, is_active
-       FROM core.users
-       WHERE user_id = $1 AND tenant_id = $2
-       LIMIT 1`,
-      [userId, tenantId]
-    );
-    return res.rows[0] ?? null;
-  });
+  const row = await withTenant(
+    baseDb,
+    tenantId,
+    (tx) => fetchUserActiveStatusInTenantTx(tx, tenantId, userId),
+    { readOnly: true }
+  );
 
   const status: CachedUserStatus = row
-    ? {
-        exists: true,
-        isActive: Boolean(row.is_active),
-        role: row.role,
-        tenantId: row.tenant_id,
-        expiresAtMs: nowMs + USER_STATUS_CACHE_TTL_MS,
-      }
-    : {
-        exists: false,
-        isActive: true,
-        role: 'WHOLESALE_BUYER',
-        tenantId: '',
-        expiresAtMs: nowMs + USER_STATUS_CACHE_TTL_MS,
-      };
+    ? { exists: true, isActive: Boolean(row.is_active), role: row.role, tenantId: row.tenant_id, expiresAtMs: nowMs + ttlMs }
+    : { exists: false, isActive: true, role: 'WHOLESALE_BUYER', tenantId: '', expiresAtMs: nowMs + ttlMs };
 
-  authUserCache.set(cacheKey, status);
+  if (ttlMs > 0) authUserCache.set(cacheKey, status);
   return status;
 }
 
@@ -583,16 +544,13 @@ export function requireAuth(allowedRoles?: ReadonlyArray<Role>) {
 
       const baseDb = req.app?.locals?.db as DbPort | undefined;
       if (baseDb) {
-        const userStatus = await resolveUserActiveStatus(baseDb, claims.tenantId, claims.sub);
+        const userStatus = await resolveUserActiveStatusForAuth(baseDb, claims.tenantId, claims.sub);
         if (userStatus.exists) {
           if (!userStatus.isActive) {
             throw new AppError('UNAUTHORIZED', 'Operator account is deactivated', 401);
           }
           if (userStatus.tenantId === claims.tenantId) {
-            claims = {
-              ...claims,
-              role: userStatus.role,
-            };
+            claims = { ...claims, role: userStatus.role };
           }
         }
         req.db = createTenantBoundDb(baseDb, claims.tenantId);
@@ -613,3 +571,4 @@ export function requireAuth(allowedRoles?: ReadonlyArray<Role>) {
     }
   };
 }
+

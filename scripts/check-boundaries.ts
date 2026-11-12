@@ -47,10 +47,13 @@ export function checkBoundaries(): { passed: boolean; violations: string[] } {
 
   const greenBanRegex = /#(9FE870|8EE05B|163300|E8F8DE|DCF4CF|15803D|F0FDF4|BBF7D0)\b|\b(green|emerald|lime|teal)-[0-9]+/i;
   const hardcodedHexRegex = /#[0-9A-Fa-f]{6}\b/;
+  const hardcodedDemoLiteralsRegex = /\b(ten-munambam|USR-ACCT-01|FDRL-NODAL-KOCHI)\b|MUN-/;
+  const sqlQueryCallRegex = /\b(?:db|tx|platformDb|readDb|tenantTx|pool|client)\.query\s*(?:<[^>]*>)?\s*\(/;
 
   for (const absPath of codeFiles) {
     const relPath = path.relative(ROOT_DIR, absPath).split(path.sep).join('/');
     const content = fs.readFileSync(absPath, 'utf8');
+    const lineCount = content.split('\n').length;
 
     // §11.3 Rule: Zero green hexes or Tailwind green/emerald/lime/teal classes anywhere in src/
     const greenMatch = greenBanRegex.exec(content);
@@ -67,6 +70,39 @@ export function checkBoundaries(): { passed: boolean; violations: string[] } {
     }
 
     if (relPath.endsWith('.css')) continue;
+
+    // Phase 1.4: Line count limits on src/server/**/*.ts and src/server/app.ts
+    if (relPath === 'src/server/app.ts' && lineCount > 150) {
+      violations.push(`[Phase 1.1] ${relPath} is ${lineCount} lines (must be <= 150 lines)`);
+    }
+    if (relPath.startsWith('src/server/') && relPath.endsWith('.ts') && lineCount > 600) {
+      violations.push(`[Phase 1.1] ${relPath} is ${lineCount} lines (must be <= 600 lines)`);
+    }
+
+    // Phase 1.4: SQL (db.query / tx.query) allowed ONLY inside src/server/modules/**/repo.ts,
+    // src/server/adapters/**, src/server/platform/seed.ts, src/server/ports/db.ts, and scripts/**
+    if (relPath.startsWith('src/server/')) {
+      const isAllowedSqlFile =
+        /^src\/server\/modules\/[^/]+\/repo\.ts$/.test(relPath) ||
+        relPath.startsWith('src/server/adapters/') ||
+        relPath === 'src/server/platform/seed.ts' ||
+        relPath === 'src/server/ports/db.ts';
+      if (!isAllowedSqlFile && sqlQueryCallRegex.test(content)) {
+        violations.push(
+          `[Phase 1.4 SQL Boundary] ${relPath} executes direct SQL .query() outside modules/**/repo.ts, adapters/**, ports/db.ts, or platform/seed.ts`
+        );
+      }
+
+      // Phase 1.4: No hardcoded 'ten-munambam', 'USR-ACCT-01', 'MUN-', 'FDRL-NODAL-KOCHI' outside seed.ts
+      if (relPath !== 'src/server/platform/seed.ts') {
+        const demoMatch = hardcodedDemoLiteralsRegex.exec(content);
+        if (demoMatch) {
+          violations.push(
+            `[Phase 1.4 Demo Literal Ban] ${relPath} contains hardcoded demo literal "${demoMatch[0]}" outside platform/seed.ts`
+          );
+        }
+      }
+    }
 
     // §6 Rule 5: process.env is read ONLY in src/server/config.ts
     if (relPath !== 'src/server/config.ts' && /\bprocess\.env\b/.test(content)) {
@@ -95,9 +131,9 @@ export function checkBoundaries(): { passed: boolean; violations: string[] } {
         violations.push(`[§6 Rule 6] ${relPath} imports @google/genai outside src/server/adapters/llm-gemini.ts`);
       }
 
-      // §6 Rule 1: @shared/* imports nothing outside @shared/*
+      // §6 Rule 1: @shared/* imports nothing from src/server/** or src/web/**
       if (relPath.startsWith('src/shared/')) {
-        const isInsideShared = targetRel.startsWith('src/shared/');
+        const isInsideShared = targetRel.startsWith('src/shared/') || spec.startsWith('node:') || spec === 'zod';
         if (!isInsideShared) {
           violations.push(`[§6 Rule 1] ${relPath} imports "${spec}" outside src/shared/`);
         }
@@ -180,5 +216,5 @@ if (isMain) {
     }
     process.exit(1);
   }
-  console.log('[boundaries] All §6 architectural boundary and §11.3 visual hygiene rules passed.');
+  console.log('[boundaries] All §6 architectural boundary, Phase 1.4 module/SQL/line-count, and §11.3 visual hygiene rules passed.');
 }

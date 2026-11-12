@@ -10,6 +10,17 @@ export type Role =
   | 'ACCOUNTANT'
   | 'AUTHORIZED_INSPECTOR';
 
+export const ALL_ROLES: ReadonlyArray<Role> = [
+  'SUPER_ADMIN',
+  'HARBOUR_ADMIN',
+  'LICENSED_AUCTIONEER',
+  'FISHERMAN_BOAT_OWNER',
+  'WHOLESALE_BUYER',
+  'WEIGHING_OPERATOR',
+  'ACCOUNTANT',
+  'AUTHORIZED_INSPECTOR',
+];
+
 export type WorkspaceId =
   | 'weighing'
   | 'pit'
@@ -96,48 +107,76 @@ export const WORKSPACES: ReadonlyArray<WorkspaceDefinition> = [
 ];
 
 export interface RoutePolicy {
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   pattern: string;
   roles: ReadonlyArray<Role> | 'PUBLIC';
 }
 
 export const ROUTE_RBAC_MATRIX: ReadonlyArray<RoutePolicy> = [
+  // Health & Readiness
+  { method: 'GET', pattern: '/healthz', roles: 'PUBLIC' },
+  { method: 'GET', pattern: '/readyz', roles: 'PUBLIC' },
   { method: 'GET', pattern: '/api/health', roles: 'PUBLIC' },
+
+  // Identity & Auth
+  { method: 'GET', pattern: '/api/v1/demo/operators', roles: 'PUBLIC' },
   { method: 'POST', pattern: '/api/v1/auth/otp/request', roles: 'PUBLIC' },
   { method: 'POST', pattern: '/api/v1/auth/otp/verify', roles: 'PUBLIC' },
+  { method: 'POST', pattern: '/api/v1/auth/refresh', roles: 'PUBLIC' },
+  { method: 'POST', pattern: '/api/v1/auth/logout', roles: 'PUBLIC' },
   { method: 'POST', pattern: '/api/v1/auth/persona-switch', roles: 'PUBLIC' },
+  { method: 'GET', pattern: '/api/v1/me', roles: ALL_ROLES },
+  { method: 'GET', pattern: '/api/v1/auth/profile', roles: ALL_ROLES },
+  { method: 'POST', pattern: '/api/v1/auth/profile', roles: ALL_ROLES },
+  { method: 'POST', pattern: '/api/v1/auth/locale', roles: ALL_ROLES },
+  { method: 'POST', pattern: '/api/v1/auth/consent', roles: ALL_ROLES },
+
+  // Privacy & DPDP (Phase 3.5)
+  { method: 'GET', pattern: '/api/v1/privacy/export', roles: ALL_ROLES },
+  { method: 'POST', pattern: '/api/v1/privacy/erase', roles: ALL_ROLES },
+
+  // Workspace Bootstrap & Keyset Paged Read Endpoints (Phase 2.2)
+  { method: 'GET', pattern: '/api/v1/bootstrap', roles: ALL_ROLES },
+  { method: 'GET', pattern: '/api/v1/lots', roles: ALL_ROLES },
+  { method: 'GET', pattern: '/api/v1/allocations', roles: ALL_ROLES },
   {
     method: 'GET',
-    pattern: '/api/v1/me',
-    roles: [
-      'SUPER_ADMIN',
-      'HARBOUR_ADMIN',
-      'LICENSED_AUCTIONEER',
-      'FISHERMAN_BOAT_OWNER',
-      'WHOLESALE_BUYER',
-      'WEIGHING_OPERATOR',
-      'ACCOUNTANT',
-      'AUTHORIZED_INSPECTOR',
-    ],
+    pattern: '/api/v1/ledger/journals',
+    roles: ['ACCOUNTANT', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
   },
   {
     method: 'GET',
-    pattern: '/api/v1/bootstrap',
-    roles: [
-      'SUPER_ADMIN',
-      'HARBOUR_ADMIN',
-      'LICENSED_AUCTIONEER',
-      'FISHERMAN_BOAT_OWNER',
-      'WHOLESALE_BUYER',
-      'WEIGHING_OPERATOR',
-      'ACCOUNTANT',
-      'AUTHORIZED_INSPECTOR',
-    ],
+    pattern: '/api/v1/audit-logs',
+    roles: ['ACCOUNTANT', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
   },
+
+  // Platform & Observability
+  {
+    method: 'GET',
+    pattern: '/api/v1/metrics',
+    roles: ['SUPER_ADMIN', 'HARBOUR_ADMIN'],
+  },
+  {
+    method: 'GET',
+    pattern: '/api/v1/governance/migrations',
+    roles: ['SUPER_ADMIN', 'HARBOUR_ADMIN'],
+  },
+  {
+    method: 'GET',
+    pattern: '/api/v1/benchmarks/harbours',
+    roles: ['SUPER_ADMIN', 'HARBOUR_ADMIN', 'ACCOUNTANT'],
+  },
+
+  // Lots, Sync, Quality Inspection & Auction Allocation
   {
     method: 'POST',
     pattern: '/api/v1/lots',
     roles: ['WEIGHING_OPERATOR', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/lots/:lotId/reprint',
+    roles: ['WEIGHING_OPERATOR', 'LICENSED_AUCTIONEER', 'ACCOUNTANT', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
   },
   {
     method: 'POST',
@@ -147,7 +186,7 @@ export const ROUTE_RBAC_MATRIX: ReadonlyArray<RoutePolicy> = [
   {
     method: 'POST',
     pattern: '/api/v1/lots/:lotId/inspect',
-    roles: ['AUTHORIZED_INSPECTOR', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
+    roles: ['AUTHORIZED_INSPECTOR', 'HARBOUR_ADMIN'],
   },
   {
     method: 'POST',
@@ -157,12 +196,24 @@ export const ROUTE_RBAC_MATRIX: ReadonlyArray<RoutePolicy> = [
   {
     method: 'POST',
     pattern: '/api/v1/lots/:lotId/allocate',
-    roles: ['LICENSED_AUCTIONEER', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
+    roles: ['LICENSED_AUCTIONEER', 'HARBOUR_ADMIN'],
   },
   {
     method: 'POST',
     pattern: '/api/v1/floor-prices',
     roles: ['HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+
+  // Payouts, Bank Webhook, Buyer Receipts & Ledger
+  {
+    method: 'POST',
+    pattern: '/api/v1/webhooks/bank-nodal',
+    roles: 'PUBLIC',
+  },
+  {
+    method: 'GET',
+    pattern: '/api/v1/ledger/audit-imports',
+    roles: ['ACCOUNTANT', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
   },
   {
     method: 'POST',
@@ -172,7 +223,17 @@ export const ROUTE_RBAC_MATRIX: ReadonlyArray<RoutePolicy> = [
   {
     method: 'POST',
     pattern: '/api/v1/payout-batches/:batchId/reconcile',
-    roles: ['ACCOUNTANT', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
+    roles: ['ACCOUNTANT', 'HARBOUR_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/payout-batches/bulk-reconcile',
+    roles: ['ACCOUNTANT', 'HARBOUR_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/buyers/:buyerId/receipts',
+    roles: ['ACCOUNTANT', 'HARBOUR_ADMIN'],
   },
   {
     method: 'POST',
@@ -184,6 +245,8 @@ export const ROUTE_RBAC_MATRIX: ReadonlyArray<RoutePolicy> = [
     pattern: '/api/v1/ledger/verify',
     roles: ['ACCOUNTANT', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
   },
+
+  // Tenancy & Policies
   {
     method: 'POST',
     pattern: '/api/v1/tenants',
@@ -198,5 +261,76 @@ export const ROUTE_RBAC_MATRIX: ReadonlyArray<RoutePolicy> = [
     method: 'POST',
     pattern: '/api/v1/policies',
     roles: ['SUPER_ADMIN', 'HARBOUR_ADMIN'],
+  },
+
+  // Masterdata CRUD & Bulk CSV Import (Phase 3.2)
+  {
+    method: 'GET',
+    pattern: '/api/v1/masterdata/:entityType',
+    roles: ['HARBOUR_ADMIN', 'ACCOUNTANT', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/masterdata/coop-societies',
+    roles: ['HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/masterdata/fishermen',
+    roles: ['HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/masterdata/vessels',
+    roles: ['HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/masterdata/buyers',
+    roles: ['HARBOUR_ADMIN', 'ACCOUNTANT', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/masterdata/licences',
+    roles: ['HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/masterdata/species',
+    roles: ['HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/masterdata/sessions',
+    roles: ['HARBOUR_ADMIN', 'LICENSED_AUCTIONEER', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/masterdata/:entityType/:id/deactivate',
+    roles: ['HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/masterdata/import/:entityType',
+    roles: ['HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+
+  // Reports & Shadow-Pilot Diff (Phase 3.4)
+  {
+    method: 'GET',
+    pattern: '/api/v1/reports/:reportType',
+    roles: ['ACCOUNTANT', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/reports/shadow-diff',
+    roles: ['ACCOUNTANT', 'HARBOUR_ADMIN', 'SUPER_ADMIN'],
+  },
+
+  // Outbox Notifications Status (Phase 3.1)
+  {
+    method: 'GET',
+    pattern: '/api/v1/notifications/outbox',
+    roles: ['HARBOUR_ADMIN', 'ACCOUNTANT', 'SUPER_ADMIN'],
   },
 ];

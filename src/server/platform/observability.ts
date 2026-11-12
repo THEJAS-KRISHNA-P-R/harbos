@@ -431,6 +431,16 @@ export function getObservabilitySnapshot(cacheStats?: {
   };
 }
 
+let outboxDeadLetterTotal = 0;
+
+export function incrementOutboxDeadLetterMetric(delta = 1): void {
+  outboxDeadLetterTotal += delta;
+}
+
+export function getOutboxDeadLetterMetric(): number {
+  return outboxDeadLetterTotal;
+}
+
 export function formatPrometheusMetrics(): string {
   const snap = getObservabilitySnapshot();
   return [
@@ -452,5 +462,9 @@ export function formatPrometheusMetrics(): string {
     '# HELP harbouros_sql_latency_p95_ms 95th percentile SQL query latency in ms',
     '# TYPE harbouros_sql_latency_p95_ms gauge',
     `harbouros_sql_latency_p95_ms ${snap.p95LatencyMs}`,
+    '# HELP harbouros_outbox_dead_letter_total Total outbox events moved to DEAD_LETTER',
+    '# TYPE harbouros_outbox_dead_letter_total counter',
+    `harbouros_outbox_dead_letter_total ${outboxDeadLetterTotal}`,
   ].join('\n');
 }
+

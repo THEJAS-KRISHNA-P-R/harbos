@@ -18,6 +18,9 @@ async function main(): Promise<void> {
   process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || validAccessSecret;
   process.env.QR_HMAC_SECRET = process.env.QR_HMAC_SECRET || validQrSecret;
   process.env.SMS_PROVIDER = 'msg91';
+  process.env.MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || validAccessSecret.slice(0, 24);
+  process.env.MSG91_SENDER_ID = process.env.MSG91_SENDER_ID || 'HRBROS';
+  process.env.MSG91_OTP_TEMPLATE_ID = process.env.MSG91_OTP_TEMPLATE_ID || '1207160000000000001';
   process.env.DATABASE_URL =
     process.env.DATABASE_URL || 'postgres://harbour_app:secret@localhost:5432/harbouros_test';
   process.env.DATABASE_PLATFORM_URL =
@@ -29,7 +32,7 @@ async function main(): Promise<void> {
 
   console.log('[smoke-prod] Starting production boot smoke test...');
 
-  // Verify that config parses cleanly with ONLY the 5 required production variables
+  // Verify that config parses cleanly with required production variables
   const prodConfig = parseEnvConfig({
     NODE_ENV: 'production',
     DATABASE_URL:
@@ -40,6 +43,9 @@ async function main(): Promise<void> {
     JWT_ACCESS_SECRET: validAccessSecret,
     QR_HMAC_SECRET: validQrSecret,
     SMS_PROVIDER: 'msg91',
+    MSG91_AUTH_KEY: process.env.MSG91_AUTH_KEY,
+    MSG91_SENDER_ID: process.env.MSG91_SENDER_ID,
+    MSG91_OTP_TEMPLATE_ID: process.env.MSG91_OTP_TEMPLATE_ID,
   });
 
   assert.equal(prodConfig.NODE_ENV, 'production');
@@ -57,10 +63,13 @@ async function main(): Promise<void> {
     JWT_ACCESS_SECRET: validAccessSecret,
     QR_HMAC_SECRET: validQrSecret,
     SMS_PROVIDER: 'msg91',
+    MSG91_AUTH_KEY: process.env.MSG91_AUTH_KEY,
+    MSG91_SENDER_ID: process.env.MSG91_SENDER_ID,
+    MSG91_OTP_TEMPLATE_ID: process.env.MSG91_OTP_TEMPLATE_ID,
   });
   assert.equal(cloudRunConfig.PORT, 8080, 'PORT=8080 must bind 8080 in production');
   console.log(
-    '[smoke-prod] PASS: Production config parsed cleanly with 5 required variables, safe defaults, and PORT=8080 preservation'
+    '[smoke-prod] PASS: Production config parsed cleanly with required variables, safe defaults, and PORT=8080 preservation'
   );
 
   // Prepare database instances
