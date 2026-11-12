@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "locale": "en",
+    "name": "English",
+    "direction": "ltr"
+  },
+  "app": {
+    "title": "HarbourOS",
+    "subtitle": "Kerala Marine Fisheries Harbour Management System",
+    "statute": "Kerala Act 16 of 2021 Compliant",
+    "logout": "Sign Out",
+    "switchHarbour": "Switch Harbour",
+    "role": "Role"
+  },
+  "actions": {
+    "weigh": "Weigh & Tag Lot",
+    "inspect": "Inspect Quality (s.21)",
+    "allocate": "Allocate Sale",
+    "generatePayout": "Generate Payout Batch",
+    "reconcileUtr": "Reconcile Bank UTR",
+    "recordReceipt": "Record Buyer Receipt",
+    "verifyLedger": "Verify SHA-256 Ledger",
+    "printSlip": "Print Dockside Slip",
+    "reprint": "Reprint Slip",
+    "importMasterdata": "Bulk CSV Import",
+    "exportPrivacy": "Export Personal Data",
+    "requestErasure": "Request DPDP Erasure"
+  },
+  "status": {
+    "weighed": "Weighed at Dockside",
+    "inspected": "Quality Inspection Passed",
+    "rejected": "Rejected Unfit (s.21)",
+    "allocated": "Auction Cleared & Allocated",
+    "payoutGenerated": "Payout CSV Generated",
+    "reconciled": "Bank Nodal Reconciled",
+    "active": "Active",
+    "suspended": "Suspended"
+  },
+  "dockside": {
+    "lotCode": "Lot Code",
+    "vessel": "Vessel",
+    "fisherman": "Fisherman",
+    "species": "Species",
+    "netWeightKg": "Net Weight (kg)",
+    "boxes": "Boxes",
+    "coreTemp": "Core Temp (°C)",
+    "buyerPaddle": "Buyer Paddle #",
+    "pricePerKg": "Price / kg (paise)",
+    "hammerAmount": "Hammer Total (₹)",
+    "scanQr": "Scan Dockside QR",
+    "voicePrompt": "Speak Paddle & Bid Price"
+  },
+  "slips": {
+    "lotLabel": "DOCKSIDE LOT TAG",
+    "saleSlip": "BUYER SALE ALLOCATION SLIP",
+    "settlementSlip": "FISHERMAN NET SETTLEMENT VOUCHER",
+    "reprintWatermark": "REPRINT — AUDITED COPY",
+    "statutoryNotice": "Statutory double-entry record under Kerala Fish Auctioning Act 16 of 2021"
+  }
+}

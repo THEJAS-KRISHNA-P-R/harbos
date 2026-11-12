@@ -166,9 +166,9 @@ export async function fetchEntriesPage(
     row_hash: string;
     created_at_utc_iso_ms: string;
   }>(
-    `SELECT entry_seq::text AS entry_seq, journal_id, account_id, direction,
-            amount_paise::text AS amount_paise, prev_row_hash, row_hash, created_at_utc_iso_ms
-     FROM ledger.entries WHERE tenant_id = $1 AND entry_seq > $2 ORDER BY (entry_seq::bigint) ASC LIMIT $3`,
+    `SELECT entries.entry_seq::text AS entry_seq, entries.journal_id, entries.account_id, entries.direction,
+            entries.amount_paise::text AS amount_paise, entries.prev_row_hash, entries.row_hash, entries.created_at_utc_iso_ms
+     FROM ledger.entries WHERE entries.tenant_id = $1 AND entries.entry_seq > $2 ORDER BY entries.entry_seq ASC LIMIT $3`,
     [tenantId, afterSeq.toString(), limit]
   );
   return res.rows;

@@ -1,0 +1,51 @@
+name: Nightly OWASP ZAP Baseline Security Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # 02:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  zap-baseline-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start HarbourOS in Production Mode (Local Port 8080)
+        run: |
+          npm run build
+          node --loader tsx src/server/entry/web.ts &
+          sleep 5
+          curl --fail http://127.0.0.1:8080/healthz || exit 1
+        env:
+          NODE_ENV: production
+          PORT: 8080
+          DEMO_MODE: "false"
+          OTP_DEV_ECHO: "false"
+          RUN_MIGRATIONS_ON_BOOT: "false"
+          JWT_ACCESS_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          QR_HMAC_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          docker_name: 'ghcr.io/zaproxy/zaproxy:stable'
+          target: 'http://127.0.0.1:8080'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a -m 10'

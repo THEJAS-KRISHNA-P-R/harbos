@@ -237,7 +237,7 @@ export async function upsertBuyerAndAccountInTx(
       params.tenantId,
       params.buyerName,
       params.paddleNo,
-      params.gstin ?? '',
+      params.gstin,
       params.exportRegNo,
       params.escrowBalancePaise,
       params.approvedCreditPaise,

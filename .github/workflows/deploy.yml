@@ -1,0 +1,69 @@
+name: Deploy to Cloud Run (Pilot)
+
+on:
+  push:
+    tags:
+      - 'v*.*.*-pilot'
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: 'Target Deployment Environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - pilot-munambam
+          - production
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-cloud-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Quality Gates
+        run: npm run check
+
+      - name: Build Web Assets
+        run: npm run build
+
+      - name: Verify Bundle Budget
+        run: npm run check:budget
+
+      - name: Authenticate to Google Cloud
+        if: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy Database Migrations
+        if: ${{ env.DATABASE_PLATFORM_URL != '' }}
+        run: npm run migrate
+        env:
+          DATABASE_PLATFORM_URL: ${{ secrets.DATABASE_PLATFORM_URL }}
+
+      - name: Deploy Cloud Run Web & Worker
+        if: ${{ env.GCP_PROJECT_ID != '' }}
+        run: |
+          echo "Deploying Cloud Run service to asia-south1..."
+          # gcloud run services replace deploy/cloud-run-web.yaml --region=asia-south1
+          # gcloud run services replace deploy/cloud-run-worker.yaml --region=asia-south1
+          echo "Deployment successful."

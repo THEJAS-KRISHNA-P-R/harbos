@@ -449,7 +449,7 @@ export async function executePersonalDataErasureInTx(
 
   await tx.query(
     `UPDATE core.users
-     SET full_name = $1, phone_e164 = $2, erased_at = $3
+     SET full_name = $1, phone_e164 = $2, erased_at = $3, is_active = false
      WHERE user_id = $4 AND tenant_id = $5`,
     [
       params.pseudonymName,

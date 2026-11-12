@@ -67,6 +67,7 @@ ALTER TABLE harbour.fishermen ADD COLUMN IF NOT EXISTS erased_at timestamptz;
 ALTER TABLE harbour.vessels ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
 ALTER TABLE harbour.coop_societies ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
 
+ALTER TABLE harbour.buyers ALTER COLUMN gstin DROP NOT NULL;
 ALTER TABLE harbour.buyers ADD COLUMN IF NOT EXISTS bank_guarantee_ref text;
 ALTER TABLE harbour.buyers ADD COLUMN IF NOT EXISTS bank_guarantee_paise bigint NOT NULL DEFAULT 0;
 ALTER TABLE harbour.buyers ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
@@ -95,13 +96,13 @@ CREATE POLICY tenant_isolation_floor_price_history ON harbour.floor_price_histor
 CREATE TABLE IF NOT EXISTS core.erasure_requests (
   request_id text PRIMARY KEY,
   tenant_id text NOT NULL REFERENCES core.tenants(tenant_id),
-  target_user_id text NOT NULL REFERENCES core.users(user_id),
-  reason_note text NOT NULL,
-  requested_by_user_id text NOT NULL,
-  approved_by_user_id text,
-  status text NOT NULL DEFAULT 'PENDING_SECOND_APPROVAL' CHECK (status IN ('PENDING_SECOND_APPROVAL', 'EXECUTED')),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  executed_at timestamptz
+  user_id text NOT NULL REFERENCES core.users(user_id),
+  target_entity_type text NOT NULL DEFAULT 'USER',
+  target_entity_id text NOT NULL,
+  status text NOT NULL DEFAULT 'PSEUDONYMIZED_STATUTORY_RETENTION',
+  reason text NOT NULL,
+  requested_at timestamptz NOT NULL DEFAULT now(),
+  processed_at timestamptz
 );
 
 ALTER TABLE core.erasure_requests ENABLE ROW LEVEL SECURITY;

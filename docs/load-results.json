@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-11-12T05:16:39.464Z",
+  "totalRequests": 1000,
+  "concurrency": 20,
+  "successfulRequests": 1000,
+  "failedRequests": 0,
+  "durationSeconds": 3.81,
+  "rps": 262.2,
+  "latenciesMs": {
+    "min": 17,
+    "p50": 74,
+    "p95": 106,
+    "p99": 273,
+    "max": 319,
+    "mean": 75.5
+  },
+  "endpointsTested": [
+    "/api/v1/lots",
+    "/api/v1/auth/profile",
+    "/healthz",
+    "/readyz"
+  ]
+}

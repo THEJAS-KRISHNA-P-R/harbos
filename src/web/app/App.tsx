@@ -40,6 +40,7 @@ import {
 import { OperatorProfileDrawer } from '@web/app/components/OperatorProfileDrawer.tsx';
 import { LoginPortalScreen } from '@web/app/components/LoginPortalScreen.tsx';
 import { CommandPaletteModal } from '@web/app/components/CommandPaletteModal.tsx';
+import { useI18n } from '@web/i18n/index.tsx';
 
 const WeighingWorkspace = React.lazy(async () => {
   const m = await import('@web/workspaces/weighing/index.tsx');
@@ -141,7 +142,7 @@ const GOLDEN_VECTOR_ROWS: ReadonlyArray<GoldenVectorRow> = [
 ];
 
 export const App: React.FC = () => {
-  const [lang, setLang] = useState<'en' | 'ml'>('en');
+  const { locale: lang, setLocale: setLang } = useI18n();
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
@@ -504,7 +505,7 @@ export const App: React.FC = () => {
           variant="outline"
           size="sm"
           icon={<Globe className="w-3.5 h-3.5" />}
-          onClick={() => setLang((prev) => (prev === 'en' ? 'ml' : 'en'))}
+          onClick={() => setLang(lang === 'en' ? 'ml' : 'en')}
         >
           {lang === 'en' ? 'മലയാളം' : 'EN'}
         </Button>

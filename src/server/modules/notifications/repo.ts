@@ -80,20 +80,20 @@ export async function countRecentDispatchedSmsInTx(
       `SELECT COUNT(*)::int AS cnt FROM sync.outbox_events
        WHERE (recipient = $1 OR recipient = $2)
          AND status IN ('DISPATCHED', 'DISPATCHED_CONSOLE')
-         AND COALESCE(sent_at, created_at) >= now() - interval '1 hour'`,
+         AND COALESCE(sent_at, created_at::timestamptz) >= now() - interval '1 hour'`,
       [phoneE164, recipientId]
     ),
     tx.query<{ cnt: number }>(
       `SELECT COUNT(*)::int AS cnt FROM sync.outbox_events
        WHERE (recipient = $1 OR recipient = $2)
          AND status IN ('DISPATCHED', 'DISPATCHED_CONSOLE')
-         AND COALESCE(sent_at, created_at) >= now() - interval '24 hours'`,
+         AND COALESCE(sent_at, created_at::timestamptz) >= now() - interval '24 hours'`,
       [phoneE164, recipientId]
     ),
     tx.query<{ cnt: number }>(
       `SELECT COUNT(*)::int AS cnt FROM sync.outbox_events
        WHERE status IN ('DISPATCHED', 'DISPATCHED_CONSOLE')
-         AND COALESCE(sent_at, created_at) >= now() - interval '24 hours'`
+         AND COALESCE(sent_at, created_at::timestamptz) >= now() - interval '24 hours'`
     ),
   ]);
 

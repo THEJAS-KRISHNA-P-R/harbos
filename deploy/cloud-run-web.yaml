@@ -1,0 +1,72 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: harbouros-web
+  labels:
+    cloud.google.com/location: asia-south1
+    app: harbouros
+    component: web
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "2"
+        autoscaling.knative.dev/maxScale: "20"
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 30
+      containers:
+        - image: asia-south1-docker.pkg.dev/harbouros-prod/harbouros/web:v1.0.0-pilot
+          command: ["node", "--loader", "tsx", "src/server/entry/web.ts"]
+          resources:
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "8080"
+            - name: DEMO_MODE
+              value: "false"
+            - name: OTP_DEV_ECHO
+              value: "false"
+            - name: RUN_MIGRATIONS_ON_BOOT
+              value: "false"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: harbouros-secrets
+                  key: database_app_url
+            - name: DATABASE_PLATFORM_URL
+              valueFrom:
+                secretKeyRef:
+                  name: harbouros-secrets
+                  key: database_platform_url
+            - name: JWT_ACCESS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: harbouros-secrets
+                  key: jwt_access_secret
+            - name: QR_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: harbouros-secrets
+                  key: qr_hmac_secret
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5

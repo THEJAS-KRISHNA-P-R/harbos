@@ -26,8 +26,9 @@
     "check:boundaries": "tsx scripts/check-boundaries.ts",
     "check:contrast": "tsx scripts/check-contrast.ts",
     "check:budget": "tsx scripts/check-budget.ts",
+    "check:i18n": "tsx scripts/check-i18n.ts",
     "ci:local": "bash scripts/ci-local.sh",
-    "check": "tsc --noEmit && ! grep -rnE \"catch\\s*(\\([^)]*\\))?\\s*\\{\\s*(//[^\\n]*)?\\s*\\}\" tests scripts src && tsx --test --test-concurrency=1 tests/characterization/*.test.ts tests/unit/*.test.ts tests/db/*.test.ts tests/api/*.test.ts && tsx scripts/check-boundaries.ts && tsx scripts/check-contrast.ts && vite build && tsx scripts/check-budget.ts"
+    "check": "tsc --noEmit && tsx scripts/check-i18n.ts && ! grep -rnE \"catch\\s*(\\([^)]*\\))?\\s*\\{\\s*(//[^\\n]*)?\\s*\\}\" tests scripts src && tsx --test --test-concurrency=1 tests/characterization/*.test.ts tests/unit/*.test.ts tests/db/*.test.ts tests/api/*.test.ts && tsx scripts/check-boundaries.ts && tsx scripts/check-contrast.ts && vite build && tsx scripts/check-budget.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",
