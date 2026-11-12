@@ -118,6 +118,9 @@ jobs:
             -e JWT_ACCESS_SECRET="$(openssl rand -hex 32)" \
             -e QR_HMAC_SECRET="$(openssl rand -hex 32)" \
             -e SMS_PROVIDER=msg91 \
+            -e MSG91_AUTH_KEY="$(openssl rand -hex 16)" \
+            -e MSG91_SENDER_ID="HARBOS" \
+            -e MSG91_OTP_TEMPLATE_ID="$(openssl rand -hex 8)" \
             harbouros:ci
           READY=0
           for i in $(seq 1 30); do

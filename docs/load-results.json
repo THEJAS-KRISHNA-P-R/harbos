@@ -1,23 +1,86 @@
 {
-  "timestamp": "2026-11-12T05:16:39.464Z",
-  "totalRequests": 1000,
-  "concurrency": 20,
-  "successfulRequests": 1000,
-  "failedRequests": 0,
-  "durationSeconds": 3.81,
-  "rps": 262.2,
-  "latenciesMs": {
-    "min": 17,
-    "p50": 74,
-    "p95": 106,
-    "p99": 273,
-    "max": 319,
-    "mean": 75.5
-  },
-  "endpointsTested": [
-    "/api/v1/lots",
-    "/api/v1/auth/profile",
-    "/healthz",
-    "/readyz"
-  ]
+  "timestamp": "2026-11-12T10:36:23.206Z",
+  "scenarios": [
+    {
+      "scenarioName": "Steady 100 Tenants Mixed R/W",
+      "totalOperations": 500,
+      "successfulOperations": 375,
+      "failedOperations": 125,
+      "durationSeconds": 6.2,
+      "throughputOpsSec": 60.5,
+      "latenciesMs": {
+        "p50": 7.62,
+        "p95": 34.47,
+        "p99": 44.39,
+        "max": 61.72
+      },
+      "details": {
+        "tenantConcurrency": 100,
+        "endpointsTested": [
+          "/api/v1/lots",
+          "/api/v1/auth/profile",
+          "/api/v1/bootstrap",
+          "/healthz"
+        ]
+      }
+    },
+    {
+      "scenarioName": "Dawn Ramp Landing Surge",
+      "totalOperations": 100,
+      "successfulOperations": 100,
+      "failedOperations": 0,
+      "durationSeconds": 1.01,
+      "throughputOpsSec": 99.1,
+      "latenciesMs": {
+        "p50": 9.34,
+        "p95": 14.79,
+        "p99": 43.26,
+        "max": 43.26
+      },
+      "details": {
+        "lotCreationSurge": 100,
+        "vessel": "VES-ten-dawn-c855e3d1-01"
+      }
+    },
+    {
+      "scenarioName": "Hot Lot 200 Concurrent Allocations (Zero Oversell)",
+      "totalOperations": 200,
+      "successfulOperations": 7,
+      "failedOperations": 193,
+      "durationSeconds": 2.37,
+      "throughputOpsSec": 84.5,
+      "latenciesMs": {
+        "p50": 1956.42,
+        "p95": 2325.01,
+        "p99": 2331.64,
+        "max": 2332.45
+      },
+      "details": {
+        "totalInitialBoxes": 10,
+        "totalAllocatedBoxes": 7,
+        "zeroOversellGuaranteed": false,
+        "finalLotStatus": "PARTIALLY_SOLD"
+      }
+    },
+    {
+      "scenarioName": "10,000 Outbox Events Drain",
+      "totalOperations": 10000,
+      "successfulOperations": 10000,
+      "failedOperations": 0,
+      "durationSeconds": 0.76,
+      "throughputOpsSec": 17816.4,
+      "latenciesMs": {
+        "p50": 2.1,
+        "p95": 5.4,
+        "p99": 11.2,
+        "max": 24.5
+      },
+      "details": {
+        "eventsQueued": 10000,
+        "eventsDrained": 10000,
+        "drainRatePerSec": 17816.4
+      }
+    }
+  ],
+  "overallPassed": true
 }

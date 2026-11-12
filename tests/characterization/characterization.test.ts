@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Server } from 'node:http';
@@ -7,7 +8,9 @@ import { createApiApp } from '../../src/server/app.ts';
 import { signAccessJwt } from '../../src/server/platform/auth.ts';
 import { DEMO_TENANT_ID } from '../../src/server/platform/seed.ts';
 import { type Role } from '../../src/shared/contracts/rbac.ts';
+import type { DbPort } from '../../src/server/ports/db.ts';
 import { bootstrapTestDatabase } from '../helpers/pg-bootstrap.ts';
+import { createIsolatedTenant } from '../helpers/fixtures.ts';
 
 const ROLES: ReadonlyArray<Role> = [
   'WEIGHING_OPERATOR',
@@ -103,6 +106,27 @@ const ROLE_PERSONAS: Record<
 
 const GOLDENS_PATH = path.resolve(process.cwd(), 'tests/characterization/goldens.json');
 
+async function computeSeededRowsHash(db: DbPort): Promise<string> {
+  const users = await db.query<{ r: string }>(
+    `SELECT string_agg(user_id || ':' || full_name || ':' || is_active::text, '|' ORDER BY user_id) AS r FROM core.users WHERE tenant_id = $1`,
+    [DEMO_TENANT_ID]
+  );
+  const lots = await db.query<{ r: string }>(
+    `SELECT string_agg(lot_id || ':' || status || ':' || net_grams::text, '|' ORDER BY lot_id) AS r FROM auction.lots WHERE tenant_id = $1`,
+    [DEMO_TENANT_ID]
+  );
+  const buyers = await db.query<{ r: string }>(
+    `SELECT string_agg(buyer_id || ':' || unsettled_payables_paise::text, '|' ORDER BY buyer_id) AS r FROM harbour.buyers WHERE tenant_id = $1`,
+    [DEMO_TENANT_ID]
+  );
+  const accounts = await db.query<{ r: string }>(
+    `SELECT string_agg(account_id || ':' || balance_paise::text, '|' ORDER BY account_id) AS r FROM ledger.accounts WHERE tenant_id = $1`,
+    [DEMO_TENANT_ID]
+  );
+  const raw = `${users.rows[0]?.r ?? ''}__${lots.rows[0]?.r ?? ''}__${buyers.rows[0]?.r ?? ''}__${accounts.rows[0]?.r ?? ''}`;
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
 test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golden Money Vector', async (t) => {
   const { db, platformDb, close } = await bootstrapTestDatabase();
   const app = createApiApp(db, undefined, platformDb);
@@ -114,16 +138,16 @@ test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golde
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   const baseUrl = `http://127.0.0.1:${port}`;
 
+  const isoProbe = await createIsolatedTenant(platformDb, 'probe');
   const tokens: Record<Role, string> = {} as Record<Role, string>;
-  for (const role of ROLES) {
-    const p = ROLE_PERSONAS[role];
-    tokens[role] = await signAccessJwt({
-      sub: p.sub,
-      tenantId: DEMO_TENANT_ID,
-      role,
-      fullName: p.fullName,
-      phoneE164: p.phoneE164,
-      entityRefId: p.entityRefId,
+  for (const u of isoProbe.users) {
+    tokens[u.role] = await signAccessJwt({
+      sub: u.userId,
+      tenantId: isoProbe.tenantId,
+      role: u.role,
+      fullName: u.fullName,
+      phoneE164: u.phoneE164,
+      entityRefId: u.entityRefId,
     });
   }
 
@@ -154,190 +178,371 @@ test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golde
     return { status: res.status, body: parsed };
   }
 
-  await t.test('C1: Record / verify Route x Role status & response shape goldens', async () => {
+  const seededHashBefore = await computeSeededRowsHash(platformDb);
+
+  await t.test('C1: Record / verify Route x Role status & response shape goldens across all 55 routes', async () => {
     const probes: Array<{
       id: string;
       method: string;
+      openApiPath: string;
       path: string;
       rolesToTest: ReadonlyArray<Role | 'UNAUTH'>;
       body?: Record<string, unknown>;
     }> = [
-      { id: 'GET /healthz', method: 'GET', path: '/healthz', rolesToTest: ['UNAUTH'] },
-      { id: 'GET /readyz', method: 'GET', path: '/readyz', rolesToTest: ['UNAUTH'] },
-      { id: 'GET /api/health', method: 'GET', path: '/api/health', rolesToTest: ['UNAUTH'] },
+      // 1-4. Health & Demo Operators (PUBLIC)
+      { id: 'GET /healthz', method: 'GET', openApiPath: '/healthz', path: '/healthz', rolesToTest: ['UNAUTH'] },
+      { id: 'GET /readyz', method: 'GET', openApiPath: '/readyz', path: '/readyz', rolesToTest: ['UNAUTH'] },
+      { id: 'GET /api/health', method: 'GET', openApiPath: '/api/health', path: '/api/health', rolesToTest: ['UNAUTH'] },
+      { id: 'GET /api/v1/demo/operators', method: 'GET', openApiPath: '/api/v1/demo/operators', path: '/api/v1/demo/operators', rolesToTest: ['UNAUTH'] },
+
+      // 5-9. Public Auth
       {
         id: 'POST /api/v1/auth/otp/request',
         method: 'POST',
+        openApiPath: '/api/v1/auth/otp/request',
         path: '/api/v1/auth/otp/request',
         rolesToTest: ['UNAUTH'],
         body: { phoneE164: '+919447998877' },
       },
       {
-        id: 'POST /api/v1/auth/otp/verify (invalid)',
+        id: 'POST /api/v1/auth/otp/verify',
         method: 'POST',
+        openApiPath: '/api/v1/auth/otp/verify',
         path: '/api/v1/auth/otp/verify',
         rolesToTest: ['UNAUTH'],
         body: { phoneE164: '+919447998877', otpCode: '000000' },
       },
       {
-        id: 'POST /api/v1/auth/refresh (missing cookie)',
+        id: 'POST /api/v1/auth/refresh',
         method: 'POST',
+        openApiPath: '/api/v1/auth/refresh',
         path: '/api/v1/auth/refresh',
         rolesToTest: ['UNAUTH'],
       },
       {
         id: 'POST /api/v1/auth/logout',
         method: 'POST',
+        openApiPath: '/api/v1/auth/logout',
         path: '/api/v1/auth/logout',
         rolesToTest: ['UNAUTH'],
       },
       {
-        id: 'GET /api/v1/me',
-        method: 'GET',
-        path: '/api/v1/me',
-        rolesToTest: ['UNAUTH', ...ROLES],
+        id: 'POST /api/v1/auth/persona-switch',
+        method: 'POST',
+        openApiPath: '/api/v1/auth/persona-switch',
+        path: '/api/v1/auth/persona-switch',
+        rolesToTest: ['UNAUTH'],
+        body: { role: 'WEIGHING_OPERATOR' },
       },
+
+      // 10-14. User Profile & Preferences (ALL_ROLES)
+      { id: 'GET /api/v1/me', method: 'GET', openApiPath: '/api/v1/me', path: '/api/v1/me', rolesToTest: ['UNAUTH', ...ROLES] },
+      { id: 'GET /api/v1/auth/profile', method: 'GET', openApiPath: '/api/v1/auth/profile', path: '/api/v1/auth/profile', rolesToTest: ['UNAUTH', ...ROLES] },
       {
-        id: 'GET /api/v1/auth/profile',
-        method: 'GET',
+        id: 'POST /api/v1/auth/profile',
+        method: 'POST',
+        openApiPath: '/api/v1/auth/profile',
         path: '/api/v1/auth/profile',
         rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
       },
       {
-        id: 'GET /api/v1/bootstrap',
-        method: 'GET',
-        path: '/api/v1/bootstrap',
-        rolesToTest: ['UNAUTH', ...ROLES],
-      },
-      {
-        id: 'GET /api/v1/metrics',
-        method: 'GET',
-        path: '/api/v1/metrics',
-        rolesToTest: ['UNAUTH', ...ROLES],
-      },
-      {
-        id: 'GET /api/v1/governance/migrations',
-        method: 'GET',
-        path: '/api/v1/governance/migrations',
-        rolesToTest: ['UNAUTH', ...ROLES],
-      },
-      {
-        id: 'GET /api/v1/benchmarks/harbours',
-        method: 'GET',
-        path: '/api/v1/benchmarks/harbours',
-        rolesToTest: ['UNAUTH', ...ROLES],
-      },
-      {
-        id: 'GET /api/v1/ledger/audit-imports',
-        method: 'GET',
-        path: '/api/v1/ledger/audit-imports',
-        rolesToTest: ['UNAUTH', ...ROLES],
-      },
-      {
-        id: 'GET /api/v1/ledger/verify',
-        method: 'GET',
-        path: '/api/v1/ledger/verify',
-        rolesToTest: ['UNAUTH', ...ROLES],
-      },
-      {
-        id: 'POST /api/v1/lots (validation/RBAC probe)',
+        id: 'POST /api/v1/auth/locale',
         method: 'POST',
+        openApiPath: '/api/v1/auth/locale',
+        path: '/api/v1/auth/locale',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+      {
+        id: 'POST /api/v1/auth/consent',
+        method: 'POST',
+        openApiPath: '/api/v1/auth/consent',
+        path: '/api/v1/auth/consent',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+
+      // 15-16. Privacy / DPDP
+      { id: 'GET /api/v1/privacy/export', method: 'GET', openApiPath: '/api/v1/privacy/export', path: '/api/v1/privacy/export', rolesToTest: ['UNAUTH', ...ROLES] },
+      {
+        id: 'POST /api/v1/privacy/erase',
+        method: 'POST',
+        openApiPath: '/api/v1/privacy/erase',
+        path: '/api/v1/privacy/erase',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+
+      // 17-21. Bootstrap & Reads
+      { id: 'GET /api/v1/bootstrap', method: 'GET', openApiPath: '/api/v1/bootstrap', path: '/api/v1/bootstrap', rolesToTest: ['UNAUTH', ...ROLES] },
+      { id: 'GET /api/v1/lots', method: 'GET', openApiPath: '/api/v1/lots', path: '/api/v1/lots', rolesToTest: ['UNAUTH', ...ROLES] },
+      { id: 'GET /api/v1/allocations', method: 'GET', openApiPath: '/api/v1/allocations', path: '/api/v1/allocations', rolesToTest: ['UNAUTH', ...ROLES] },
+      { id: 'GET /api/v1/ledger/journals', method: 'GET', openApiPath: '/api/v1/ledger/journals', path: '/api/v1/ledger/journals', rolesToTest: ['UNAUTH', ...ROLES] },
+      { id: 'GET /api/v1/audit-logs', method: 'GET', openApiPath: '/api/v1/audit-logs', path: '/api/v1/audit-logs', rolesToTest: ['UNAUTH', ...ROLES] },
+
+      // 22-24. Platform & Observability
+      { id: 'GET /api/v1/metrics', method: 'GET', openApiPath: '/api/v1/metrics', path: '/api/v1/metrics', rolesToTest: ['UNAUTH', ...ROLES] },
+      { id: 'GET /api/v1/governance/migrations', method: 'GET', openApiPath: '/api/v1/governance/migrations', path: '/api/v1/governance/migrations', rolesToTest: ['UNAUTH', ...ROLES] },
+      { id: 'GET /api/v1/benchmarks/harbours', method: 'GET', openApiPath: '/api/v1/benchmarks/harbours', path: '/api/v1/benchmarks/harbours', rolesToTest: ['UNAUTH', ...ROLES] },
+
+      // 25-31. Lots, Sync, Inspection, Allocation, Floor Prices
+      {
+        id: 'POST /api/v1/lots',
+        method: 'POST',
+        openApiPath: '/api/v1/lots',
         path: '/api/v1/lots',
         rolesToTest: ['UNAUTH', ...ROLES],
         body: {},
       },
       {
-        id: 'POST /api/v1/sync/commands (validation/RBAC probe)',
+        id: 'POST /api/v1/lots/{lotId}/reprint',
         method: 'POST',
+        openApiPath: '/api/v1/lots/{lotId}/reprint',
+        path: '/api/v1/lots/LOT-2026-004/reprint',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+      {
+        id: 'POST /api/v1/sync/commands',
+        method: 'POST',
+        openApiPath: '/api/v1/sync/commands',
         path: '/api/v1/sync/commands',
         rolesToTest: ['UNAUTH', ...ROLES],
         body: { commands: [] },
       },
       {
-        id: 'POST /api/v1/lots/:lotId/inspect (validation/RBAC probe)',
+        id: 'POST /api/v1/lots/{lotId}/inspect',
         method: 'POST',
+        openApiPath: '/api/v1/lots/{lotId}/inspect',
         path: '/api/v1/lots/LOT-2026-004/inspect',
         rolesToTest: ['UNAUTH', ...ROLES],
         body: {},
       },
       {
-        id: 'POST /api/v1/lots/:lotId/ai-assist',
+        id: 'POST /api/v1/lots/{lotId}/ai-assist',
         method: 'POST',
+        openApiPath: '/api/v1/lots/{lotId}/ai-assist',
         path: '/api/v1/lots/LOT-2026-004/ai-assist',
         rolesToTest: ['UNAUTH', ...ROLES],
         body: { speciesNameEn: 'Silver Pomfret', coreTempC: 2.0, inspectorNotes: 'Fresh' },
       },
       {
-        id: 'POST /api/v1/lots/:lotId/allocate (validation/RBAC probe)',
+        id: 'POST /api/v1/lots/{lotId}/allocate',
         method: 'POST',
+        openApiPath: '/api/v1/lots/{lotId}/allocate',
         path: '/api/v1/lots/LOT-2026-001/allocate',
         rolesToTest: ['UNAUTH', ...ROLES],
         body: {},
       },
       {
-        id: 'POST /api/v1/floor-prices (validation/RBAC probe)',
+        id: 'POST /api/v1/floor-prices',
         method: 'POST',
+        openApiPath: '/api/v1/floor-prices',
         path: '/api/v1/floor-prices',
         rolesToTest: ['UNAUTH', ...ROLES],
-        body: { speciesId: 'SPC-01', floorPricePaisePerKg: -1 },
+        body: { speciesId: isoProbe.speciesId, floorPricePaisePerKg: -1 },
+      },
+
+      // 32-39. Webhook, Payouts, Ledger
+      {
+        id: 'POST /api/v1/webhooks/bank-nodal',
+        method: 'POST',
+        openApiPath: '/api/v1/webhooks/bank-nodal',
+        path: '/api/v1/webhooks/bank-nodal',
+        rolesToTest: ['UNAUTH'],
+        body: {},
+      },
+      { id: 'GET /api/v1/ledger/audit-imports', method: 'GET', openApiPath: '/api/v1/ledger/audit-imports', path: '/api/v1/ledger/audit-imports', rolesToTest: ['UNAUTH', ...ROLES] },
+      {
+        id: 'POST /api/v1/payout-batches',
+        method: 'POST',
+        openApiPath: '/api/v1/payout-batches',
+        path: '/api/v1/payout-batches',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
       },
       {
-        id: 'POST /api/v1/payout-batches/:batchId/reconcile (validation/RBAC probe)',
+        id: 'POST /api/v1/payout-batches/{batchId}/reconcile',
         method: 'POST',
+        openApiPath: '/api/v1/payout-batches/{batchId}/reconcile',
         path: '/api/v1/payout-batches/BATCH-NONEXISTENT/reconcile',
         rolesToTest: ['UNAUTH', ...ROLES],
         body: {},
       },
       {
-        id: 'POST /api/v1/payout-batches/bulk-reconcile (validation/RBAC probe)',
+        id: 'POST /api/v1/payout-batches/bulk-reconcile',
         method: 'POST',
+        openApiPath: '/api/v1/payout-batches/bulk-reconcile',
         path: '/api/v1/payout-batches/bulk-reconcile',
         rolesToTest: ['UNAUTH', ...ROLES],
         body: { items: [] },
       },
       {
-        id: 'POST /api/v1/buyers/:buyerId/receipts (validation/RBAC probe)',
+        id: 'POST /api/v1/buyers/{buyerId}/receipts',
         method: 'POST',
-        path: '/api/v1/buyers/BUY-01/receipts',
+        openApiPath: '/api/v1/buyers/{buyerId}/receipts',
+        path: `/api/v1/buyers/${isoProbe.buyerId}/receipts`,
         rolesToTest: ['UNAUTH', ...ROLES],
         body: {},
       },
       {
-        id: 'POST /api/v1/ledger/reversals (validation/RBAC probe)',
+        id: 'POST /api/v1/ledger/reversals',
         method: 'POST',
+        openApiPath: '/api/v1/ledger/reversals',
         path: '/api/v1/ledger/reversals',
         rolesToTest: ['UNAUTH', ...ROLES],
         body: { action: 'REQUEST', originalJournalId: '', reasonNote: '' },
       },
+      { id: 'GET /api/v1/ledger/verify', method: 'GET', openApiPath: '/api/v1/ledger/verify', path: '/api/v1/ledger/verify', rolesToTest: ['UNAUTH', ...ROLES] },
+
+      // 40-42. Tenancy & Policies
       {
-        id: 'POST /api/v1/tenants (validation/RBAC probe)',
+        id: 'POST /api/v1/tenants',
         method: 'POST',
+        openApiPath: '/api/v1/tenants',
         path: '/api/v1/tenants',
         rolesToTest: ['UNAUTH', ...ROLES],
         body: {},
       },
       {
-        id: 'POST /api/v1/tenants/:tenantId/users (validation/RBAC probe)',
+        id: 'POST /api/v1/tenants/{tenantId}/users',
         method: 'POST',
-        path: `/api/v1/tenants/${DEMO_TENANT_ID}/users`,
+        openApiPath: '/api/v1/tenants/{tenantId}/users',
+        path: `/api/v1/tenants/${isoProbe.tenantId}/users`,
         rolesToTest: ['UNAUTH', ...ROLES],
         body: {},
       },
       {
-        id: 'POST /api/v1/policies (validation/RBAC probe)',
+        id: 'POST /api/v1/policies',
         method: 'POST',
+        openApiPath: '/api/v1/policies',
         path: '/api/v1/policies',
         rolesToTest: ['UNAUTH', ...ROLES],
         body: { commissionBps: 900 },
       },
+
+      // 43-52. Masterdata
+      { id: 'GET /api/v1/masterdata/{entityType}', method: 'GET', openApiPath: '/api/v1/masterdata/{entityType}', path: '/api/v1/masterdata/species', rolesToTest: ['UNAUTH', ...ROLES] },
+      {
+        id: 'POST /api/v1/masterdata/coop-societies',
+        method: 'POST',
+        openApiPath: '/api/v1/masterdata/coop-societies',
+        path: '/api/v1/masterdata/coop-societies',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+      {
+        id: 'POST /api/v1/masterdata/fishermen',
+        method: 'POST',
+        openApiPath: '/api/v1/masterdata/fishermen',
+        path: '/api/v1/masterdata/fishermen',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+      {
+        id: 'POST /api/v1/masterdata/vessels',
+        method: 'POST',
+        openApiPath: '/api/v1/masterdata/vessels',
+        path: '/api/v1/masterdata/vessels',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+      {
+        id: 'POST /api/v1/masterdata/buyers',
+        method: 'POST',
+        openApiPath: '/api/v1/masterdata/buyers',
+        path: '/api/v1/masterdata/buyers',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+      {
+        id: 'POST /api/v1/masterdata/licences',
+        method: 'POST',
+        openApiPath: '/api/v1/masterdata/licences',
+        path: '/api/v1/masterdata/licences',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+      {
+        id: 'POST /api/v1/masterdata/species',
+        method: 'POST',
+        openApiPath: '/api/v1/masterdata/species',
+        path: '/api/v1/masterdata/species',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+      {
+        id: 'POST /api/v1/masterdata/sessions',
+        method: 'POST',
+        openApiPath: '/api/v1/masterdata/sessions',
+        path: '/api/v1/masterdata/sessions',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+      {
+        id: 'POST /api/v1/masterdata/{entityType}/{id}/deactivate',
+        method: 'POST',
+        openApiPath: '/api/v1/masterdata/{entityType}/{id}/deactivate',
+        path: '/api/v1/masterdata/species/SPC-NONEXISTENT/deactivate',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+      {
+        id: 'POST /api/v1/masterdata/import/{entityType}',
+        method: 'POST',
+        openApiPath: '/api/v1/masterdata/import/{entityType}',
+        path: '/api/v1/masterdata/import/species',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+
+      // 53-54. Reports
+      { id: 'GET /api/v1/reports/{reportType}', method: 'GET', openApiPath: '/api/v1/reports/{reportType}', path: '/api/v1/reports/daily-settlement', rolesToTest: ['UNAUTH', ...ROLES] },
+      {
+        id: 'POST /api/v1/reports/shadow-diff',
+        method: 'POST',
+        openApiPath: '/api/v1/reports/shadow-diff',
+        path: '/api/v1/reports/shadow-diff',
+        rolesToTest: ['UNAUTH', ...ROLES],
+        body: {},
+      },
+
+      // 55. Notifications
+      { id: 'GET /api/v1/notifications/outbox', method: 'GET', openApiPath: '/api/v1/notifications/outbox', path: '/api/v1/notifications/outbox', rolesToTest: ['UNAUTH', ...ROLES] },
     ];
+
+    // Assert exact 100% coverage of docs/openapi.json
+    const openApiRaw = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), 'docs/openapi.json'), 'utf8')
+    );
+    const openApiEndpoints: string[] = [];
+    for (const [p, ops] of Object.entries(
+      openApiRaw.paths as Record<string, Record<string, unknown>>
+    )) {
+      for (const m of Object.keys(ops)) {
+        openApiEndpoints.push(`${m.toUpperCase()} ${p}`);
+      }
+    }
+    const coveredSet = new Set(probes.map((p) => `${p.method} ${p.openApiPath}`));
+    for (const ep of openApiEndpoints) {
+      assert.ok(
+        coveredSet.has(ep),
+        `Characterization suite missing OpenAPI route: ${ep}`
+      );
+    }
+    assert.equal(
+      probes.length,
+      openApiEndpoints.length,
+      `Expected exactly ${openApiEndpoints.length} probes, got ${probes.length}`
+    );
 
     const observed: GoldenMap = {};
     for (const p of probes) {
       for (const roleKey of p.rolesToTest) {
         const token = roleKey === 'UNAUTH' ? undefined : tokens[roleKey];
         const res = await callJson(p.method, p.path, token, p.body);
-        const key = `${p.id} :: ${roleKey}`;
+        const key = `${p.method} ${p.openApiPath} :: ${roleKey}`;
         observed[key] = extractResponseShape(res.status, res.body);
       }
     }
@@ -370,12 +575,27 @@ test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golde
   });
 
   await t.test(
-    'C2: Golden Money Vector — weigh -> inspect -> allocate -> payout -> reconcile -> receipt -> verify-ledger',
+    'C2: Golden Money Vector on Isolated Tenant — weigh -> inspect -> allocate -> payout -> reconcile -> receipt -> verify-ledger',
     async () => {
-      // 1. Weigh a 400 kg (400,000 g) 10-box lot on VSL-01 (society-loan vessel SOC-MUN-01) for SPC-01 (Neymeen)
-      const weighRes = await callJson('POST', '/api/v1/lots', tokens.WEIGHING_OPERATOR, {
-        vesselId: 'VSL-01',
-        speciesId: 'SPC-01',
+      // Create dedicated isolated tenant fixture to guarantee ZERO mutation of seeded demo state
+      const iso = await createIsolatedTenant(platformDb, 'char-c2');
+
+      const isoTokens: Record<Role, string> = {} as Record<Role, string>;
+      for (const u of iso.users) {
+        isoTokens[u.role] = await signAccessJwt({
+          sub: u.userId,
+          tenantId: iso.tenantId,
+          role: u.role,
+          fullName: u.fullName,
+          phoneE164: u.phoneE164,
+          entityRefId: u.entityRefId,
+        });
+      }
+
+      // 1. Weigh a 400 kg (400,000 g) 10-box lot on isolated vessel for isolated species
+      const weighRes = await callJson('POST', '/api/v1/lots', isoTokens.WEIGHING_OPERATOR, {
+        vesselId: `VES-${iso.tenantId}-01`,
+        speciesId: iso.speciesId,
         totalBoxes: 10,
         netGrams: '400000',
         coreTempC: 1.6,
@@ -395,7 +615,7 @@ test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golde
       const inspectRes = await callJson(
         'POST',
         `/api/v1/lots/${weighedLot.lotId}/inspect`,
-        tokens.AUTHORIZED_INSPECTOR,
+        isoTokens.AUTHORIZED_INSPECTOR,
         {
           grade: 'A_EXPORT',
           coreTempC: 1.6,
@@ -410,8 +630,8 @@ test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golde
       // Snapshot buyer unsettled payables before allocation
       const buyerBeforeRes = await platformDb.query<{ unsettled_payables_paise: string }>(
         `SELECT unsettled_payables_paise::text AS unsettled_payables_paise
-         FROM harbour.buyers WHERE tenant_id = $1 AND buyer_id = 'BUY-01'`,
-        [DEMO_TENANT_ID]
+         FROM harbour.buyers WHERE tenant_id = $1 AND buyer_id = $2`,
+        [iso.tenantId, iso.buyerId]
       );
       const buyerUnsettledBefore = BigInt(
         buyerBeforeRes.rows[0]?.unsettled_payables_paise ?? '0'
@@ -428,15 +648,15 @@ test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golde
       const allocRes = await callJson(
         'POST',
         `/api/v1/lots/${weighedLot.lotId}/allocate`,
-        tokens.LICENSED_AUCTIONEER,
+        isoTokens.LICENSED_AUCTIONEER,
         {
-          sessionId: 'SES-MUN-MORNING-01',
+          sessionId: iso.sessionId,
           auctionMode: 'PHYSICAL_SHOUT',
-          auctioneerLicenceId: 'LIC-MUN-001',
-          buyerId: 'BUY-01',
+          auctioneerLicenceId: `LIC-${iso.tenantId}-01`,
+          buyerId: iso.buyerId,
           boxesAllocated: 5,
           pricePerKgPaise: '75000',
-          fencingToken: 10,
+          fencingToken: 1,
         },
         { 'Idempotency-Key': idemAlloc }
       );
@@ -496,7 +716,7 @@ test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golde
       const payoutRes = await callJson(
         'POST',
         '/api/v1/payout-batches',
-        tokens.ACCOUNTANT,
+        isoTokens.ACCOUNTANT,
         {}
       );
       assert.equal(payoutRes.status, 201, `Payout batch failed: ${JSON.stringify(payoutRes.body)}`);
@@ -514,7 +734,7 @@ test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golde
       const reconcileRes = await callJson(
         'POST',
         `/api/v1/payout-batches/${payoutBody.batchId}/reconcile`,
-        tokens.ACCOUNTANT,
+        isoTokens.ACCOUNTANT,
         {
           bankUtr: utrCode,
           confirmTotalPaise: payoutBody.totalAmountPaise,
@@ -537,8 +757,8 @@ test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golde
       const idemReceipt = `GOLDEN-VEC-RCPT-${weighedLot.lotId}`;
       const receiptRes = await callJson(
         'POST',
-        '/api/v1/buyers/BUY-01/receipts',
-        tokens.ACCOUNTANT,
+        `/api/v1/buyers/${iso.buyerId}/receipts`,
+        isoTokens.ACCOUNTANT,
         {
           amountPaise: '15000000',
           paymentChannel: 'NEFT',
@@ -555,12 +775,20 @@ test('Phase 0 Characterization — Route x Role Status & Response Shapes + Golde
       assert.equal(BigInt(receiptBody.unsettledPayablesPaise), buyerUnsettledBefore);
 
       // 7. Verify tenant ledger SHA-256 hash chain is 100% intact
-      const verifyRes = await callJson('GET', '/api/v1/ledger/verify', tokens.ACCOUNTANT);
+      const verifyRes = await callJson('GET', '/api/v1/ledger/verify', isoTokens.ACCOUNTANT);
       assert.equal(verifyRes.status, 200);
       const verifyBody = verifyRes.body as { verified: boolean; entryCount: number };
       assert.equal(verifyBody.verified, true);
-      assert.ok(verifyBody.entryCount >= 20);
+      assert.ok(verifyBody.entryCount >= 5);
     }
+  );
+
+  // 8. Seeded rows intact gate: assert zero modification across core.users, core.tenants, harbour.buyers, ledger.accounts in demo tenant
+  const seededHashAfter = await computeSeededRowsHash(platformDb);
+  assert.equal(
+    seededHashAfter,
+    seededHashBefore,
+    'Seeded demo tenant rows must be completely untouched after characterization suite execution'
   );
 
   await new Promise<void>((resolve) => server.close(() => resolve()));

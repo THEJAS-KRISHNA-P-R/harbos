@@ -26,6 +26,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Runtime Test Secrets
+        run: |
+          echo "JWT_ACCESS_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "QR_HMAC_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "MSG91_AUTH_KEY=${{ secrets.MSG91_AUTH_KEY || 'ci_mock_auth_key_1234567890' }}" >> "$GITHUB_ENV"
+          echo "MSG91_SENDER_ID=${{ secrets.MSG91_SENDER_ID || 'HARBOS' }}" >> "$GITHUB_ENV"
+          echo "MSG91_OTP_TEMPLATE_ID=${{ secrets.MSG91_OTP_TEMPLATE_ID || 'ci_otp_template_id_1234' }}" >> "$GITHUB_ENV"
+
       - name: Start HarbourOS in Production Mode (Local Port 8080)
         run: |
           npm run build
@@ -38,8 +46,7 @@ jobs:
           DEMO_MODE: "false"
           OTP_DEV_ECHO: "false"
           RUN_MIGRATIONS_ON_BOOT: "false"
-          JWT_ACCESS_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-          QR_HMAC_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          SMS_PROVIDER: msg91
 
       - name: OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.12.0

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import zlib from 'node:zlib';
+import compression from 'compression';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { config } from '@server/config.ts';
@@ -72,6 +72,7 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn, platfor
   Object.assign(app.locals, { db, platformDb, readDb });
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
+  app.use(compression());
   app.use(express.json({ limit: '256kb' }));
 
   const { authLimiter, apiLimiter } = createEdgeRateLimiters();
@@ -98,17 +99,6 @@ export function createApiApp(db: DbPort, runCatchAssist?: CatchAssistFn, platfor
     else if (req.path.startsWith('/assets/')) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     else if (req.path === '/' || req.path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
 
-    if (String(req.headers['accept-encoding'] ?? '').includes('gzip')) {
-      const origSend = res.send.bind(res);
-      res.send = ((body?: unknown) => {
-        if ((typeof body === 'string' || Buffer.isBuffer(body)) && Buffer.byteLength(body) >= 1024 && !res.getHeader('Content-Encoding')) {
-          res.setHeader('Content-Encoding', 'gzip');
-          res.removeHeader('Content-Length');
-          return origSend(zlib.gzipSync(body));
-        }
-        return origSend(body);
-      }) as typeof res.send;
-    }
     next();
   });
 

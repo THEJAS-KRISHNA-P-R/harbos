@@ -55,6 +55,11 @@ export function checkBoundaries(): { passed: boolean; violations: string[] } {
     const content = fs.readFileSync(absPath, 'utf8');
     const lineCount = content.split('\n').length;
 
+    // Banned symbol check: createTenantBoundDb must never reappear (Round 6 R5)
+    if (content.includes('createTenantBoundDb')) {
+      violations.push(`[Round 6 R5] ${relPath} contains banned legacy symbol "createTenantBoundDb" (use per-request transactions via route())`);
+    }
+
     // §11.3 Rule: Zero green hexes or Tailwind green/emerald/lime/teal classes anywhere in src/
     const greenMatch = greenBanRegex.exec(content);
     if (greenMatch) {

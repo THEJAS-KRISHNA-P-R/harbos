@@ -9,6 +9,7 @@ import { signAccessJwt } from '../../src/server/platform/auth.ts';
 import { parseEnvConfig } from '../../src/server/config.ts';
 import type { DbPort } from '../../src/server/ports/db.ts';
 import { bootstrapTestDatabase } from '../helpers/pg-bootstrap.ts';
+import { createIsolatedTenant } from '../helpers/fixtures.ts';
 
 describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant / Money)', () => {
   let db: DbPort;
@@ -317,29 +318,38 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
   });
 
   it('T15 idempotency: same Idempotency-Key with same payload returns original; different payload returns 422', async () => {
+    const iso = await createIsolatedTenant(platformDb, 't15');
+    const weigher = iso.users.find((u) => u.role === 'WEIGHING_OPERATOR')!;
+    const inspector = iso.users.find((u) => u.role === 'AUTHORIZED_INSPECTOR')!;
+    const admin = iso.users.find((u) => u.role === 'HARBOUR_ADMIN')!;
+    const auctioneer = iso.users.find((u) => u.role === 'LICENSED_AUCTIONEER')!;
+
     const weigherToken = await signAccessJwt({
-      sub: 'USR-WEIGH-01',
-      tenantId: 'munambam-demo',
+      sub: weigher.userId,
+      tenantId: iso.tenantId,
       role: 'WEIGHING_OPERATOR',
-      fullName: 'Sajeev K.',
-      phoneE164: '+919447000001',
+      fullName: weigher.fullName,
+      phoneE164: weigher.phoneE164,
     });
     const inspectorToken = await signAccessJwt({
-      sub: 'USR-INSP-01',
-      tenantId: 'munambam-demo',
+      sub: inspector.userId,
+      tenantId: iso.tenantId,
       role: 'AUTHORIZED_INSPECTOR',
-      fullName: 'Dr. Lekshmi R.',
-      phoneE164: '+919447000005',
+      fullName: inspector.fullName,
+      phoneE164: inspector.phoneE164,
     });
     const adminToken = await signAccessJwt({
-      sub: 'USR-HADMIN-01',
-      tenantId: 'munambam-demo',
+      sub: admin.userId,
+      tenantId: iso.tenantId,
       role: 'HARBOUR_ADMIN',
-      fullName: 'Capt. Mathew Thomas',
-      phoneE164: '+919447000006',
+      fullName: admin.fullName,
+      phoneE164: admin.phoneE164,
     });
 
-    // Create a dedicated fresh lot for T15 so it never depends on shared seed lot state
+    // Use isolated auction session created with isolated tenant
+    const sessionId = iso.sessionId;
+
+    // Create a dedicated fresh lot for T15 in isolated tenant
     const createLotRes = await fetch(`${baseUrl}/api/v1/lots`, {
       method: 'POST',
       headers: {
@@ -347,8 +357,8 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
         Authorization: `Bearer ${weigherToken}`,
       },
       body: JSON.stringify({
-        vesselId: 'VSL-03',
-        speciesId: 'SPC-03',
+        vesselId: `VES-${iso.tenantId}-01`,
+        speciesId: iso.speciesId,
         totalBoxes: 6,
         netGrams: '180000',
         coreTempC: 1.5,
@@ -369,10 +379,10 @@ describe('§3 Exploit Regression Suite (T1–T20 & P0 Auth / Exposure / Tenant /
     assert.equal(inspectRes.status, 200);
 
     const payload1 = {
-      sessionId: 'SES-MUN-MORNING-01',
+      sessionId,
       auctionMode: 'PHYSICAL_SHOUT',
-      auctioneerLicenceId: 'LIC-MUN-001',
-      buyerId: 'BUY-01',
+      auctioneerLicenceId: `LIC-${iso.tenantId}-01`,
+      buyerId: iso.buyerId,
       boxesAllocated: 1,
       pricePerKgPaise: '42000',
       fencingToken: 10,

@@ -6,7 +6,7 @@ import { PGliteAdapter } from '../src/server/adapters/db-pglite.ts';
 import { runMigrationsAndSeed, DEMO_TENANT_ID } from '../src/server/platform/seed.ts';
 import type { DbPort } from '../src/server/ports/db.ts';
 
-const TENANT_TABLES: ReadonlyArray<string> = [
+const TENANT_TABLES_FALLBACK: ReadonlyArray<string> = [
   'core.tenants',
   'core.users',
   'core.sessions',
@@ -40,6 +40,29 @@ const TENANT_TABLES: ReadonlyArray<string> = [
   'sync.outbox_events',
   'sync.webhook_deliveries',
 ];
+
+async function discoverTenantTables(db: DbPort): Promise<string[]> {
+  try {
+    const res = await db.query<{ schemaname: string; tablename: string }>(
+      `SELECT c.table_schema AS schemaname, c.table_name AS tablename
+       FROM information_schema.columns c
+       JOIN information_schema.tables t
+         ON c.table_schema = t.table_schema AND c.table_name = t.table_name
+       WHERE c.column_name = 'tenant_id'
+         AND t.table_type = 'BASE TABLE'
+         AND c.table_schema IN ('core', 'harbour', 'auction', 'ledger', 'sync')
+         AND c.table_name NOT IN ('refresh_tokens', 'otp_challenges', 'schema_migrations', 'auth_rate_limits')
+       ORDER BY c.table_schema, c.table_name`
+    );
+    if (res.rows.length > 0) {
+      const unique = Array.from(new Set(res.rows.map((r) => `${r.schemaname}.${r.tablename}`)));
+      return unique;
+    }
+  } catch (err) {
+    console.warn('[verify-rls] Unable to query information_schema.columns, using fallback:', err);
+  }
+  return [...TENANT_TABLES_FALLBACK];
+}
 
 function isExpectedPermissionDenied(err: unknown): boolean {
   const code = (err as { code?: string })?.code;
@@ -168,7 +191,11 @@ async function main(): Promise<void> {
     const targetTenantId = target.tenantId;
     cleanupTenantId = target.cleanupTenantId;
 
-    // 2. Fail-Closed & GUC Bypass Check across all 27 tenant tables
+    // 2. Discover all tenant tables dynamically from information_schema
+    const tenantTables = await discoverTenantTables(platformDb);
+    console.log(`[verify-rls] Discovered ${tenantTables.length} tenant tables to verify (platform mode: ${config.RLS_PLATFORM_MODE})`);
+
+    // Fail-Closed & GUC Bypass Check across all dynamically discovered tenant tables
     await db.transaction(async (tx) => {
       if (!isPg) {
         await setPgliteRoleIfAvailable(tx);
@@ -177,7 +204,7 @@ async function main(): Promise<void> {
       console.log('\nTable                                | No-Ctx | app.platform=on | Wrong-Tenant');
       console.log('-------------------------------------+--------+-----------------+-------------');
 
-      for (const tbl of TENANT_TABLES) {
+      for (const tbl of tenantTables) {
         await tx.query(`SELECT set_config('app.tenant_id', '', true)`);
         await tx.query(`SELECT set_config('app.platform', '', true)`);
         const noCtxRes = await tx.query<{ cnt: string }>(`SELECT COUNT(*)::text AS cnt FROM ${tbl}`);
@@ -200,7 +227,7 @@ async function main(): Promise<void> {
         );
       }
       console.log('');
-      console.log('[verify-rls] PASS: 0 rows returned across all 27 tenant tables under No-Ctx, app.platform=on, and Wrong-Tenant');
+      console.log(`[verify-rls] PASS: 0 rows returned across all ${tenantTables.length} tenant tables under No-Ctx, app.platform=on, and Wrong-Tenant (mode: ${config.RLS_PLATFORM_MODE})`);
     });
 
     // 3. Own-Tenant Access Check

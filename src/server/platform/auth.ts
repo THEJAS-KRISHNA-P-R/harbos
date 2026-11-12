@@ -3,7 +3,6 @@ import { SignJWT, jwtVerify } from 'jose';
 import type { Request, Response, NextFunction } from 'express';
 import { config } from '@server/config.ts';
 import {
-  createTenantBoundDb,
   withPlatform,
   withTenant,
   type DbPort,
@@ -553,7 +552,6 @@ export function requireAuth(allowedRoles?: ReadonlyArray<Role>) {
             claims = { ...claims, role: userStatus.role };
           }
         }
-        req.db = createTenantBoundDb(baseDb, claims.tenantId);
       }
 
       if (allowedRoles && !allowedRoles.includes(claims.role)) {

@@ -162,30 +162,7 @@ export async function runWithLazyTenantDb<T>(
   }
 }
 
-export function createTenantBoundDb(
-  baseDb: DbPort,
-  tenantId: string,
-  stats?: DbRequestStats
-): DbPort {
-  return {
-    isPglite: baseDb.isPglite,
-    query: <T = Record<string, unknown>>(
-      sql: string,
-      params?: ReadonlyArray<unknown>
-    ): Promise<DbQueryResult<T>> =>
-      withTenant(baseDb, tenantId, (tx) => tx.query<T>(sql, params), { stats }),
-    exec: (sql: string): Promise<void> =>
-      withTenant(baseDb, tenantId, (tx) => tx.exec(sql), { stats }),
-    transaction: <T>(
-      fn: (tx: DbPort) => Promise<T>,
-      options?: DbTransactionOptions
-    ): Promise<T> =>
-      withTenant(baseDb, tenantId, fn, {
-        readOnly: options?.readOnly,
-        stats: options?.stats ?? stats,
-      }),
-  };
-}
+
 
 export function createPlatformBoundDb(baseDb: DbPort): DbPort {
   return {
