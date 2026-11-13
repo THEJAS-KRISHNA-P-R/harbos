@@ -15,12 +15,15 @@ import {
 import { signLotQrPayload } from '@server/modules/ledger/index.ts';
 import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 import type { InspectionGrade } from '@shared/ids.ts';
+import { defaultClock, type Clock } from '@server/platform/clock.ts';
 import {
   countLotAllocationsInTx,
   countTenantLotsInTx,
   fetchLotsKeysetPage,
   fetchSupervisorPinsInTx,
   fetchVesselOwnerInTx,
+  getNextDailyLotSeqInTx,
+  getTenantShortCodeInTx,
   insertWeighedLotInTx,
   lockLotForInspectionInTx,
   updateLotInspectionInTx,
@@ -62,7 +65,8 @@ export async function createAndTagLot(
     coreTempC?: number | undefined;
     weightSource?: string | undefined;
     supervisorPin?: string | undefined;
-  }
+  },
+  clock: Clock = defaultClock
 ) {
   const tenantId = claims.tenantId;
   const vesselId = String(input.vesselId ?? '').trim();
@@ -118,16 +122,18 @@ export async function createAndTagLot(
       );
     }
 
-    const seqNum = (await countTenantLotsInTx(tx, tenantId)) + 1;
-    const lotId = `LOT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-    const lotCode = `${tenantId.slice(0, 3).toUpperCase()}-261106-${String(seqNum).padStart(3, '0')}`;
+    const shortCode = await getTenantShortCodeInTx(tx, tenantId);
+    const dayCode = clock.getKolkataDayCode(clock.now());
+    const seqNum = await getNextDailyLotSeqInTx(tx, tenantId, dayCode);
+    const lotId = `LOT-${crypto.randomUUID()}`;
+    const lotCode = `${shortCode}-${dayCode}-${String(seqNum).padStart(3, '0')}`;
     const qrSignature = signLotQrPayload(
       lotId,
       vesselId,
       netGrams,
       config.QR_HMAC_SECRET
     );
-    const nowIso = new Date().toISOString();
+    const nowIso = clock.nowIso();
 
     await insertWeighedLotInTx(tx, {
       lotId,

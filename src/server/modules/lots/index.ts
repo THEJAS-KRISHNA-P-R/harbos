@@ -2,6 +2,8 @@ export {
   countTenantLotsInTx,
   fetchVesselOwnerInTx,
   insertWeighedLotInTx,
+  getTenantShortCodeInTx,
+  getNextDailyLotSeqInTx,
 } from './repo.ts';
 export {
   listLotsKeyset,

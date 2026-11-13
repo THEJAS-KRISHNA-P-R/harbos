@@ -88,10 +88,10 @@ export async function seedDemoData(db: DbPort): Promise<void> {
     const tId = DEMO_TENANT_ID;
     await db.query(
       `INSERT INTO core.tenants (
-        tenant_id, slug, name_en, name_ml, centre_type, floor_enforcement,
+        tenant_id, slug, short_code, name_en, name_ml, centre_type, floor_enforcement,
         active_policy_id, hms_account_id, coop_pool_account_id,
         harbouros_revenue_account_id, gst_payable_account_id
-      ) VALUES ($1, $2, $3, $4, 'KERALA_HARBOUR', 'WARN', 'POL-MUN-V1', 'ACC-HMS-MUN', 'ACC-COOP-MUN', 'ACC-REV-HOS', 'ACC-GST-HOS')`,
+      ) VALUES ($1, $2, 'MUN', $3, $4, 'KERALA_HARBOUR', 'WARN', 'POL-MUN-V1', 'ACC-HMS-MUN', 'ACC-COOP-MUN', 'ACC-REV-HOS', 'ACC-GST-HOS')`,
       [tId, 'munambam-harbour', 'Munambam Fishing Harbour (HMS)', 'മുനമ്പം ഫിഷിംഗ് ഹാർബർ (HMS)']
     );
 

@@ -1,11 +1,14 @@
+import crypto from 'node:crypto';
 import { auditInTx, type DbPort } from '@server/ports/db.ts';
 import { config } from '@server/config.ts';
 import { AppError } from '@server/platform/errors.ts';
+import { defaultClock } from '@server/platform/clock.ts';
 import type { AuthSessionClaims } from '@server/platform/auth.ts';
 import { signLotQrPayload } from '@server/modules/ledger/index.ts';
 import {
-  countTenantLotsInTx,
   fetchVesselOwnerInTx,
+  getNextDailyLotSeqInTx,
+  getTenantShortCodeInTx,
   insertWeighedLotInTx,
 } from '@server/modules/lots/index.ts';
 import {
@@ -83,17 +86,18 @@ export async function processSyncCommands(
         );
       }
 
-      const seqNum = (await countTenantLotsInTx(tx, tenantId)) + 1;
-      const lotId = `LOT-SYNC-${seqNum}-${commandId.slice(-4)}`;
-      const prefix = tenantId.replace(/^ten-/, '').slice(0, 3).toUpperCase() || 'HRB';
-      const lotCode = `${prefix}-SYNC-${String(seqNum).padStart(3, '0')}`;
+      const shortCode = await getTenantShortCodeInTx(tx, tenantId);
+      const dayCode = defaultClock.getKolkataDayCode(defaultClock.now());
+      const seqNum = await getNextDailyLotSeqInTx(tx, tenantId, dayCode);
+      const lotId = `LOT-${crypto.randomUUID()}`;
+      const lotCode = `${shortCode}-${dayCode}-${String(seqNum).padStart(3, '0')}`;
       const qrSignature = signLotQrPayload(
         lotId,
         vesselId,
         netGrams,
         config.QR_HMAC_SECRET
       );
-      const nowIso = new Date().toISOString();
+      const nowIso = defaultClock.nowIso();
       const weightSource: 'MANUAL' | 'BLE_SCALE' =
         cmd?.weightSource === 'MANUAL' ? 'MANUAL' : 'BLE_SCALE';
 

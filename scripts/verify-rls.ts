@@ -110,13 +110,14 @@ async function ensureTargetTenantForRlsCheck(
 
   await platformDb.query(
     `INSERT INTO core.tenants (
-      tenant_id, slug, name_en, name_ml, centre_type, floor_enforcement,
+      tenant_id, slug, short_code, name_en, name_ml, centre_type, floor_enforcement,
       active_policy_id, hms_account_id, coop_pool_account_id,
       harbouros_revenue_account_id, gst_payable_account_id
-    ) VALUES ($1, $2, $3, $4, 'KERALA_HARBOUR', 'WARN', 'POL-PROBE', 'ACC-HMS-P', 'ACC-COOP-P', 'ACC-REV-P', 'ACC-GST-P')`,
+    ) VALUES ($1, $2, $3, $4, $5, 'KERALA_HARBOUR', 'WARN', 'POL-PROBE', 'ACC-HMS-P', 'ACC-COOP-P', 'ACC-REV-P', 'ACC-GST-P')`,
     [
       throwawayTenantId,
       throwawayTenantId,
+      `RLS${suffix.slice(0, 3).toUpperCase()}`,
       'RLS Probe Harbour',
       'ആർഎൽഎസ് പ്രോബ് ഹാർബർ',
     ]

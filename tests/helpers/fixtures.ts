@@ -40,26 +40,30 @@ export async function createIsolatedTenant(
   const nameMl = `പ്രത്യേക തുറമുഖം ${nonce.toUpperCase()}`;
   const policyId = `POL-${tenantId}-V1`;
 
+  // Derive unique 2-6 letter short_code for isolated tenant
+  const shortCodeBase = prefix.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'TEN';
+  const shortCode = `${shortCodeBase}${nonce.slice(0, 3).toUpperCase()}`.slice(0, 6);
+
   // 1. Insert isolated tenant
   await platformDb.query(
     `INSERT INTO core.tenants (
-      tenant_id, slug, name_en, name_ml, centre_type, floor_enforcement,
+      tenant_id, slug, short_code, name_en, name_ml, centre_type, floor_enforcement,
       active_policy_id, hms_account_id, coop_pool_account_id,
       harbouros_revenue_account_id, gst_payable_account_id
     ) VALUES (
-      $1, $2, $3, $4, 'KERALA_HARBOUR', 'WARN',
-      $5, $6, $7, $8, $9
+      $1, $2, $3, $4, $5, 'KERALA_HARBOUR', 'WARN',
+      $6, $7, $8, $9, $10
     )`,
     [
       tenantId,
       slug,
+      shortCode,
       nameEn,
       nameMl,
       policyId,
       `ACC-HMS-${tenantId}`,
       `ACC-COOP-${tenantId}`,
       `ACC-REV-${tenantId}`,
-      `ACC-GST-${tenantId}`,
     ]
   );
 

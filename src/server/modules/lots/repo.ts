@@ -83,6 +83,39 @@ export async function fetchVesselOwnerInTx(
   return res.rows[0] ?? null;
 }
 
+export async function getTenantShortCodeInTx(
+  tx: DbPort,
+  tenantId: string
+): Promise<string> {
+  const res = await tx.query<{ short_code: string | null }>(
+    `SELECT short_code FROM core.tenants WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  const code = res.rows[0]?.short_code;
+  if (code && code.trim()) {
+    return code.trim().toUpperCase();
+  }
+  // Fallback if not backfilled
+  const fallback = tenantId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase();
+  return fallback.length >= 2 ? fallback : 'HRB';
+}
+
+export async function getNextDailyLotSeqInTx(
+  tx: DbPort,
+  tenantId: string,
+  dayCode: string
+): Promise<number> {
+  const res = await tx.query<{ next_seq: number }>(
+    `INSERT INTO auction.lot_daily_counters (tenant_id, day_code, last_seq, updated_at)
+     VALUES ($1, $2, 1, now())
+     ON CONFLICT (tenant_id, day_code)
+     DO UPDATE SET last_seq = auction.lot_daily_counters.last_seq + 1, updated_at = now()
+     RETURNING last_seq AS next_seq`,
+    [tenantId, dayCode]
+  );
+  return Number(res.rows[0]?.next_seq ?? 1);
+}
+
 export async function countTenantLotsInTx(
   tx: DbPort,
   tenantId: string

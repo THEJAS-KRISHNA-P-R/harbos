@@ -298,8 +298,8 @@ export async function allocateLotSale(
       input.tenantId,
       input.lotId
     );
-    const allocationId = `ALLOC-${lot.lot_code}-${allocationSeq}`;
-    const journalId = `JRN-${allocationId}`;
+    const allocationId = `ALLOC-${crypto.randomUUID()}`;
+    const journalId = `JRN-${crypto.randomUUID()}`;
 
     const journalEntries = buildSaleJournalEntries(settlement, {
       buyerAccountId: buyer.receivable_account_id,

@@ -35,6 +35,9 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Lockfile Synchronicity Guard
+        run: npx tsx scripts/check-lockfile.ts
+
       - name: Install dependencies (Lockfile Guard)
         run: npm ci
 

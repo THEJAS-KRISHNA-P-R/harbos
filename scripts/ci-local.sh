@@ -74,6 +74,9 @@ run_step() {
   fi
 }
 
+# Step 0: Lockfile Synchronicity Guard
+run_step "0. check-lockfile" npx tsx scripts/check-lockfile.ts
+
 # Step 1: npm ci
 run_step "1. npm ci" npm ci --no-audit --no-fund
 

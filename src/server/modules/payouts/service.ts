@@ -62,10 +62,14 @@ export async function createPayoutBatch(
 
     const seqNum = (await countPayoutBatchesInTx(tx, params.tenantId)) + 1;
     const nowIso = new Date().toISOString();
+    const shortCodeRes = await tx.query<{ short_code: string | null }>(
+      `SELECT short_code FROM core.tenants WHERE tenant_id = $1`,
+      [params.tenantId]
+    );
+    const tenantShortCode = shortCodeRes.rows[0]?.short_code || 'HRB';
     const dateStamp = nowIso.slice(0, 10).replace(/-/g, '');
     const batchId = `BATCH-${crypto.randomUUID()}`;
-    const tenantPrefix = params.tenantId.replace(/^ten-/, '').slice(0, 3).toUpperCase() || 'HRB';
-    const batchCode = `${tenantPrefix}-PAY-${dateStamp}-${String(seqNum).padStart(2, '0')}`;
+    const batchCode = `${tenantShortCode}-PAY-${dateStamp}-${String(seqNum).padStart(2, '0')}`;
     const journalId = `JRN-${batchId}`;
 
     await insertPayoutBatchRowInTx(tx, {
