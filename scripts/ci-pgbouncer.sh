@@ -146,8 +146,8 @@ fi
 echo "[pgbouncer] Ready on 127.0.0.1:${BOUNCER_PORT} (pool_mode=transaction, no ignore_startup_parameters)"
 
 # 4. Verify transaction-local GUC isolation across pooled transactions
-ROWS_TX1="$(psql -h 127.0.0.1 -p "${BOUNCER_PORT}" -U "${APP_USER}" -d "${DB_NAME}" -t -A -c \
-  "BEGIN; SELECT set_config('app.tenant_id', 'munambam-demo', true); SELECT COUNT(*) FROM core.tenants; COMMIT;" | tail -n1 | tr -d '[:space:]')"
+ROWS_TX1="$(psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "${BOUNCER_PORT}" -U "${APP_USER}" -d "${DB_NAME}" -t -A -c \
+  "BEGIN; SELECT set_config('app.tenant_id', 'munambam-demo', true); SELECT COUNT(*) FROM core.tenants; COMMIT;" | grep -E '^[0-9]+$' | tail -n1 | tr -d '[:space:]')"
 echo "[pgbouncer] Tx1 (set_config app.tenant_id='munambam-demo', is_local=true) saw core.tenants rows: ${ROWS_TX1}"
 
 if [ "${ROWS_TX1}" != "1" ]; then
@@ -155,8 +155,8 @@ if [ "${ROWS_TX1}" != "1" ]; then
   exit 1
 fi
 
-ROWS_TX2="$(psql -h 127.0.0.1 -p "${BOUNCER_PORT}" -U "${APP_USER}" -d "${DB_NAME}" -t -A -c \
-  "BEGIN; SELECT COUNT(*) FROM core.tenants; COMMIT;" | tail -n1 | tr -d '[:space:]')"
+ROWS_TX2="$(psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "${BOUNCER_PORT}" -U "${APP_USER}" -d "${DB_NAME}" -t -A -c \
+  "BEGIN; SELECT COUNT(*) FROM core.tenants; COMMIT;" | grep -E '^[0-9]+$' | tail -n1 | tr -d '[:space:]')"
 echo "[pgbouncer] Tx2 (no tenant context on pooled connection) saw core.tenants rows: ${ROWS_TX2}"
 
 if [ "${ROWS_TX2}" != "0" ]; then

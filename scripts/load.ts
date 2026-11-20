@@ -206,6 +206,7 @@ export async function runLoadScenarios(): Promise<MultiScenarioLoadResults> {
 
     const s1Concurrency = 200;
     const s1Latencies: number[] = [];
+    const s1StatusCounts: Record<number, number> = {};
     let s1Success = 0;
     let s1Rejected4xx = 0;
     let s1Status5xx = 0;
@@ -214,6 +215,7 @@ export async function runLoadScenarios(): Promise<MultiScenarioLoadResults> {
     await Promise.all(
       Array.from({ length: s1Concurrency }, async (_, idx) => {
         const target = targetUrls[idx % targetUrls.length]!;
+        const clientIp = `10.42.1.${(idx % 40) + 1}`;
         const t0 = performance.now();
         try {
           const res = await fetch(`${target}/api/v1/lots/${hotLot.lotId}/allocate`, {
@@ -221,6 +223,7 @@ export async function runLoadScenarios(): Promise<MultiScenarioLoadResults> {
             headers: {
               'content-type': 'application/json',
               authorization: `Bearer ${auctToken}`,
+              'x-forwarded-for': clientIp,
               'Idempotency-Key': `HOT-LOAD-${hotLot.lotId}-${idx}`,
             },
             body: JSON.stringify({
@@ -229,13 +232,16 @@ export async function runLoadScenarios(): Promise<MultiScenarioLoadResults> {
               auctioneerLicenceId: `LIC-${hotIso.tenantId}-01`,
               buyerId: hotIso.buyerId,
               boxesAllocated: 1,
-              pricePerKgPaise: '50000',
+              // 40 kg/box * 25,000 paise/kg = 1,000,000 paise/box (+1.18% buyer fee/GST = 1,011,800).
+              // 10 boxes = 10,118,000 paise <= 15,000,000 paise fixture buyer headroom (>= 18,000 floor).
+              pricePerKgPaise: '25000',
               fencingToken: 1,
             }),
           });
           const dt = performance.now() - t0;
           s1Latencies.push(dt);
           allLatencies.push(dt);
+          s1StatusCounts[res.status] = (s1StatusCounts[res.status] ?? 0) + 1;
           if (res.status === 201) s1Success += 1;
           else if (res.status >= 500) {
             s1Status5xx += 1;
@@ -260,7 +266,7 @@ export async function runLoadScenarios(): Promise<MultiScenarioLoadResults> {
     const zeroOversellVerified = sumBoxes === 10 && s1Success === 10;
 
     console.log(
-      `[Scenario 1/3] Hot Lot: ${sumBoxes}/10 boxes allocated (201=${s1Success}, 4xx=${s1Rejected4xx}, 5xx=${s1Status5xx}, p95=${computePercentiles(s1Latencies).p95}ms)`
+      `[Scenario 1/3] Hot Lot: ${sumBoxes}/10 boxes allocated (201=${s1Success}, 4xx=${s1Rejected4xx}, 5xx=${s1Status5xx}, statuses=${JSON.stringify(s1StatusCounts)}, p95=${computePercentiles(s1Latencies).p95}ms)`
     );
 
     scenarioResults.push({
@@ -275,6 +281,7 @@ export async function runLoadScenarios(): Promise<MultiScenarioLoadResults> {
       details: {
         totalInitialBoxes: 10,
         totalAllocatedBoxes: sumBoxes,
+        statusCounts: s1StatusCounts,
         zeroOversellVerified,
       },
     });
@@ -327,10 +334,10 @@ export async function runLoadScenarios(): Promise<MultiScenarioLoadResults> {
 
     const s2Start = performance.now();
     const s2EndDeadline = s2Start + sustainedSec * 1000;
-    const workerCount = 6;
+    const workerCount = 16;
 
     // Note: Keep per-IP request rate below the 600 req/min API edge limiter when all workers share 127.0.0.1,
-    // by sending distinct X-Forwarded-For client IPs simulating real dockside terminals behind the LB.
+    // by sending distinct X-Forwarded-For client IPs simulating 16 dockside terminals behind the LB.
     const workers = Array.from({ length: workerCount }, async (_, workerIdx) => {
       let iter = 0;
       const clientIp = `10.42.0.${10 + workerIdx}`;
@@ -384,8 +391,8 @@ export async function runLoadScenarios(): Promise<MultiScenarioLoadResults> {
           total5xx += 1;
         }
         iter += 1;
-        // Pace lightly to stay realistic (~20-35 req/sec total across 6 terminals) and avoid artificial 429s
-        await new Promise((r) => setTimeout(r, 120));
+        // ~7-8 req/sec per terminal (~450 req/min per IP < 600 limit); ~115 req/sec total across 16 terminals
+        await new Promise((r) => setTimeout(r, 115));
       }
     });
 

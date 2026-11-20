@@ -614,15 +614,15 @@ export async function seedScaleFixture(
           ]
         );
       }
-    });
 
-    lotsCreated += lotIds.length;
-    allocationsCreated += allocIds.length;
-    journalsCreated += allocJournalIds.length;
-    entriesCreated += entrySeqs.length;
-    auditLogsCreated += auditIds.length;
-    outboxEventsCreated += outboxIds.length;
-    payoutBatchesCreated += days;
+      lotsCreated += lotIds.length;
+      allocationsCreated += allocIds.length;
+      journalsCreated += allocJournalIds.length;
+      entriesCreated += entrySeqs.length;
+      auditLogsCreated += auditIds.length;
+      outboxEventsCreated += outboxIds.length;
+      payoutBatchesCreated += days;
+    });
   }
 
   // Refresh PostgreSQL planner statistics on all populated tables

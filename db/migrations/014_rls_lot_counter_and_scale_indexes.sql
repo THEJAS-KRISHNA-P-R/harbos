@@ -12,6 +12,7 @@ CREATE POLICY tenant_isolation_lot_daily_counters ON auction.lot_daily_counters
   WITH CHECK (core.tenant_access_allowed(tenant_id));
 
 GRANT SELECT, INSERT, UPDATE ON auction.lot_daily_counters TO harbour_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON auction.lot_daily_counters TO harbour_platform;
 
 -- Hot-query indexes for fisherman payables, buyer lookups, reports, and outbox polling
 CREATE INDEX IF NOT EXISTS idx_accounts_tenant_kind_id

@@ -1,84 +1,92 @@
 {
-  "timestamp": "2026-11-12T10:36:23.206Z",
+  "timestamp": "2026-11-20T18:01:20.611Z",
+  "targetUrls": [
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3002"
+  ],
+  "durationSecondsTarget": 60,
+  "total5xx": 0,
+  "overallP95Ms": 57.95,
+  "zeroOversellVerified": true,
+  "ledgerVerifyClean": true,
   "scenarios": [
     {
-      "scenarioName": "Steady 100 Tenants Mixed R/W",
-      "totalOperations": 500,
-      "successfulOperations": 375,
-      "failedOperations": 125,
-      "durationSeconds": 6.2,
-      "throughputOpsSec": 60.5,
-      "latenciesMs": {
-        "p50": 7.62,
-        "p95": 34.47,
-        "p99": 44.39,
-        "max": 61.72
-      },
-      "details": {
-        "tenantConcurrency": 100,
-        "endpointsTested": [
-          "/api/v1/lots",
-          "/api/v1/auth/profile",
-          "/api/v1/bootstrap",
-          "/healthz"
-        ]
-      }
-    },
-    {
-      "scenarioName": "Dawn Ramp Landing Surge",
-      "totalOperations": 100,
-      "successfulOperations": 100,
-      "failedOperations": 0,
-      "durationSeconds": 1.01,
-      "throughputOpsSec": 99.1,
-      "latenciesMs": {
-        "p50": 9.34,
-        "p95": 14.79,
-        "p99": 43.26,
-        "max": 43.26
-      },
-      "details": {
-        "lotCreationSurge": 100,
-        "vessel": "VES-ten-dawn-c855e3d1-01"
-      }
-    },
-    {
-      "scenarioName": "Hot Lot 200 Concurrent Allocations (Zero Oversell)",
+      "scenarioName": "Hot Lot 200 Concurrent Allocations (2 Web Instances)",
       "totalOperations": 200,
-      "successfulOperations": 7,
-      "failedOperations": 193,
-      "durationSeconds": 2.37,
-      "throughputOpsSec": 84.5,
+      "successfulOperations": 10,
+      "failedOperations": 190,
+      "status5xx": 0,
+      "durationSeconds": 2.23,
+      "throughputOpsSec": 89.6,
       "latenciesMs": {
-        "p50": 1956.42,
-        "p95": 2325.01,
-        "p99": 2331.64,
-        "max": 2332.45
+        "p50": 1570.61,
+        "p95": 2172.73,
+        "p99": 2206.52,
+        "max": 2209.19
       },
       "details": {
         "totalInitialBoxes": 10,
-        "totalAllocatedBoxes": 7,
-        "zeroOversellGuaranteed": false,
-        "finalLotStatus": "PARTIALLY_SOLD"
+        "totalAllocatedBoxes": 10,
+        "statusCounts": {
+          "201": 10,
+          "409": 190
+        },
+        "zeroOversellVerified": true
       }
     },
     {
-      "scenarioName": "10,000 Outbox Events Drain",
-      "totalOperations": 10000,
-      "successfulOperations": 10000,
+      "scenarioName": "Sustained Mixed R/W (2 Web Processes)",
+      "totalOperations": 6924,
+      "successfulOperations": 6924,
       "failedOperations": 0,
-      "durationSeconds": 0.76,
-      "throughputOpsSec": 17816.4,
+      "status5xx": 0,
+      "durationSeconds": 57.1,
+      "throughputOpsSec": 121.3,
       "latenciesMs": {
-        "p50": 2.1,
-        "p95": 5.4,
-        "p99": 11.2,
-        "max": 24.5
+        "p50": 10.86,
+        "p95": 45.75,
+        "p99": 81.68,
+        "max": 150.31
       },
       "details": {
-        "eventsQueued": 10000,
-        "eventsDrained": 10000,
-        "drainRatePerSec": 17816.4
+        "reads": 6052,
+        "writes": 872,
+        "non5xxErrors": 0,
+        "workerCount": 16
+      }
+    },
+    {
+      "scenarioName": "Post-Load Ledger Chain Verification",
+      "totalOperations": 3,
+      "successfulOperations": 3,
+      "failedOperations": 0,
+      "status5xx": 0,
+      "durationSeconds": 0.04,
+      "throughputOpsSec": 72.1,
+      "latenciesMs": {
+        "p50": 41.6,
+        "p95": 41.6,
+        "p99": 41.6,
+        "max": 41.6
+      },
+      "details": {
+        "verificationResults": [
+          {
+            "tenantId": "munambam-demo",
+            "verified": true,
+            "entryCount": 25
+          },
+          {
+            "tenantId": "ten-hotload-5aed8ef3",
+            "verified": true,
+            "entryCount": 60
+          },
+          {
+            "tenantId": "ten-rwload-deadfc01",
+            "verified": true,
+            "entryCount": 0
+          }
+        ]
       }
     }
   ],
