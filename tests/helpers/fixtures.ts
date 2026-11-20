@@ -64,6 +64,7 @@ export async function createIsolatedTenant(
       `ACC-HMS-${tenantId}`,
       `ACC-COOP-${tenantId}`,
       `ACC-REV-${tenantId}`,
+      `ACC-GST-${tenantId}`,
     ]
   );
 

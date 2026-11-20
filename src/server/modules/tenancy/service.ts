@@ -19,6 +19,7 @@ import {
   insertCommissionPolicyVersionInTx,
   insertHonestTenantInTx,
   insertTenantUserInTx,
+  resolveUniqueShortCodeInTx,
 } from './repo.ts';
 
 /**
@@ -32,6 +33,7 @@ export async function provisionHonestTenant(
   platformDb: DbPort,
   input: {
     slug?: string | undefined;
+    shortCode?: string | undefined;
     nameEn?: string | undefined;
     nameMl?: string | undefined;
     centreType?: CentreType | undefined;
@@ -61,10 +63,21 @@ export async function provisionHonestTenant(
       ? [2000, 2000, 3000, 3000]
       : [2000, 2000, 4000, 2000];
 
-  await withPlatform(platformDb, (tx) =>
-    insertHonestTenantInTx(tx, {
+  const explicitShortCode = input.shortCode
+    ? String(input.shortCode).trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+    : '';
+  const baseShortCode =
+    explicitShortCode.length >= 2
+      ? explicitShortCode.slice(0, 6)
+      : (slug.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 4) || 'TEN').padEnd(3, 'X');
+
+  await withPlatform(platformDb, async (tx) => {
+    const shortCode = await resolveUniqueShortCodeInTx(tx, baseShortCode);
+
+    await insertHonestTenantInTx(tx, {
       tenantId,
       slug,
+      shortCode,
       nameEn,
       nameMl,
       preset,
@@ -84,8 +97,8 @@ export async function provisionHonestTenant(
           : ACT_16_2021_CITATIONS.HARBOUR_SPLIT_LABEL,
       effectiveFromDate: new Date().toISOString().slice(0, 10),
       genesisHash: GENESIS_PREV_HASH,
-    })
-  );
+    });
+  });
 
   return {
     tenantId,

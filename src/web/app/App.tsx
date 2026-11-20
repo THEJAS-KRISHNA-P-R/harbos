@@ -203,7 +203,7 @@ export const App: React.FC = () => {
   }, []);
 
   const handlePersonaSwitch = useCallback(
-    async (role: Role): Promise<void> => {
+    async (role: Role, options?: { silentFallbackToLogin?: boolean }): Promise<void> => {
       try {
         const res = await apiRequest<{ accessToken: string; user: SessionUser }>(
           '/api/v1/auth/persona-switch',
@@ -232,6 +232,10 @@ export const App: React.FC = () => {
           loadOperatorProfile(res.accessToken),
         ]);
       } catch (err) {
+        if (options?.silentFallbackToLogin) {
+          setScreenMode((prev) => (prev === 'gallery' ? 'gallery' : 'login'));
+          return;
+        }
         setAuthError(err instanceof Error ? err.message : 'Failed to switch persona');
       }
     },
@@ -244,7 +248,7 @@ export const App: React.FC = () => {
       return;
     }
     if (!import.meta.env.PROD) {
-      void handlePersonaSwitch('HARBOUR_ADMIN');
+      void handlePersonaSwitch('HARBOUR_ADMIN', { silentFallbackToLogin: true });
     } else {
       setScreenMode('login');
     }

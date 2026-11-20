@@ -30,6 +30,17 @@ export async function countPayoutBatchesInTx(
   return cntRes.rows[0]?.cnt ?? 0;
 }
 
+export async function fetchTenantShortCodeInTx(
+  tx: DbPort,
+  tenantId: string
+): Promise<string> {
+  const shortCodeRes = await tx.query<{ short_code: string | null }>(
+    `SELECT short_code FROM core.tenants WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  return shortCodeRes.rows[0]?.short_code || 'HRB';
+}
+
 export async function insertPayoutBatchRowInTx(
   tx: DbPort,
   params: {

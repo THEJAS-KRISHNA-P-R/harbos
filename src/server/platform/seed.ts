@@ -285,13 +285,13 @@ export async function seedDemoData(db: DbPort): Promise<void> {
       [tId]
     );
 
-    await allocateLotSale(db, {
+    const alloc1 = await allocateLotSale(db, {
       tenantId: tId, lotId: 'LOT-2026-001', sessionId: 'SES-MUN-MORNING-01', auctionMode: 'PHYSICAL_SHOUT',
       auctioneerLicenceId: 'LIC-MUN-001', buyerId: 'BUY-01', boxesRequested: 4, pricePerKgPaise: 740_00n,
       idempotencyKey: 'SEED-ALLOC-001', fencingToken: 10, nowIso: '2026-11-06T05:30:00.000Z',
     });
 
-    await allocateLotSale(db, {
+    const alloc2 = await allocateLotSale(db, {
       tenantId: tId, lotId: 'LOT-2026-002', sessionId: 'SES-MUN-MORNING-01', auctionMode: 'HYBRID_REMOTE',
       auctioneerLicenceId: 'LIC-MUN-002', buyerId: 'BUY-02', boxesRequested: 8, pricePerKgPaise: 550_00n,
       idempotencyKey: 'SEED-ALLOC-002', fencingToken: 10, nowIso: '2026-11-06T05:38:00.000Z',
@@ -301,8 +301,8 @@ export async function seedDemoData(db: DbPort): Promise<void> {
       `INSERT INTO ledger.reversal_requests (
         reversal_id, tenant_id, original_journal_id, reason_note,
         requested_by_user_id, requested_by_name, status, created_at
-      ) VALUES ('REV-REQ-001', $1, 'JRN-ALLOC-MUN-261106-001-1', 'Paddle number keystroke correction requested by Pit Clerk (requires Harbour Admin second key)', 'USR-ACCT-01', 'Deepa Krishnan (Accountant)', 'PENDING_SECOND_APPROVAL', '2026-11-06T06:10:00.000Z')`,
-      [tId]
+      ) VALUES ('REV-REQ-001', $1, $2, 'Paddle number keystroke correction requested by Pit Clerk (requires Harbour Admin second key)', 'USR-ACCT-01', 'Deepa Krishnan (Accountant)', 'PENDING_SECOND_APPROVAL', '2026-11-06T06:10:00.000Z')`,
+      [tId, alloc1.journalId]
     );
 
     await db.query(
@@ -313,22 +313,34 @@ export async function seedDemoData(db: DbPort): Promise<void> {
       [tId]
     );
 
-    await seedAuditLogsIfEmpty(db, tId);
+    await seedAuditLogsIfEmpty(db, tId, {
+      alloc1Id: alloc1.allocationId,
+      alloc2Id: alloc2.allocationId,
+      alloc1JournalId: alloc1.journalId,
+    });
   } finally {
     await db.query(`SELECT set_config('app.tenant_id', '', false)`);
   }
 }
 
-async function seedAuditLogsIfEmpty(db: DbPort, tenantId: string): Promise<void> {
+async function seedAuditLogsIfEmpty(
+  db: DbPort,
+  tenantId: string,
+  refs?: { alloc1Id: string; alloc2Id: string; alloc1JournalId: string }
+): Promise<void> {
   const existing = await db.query<{ cnt: number }>(`SELECT COUNT(*)::int AS cnt FROM core.audit_logs WHERE tenant_id = $1`, [tenantId]);
   if ((existing.rows[0]?.cnt ?? 0) > 0) return;
 
+  const alloc1Id = refs?.alloc1Id ?? 'ALC-MUN-261106-001-1';
+  const alloc2Id = refs?.alloc2Id ?? 'ALC-MUN-261106-002-1';
+  const alloc1JournalId = refs?.alloc1JournalId ?? 'JRN-ALLOC-MUN-261106-001-1';
+
   const seedAudits = [
     ['AUD-20261106-001', tenantId, 'USR-WEIGH-01', 'WEIGHING_OPERATOR', 'LOT_WEIGHED_AND_TAGGED', 'LOT', 'LOT-2026-001', JSON.stringify({ actorName: 'Sajeev K. (Weighing Operator)', lotCode: 'MUN-261106-001', vesselId: 'VSL-01', netGrams: '250000', weightSource: 'BLE_SCALE' }), '2026-11-06T05:15:12.000Z'],
-    ['AUD-20261106-002', tenantId, 'USR-AUCT-01', 'LICENSED_AUCTIONEER', 'LOT_ALLOCATED_AND_CLEARED', 'ALLOCATION', 'ALC-MUN-261106-001-1', JSON.stringify({ actorName: 'K. Balakrishnan Nair (Deputed Auctioneer)', lotId: 'LOT-2026-001', buyerId: 'BUY-01', hammerPaise: '7400000', societyLoanRouted: true }), '2026-11-06T05:30:05.000Z'],
-    ['AUD-20261106-003', tenantId, 'USR-AUCT-01', 'LICENSED_AUCTIONEER', 'LOT_ALLOCATED_AND_CLEARED', 'ALLOCATION', 'ALC-MUN-261106-002-1', JSON.stringify({ actorName: 'P. Sreedharan (Private Licensed)', lotId: 'LOT-2026-002', buyerId: 'BUY-02', hammerPaise: '11000000', auctionMode: 'HYBRID_REMOTE' }), '2026-11-06T05:38:04.000Z'],
+    ['AUD-20261106-002', tenantId, 'USR-AUCT-01', 'LICENSED_AUCTIONEER', 'LOT_ALLOCATED_AND_CLEARED', 'ALLOCATION', alloc1Id, JSON.stringify({ actorName: 'K. Balakrishnan Nair (Deputed Auctioneer)', lotId: 'LOT-2026-001', buyerId: 'BUY-01', hammerPaise: '7400000', societyLoanRouted: true }), '2026-11-06T05:30:05.000Z'],
+    ['AUD-20261106-003', tenantId, 'USR-AUCT-01', 'LICENSED_AUCTIONEER', 'LOT_ALLOCATED_AND_CLEARED', 'ALLOCATION', alloc2Id, JSON.stringify({ actorName: 'P. Sreedharan (Private Licensed)', lotId: 'LOT-2026-002', buyerId: 'BUY-02', hammerPaise: '11000000', auctionMode: 'HYBRID_REMOTE' }), '2026-11-06T05:38:04.000Z'],
     ['AUD-20261106-004', tenantId, 'USR-INSP-01', 'AUTHORIZED_INSPECTOR', 'QUALITY_INSPECTION_REJECTED_S21', 'LOT', 'LOT-2026-005', JSON.stringify({ actorName: 'Dr. Lekshmi R. (Food Safety & Quality Inspector)', grade: 'REJECTED_UNFIT', coreTempC: 9.4, statutoryRef: ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE }), '2026-11-06T06:05:22.000Z'],
-    ['AUD-20261106-005', tenantId, 'USR-ACCT-01', 'ACCOUNTANT', 'REVERSAL_REQUESTED_KEY1', 'REVERSAL', 'REV-REQ-001', JSON.stringify({ actorName: 'Deepa Krishnan (HMS Chief Accountant)', originalJournalId: 'JRN-ALLOC-MUN-261106-001-1', reason: 'Paddle number keystroke correction requested by Pit Clerk' }), '2026-11-06T06:10:00.000Z'],
+    ['AUD-20261106-005', tenantId, 'USR-ACCT-01', 'ACCOUNTANT', 'REVERSAL_REQUESTED_KEY1', 'REVERSAL', 'REV-REQ-001', JSON.stringify({ actorName: 'Deepa Krishnan (HMS Chief Accountant)', originalJournalId: alloc1JournalId, reason: 'Paddle number keystroke correction requested by Pit Clerk' }), '2026-11-06T06:10:00.000Z'],
     ['AUD-20261106-006', tenantId, 'USR-HADMIN-01', 'HARBOUR_ADMIN', 'FLOOR_SCHEDULE_VERIFIED_S19', 'SPECIES', 'SPC-01', JSON.stringify({ actorName: 'Capt. Mathew Thomas (Harbour Secretary)', floorEnforcement: 'WARN', floorPricePaisePerKg: '68000' }), '2026-11-06T06:12:30.000Z'],
     ['AUD-20261106-007', tenantId, 'USR-ACCT-01', 'ACCOUNTANT', 'PAYOUT_BATCH_GENERATED', 'PAYOUT_BATCH', 'BATCH-20261106-01', JSON.stringify({ actorName: 'Deepa Krishnan (HMS Chief Accountant)', batchCode: 'MUN-PAY-20261106-01', totalAmountPaise: '17480000' }), '2026-11-06T06:15:00.000Z'],
     [

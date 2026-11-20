@@ -56,9 +56,8 @@ ALTER TABLE auction.lot_daily_counters FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS tenant_isolation_lot_daily_counters ON auction.lot_daily_counters;
 CREATE POLICY tenant_isolation_lot_daily_counters ON auction.lot_daily_counters
-  AS RESTRICTIVE
-  USING (tenant_id = core.current_tenant_id())
-  WITH CHECK (tenant_id = core.current_tenant_id());
+  USING (core.tenant_access_allowed(tenant_id))
+  WITH CHECK (core.tenant_access_allowed(tenant_id));
 
 GRANT SELECT, INSERT, UPDATE ON auction.lot_daily_counters TO harbour_app;
 

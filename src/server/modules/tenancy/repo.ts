@@ -2,11 +2,29 @@ import type { DbPort } from '@server/ports/db.ts';
 import type { Role } from '@shared/contracts/rbac.ts';
 import type { CentreType, CommercialMode } from '@shared/ids.ts';
 
+export async function resolveUniqueShortCodeInTx(
+  tx: DbPort,
+  baseShortCode: string
+): Promise<string> {
+  let shortCode = baseShortCode;
+  let suffix = 1;
+  while (true) {
+    const existing = await tx.query<{ tenant_id: string }>(
+      `SELECT tenant_id FROM core.tenants WHERE short_code = $1`,
+      [shortCode]
+    );
+    if (existing.rows.length === 0) return shortCode;
+    const suffixStr = String(suffix++);
+    shortCode = `${baseShortCode.slice(0, Math.max(2, 6 - suffixStr.length))}${suffixStr}`;
+  }
+}
+
 export async function insertHonestTenantInTx(
   tx: DbPort,
   params: {
     tenantId: string;
     slug: string;
+    shortCode: string;
     nameEn: string;
     nameMl: string;
     preset: CentreType;
@@ -27,13 +45,14 @@ export async function insertHonestTenantInTx(
 ): Promise<void> {
   await tx.query(
     `INSERT INTO core.tenants (
-      tenant_id, slug, name_en, name_ml, centre_type, floor_enforcement,
+      tenant_id, slug, short_code, name_en, name_ml, centre_type, floor_enforcement,
       active_policy_id, hms_account_id, coop_pool_account_id,
       harbouros_revenue_account_id, gst_payable_account_id
-    ) VALUES ($1, $2, $3, $4, $5, 'WARN', $6, $7, $8, $9, $10)`,
+    ) VALUES ($1, $2, $3, $4, $5, $6, 'WARN', $7, $8, $9, $10, $11)`,
     [
       params.tenantId,
       params.slug,
+      params.shortCode,
       params.nameEn,
       params.nameMl,
       params.preset,
