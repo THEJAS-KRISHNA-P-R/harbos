@@ -524,7 +524,7 @@ export async function fetchJournalsKeysetPage(
   if (params.cursor) {
     const res = await db.query<Record<string, unknown>>(
       `SELECT * FROM ledger.journals
-       WHERE tenant_id = $1 AND (created_at, journal_id) < ($2::timestamptz, $3)
+       WHERE tenant_id = $1 AND (created_at, journal_id) < ($2, $3)
        ORDER BY created_at DESC, journal_id DESC LIMIT $4`,
       [params.tenantId, params.cursor.ts, params.cursor.id, params.limitPlusOne]
     );

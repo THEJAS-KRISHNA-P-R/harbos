@@ -8,7 +8,7 @@ export async function fetchDailyAuctionReportData(
 ) {
   const dateFilterLots =
     fromIso && toIso
-      ? `AND created_at >= $2::timestamptz AND created_at <= $3::timestamptz`
+      ? `AND created_at >= $2 AND created_at <= $3`
       : '';
   const paramsLots = fromIso && toIso ? [tenantId, fromIso, toIso] : [tenantId];
 

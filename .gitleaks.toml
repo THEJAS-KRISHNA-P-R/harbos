@@ -2,9 +2,15 @@
 useDefault = true
 
 [allowlist]
-description = "Docs, env examples, and compose examples containing placeholder patterns"
+description = "Docs/env examples/compose examples (placeholders) + 4 immutable historical commits containing throwaway test-fixture secrets (all-placeholder values, never used outside tests/CI)"
 paths = [
   '''^docs/''',
   '''^\.env\.example$''',
   '''^docker-compose.*\.example\.yml$'''
+]
+commits = [
+  "efb2e78afa1d187bda0874895c5a026eec0a558d", # tests/unit/m0-foundation.test.ts fixture secret
+  "18134cd4c39471b5aa854ace267fce2aef37a821", # tests/api/security.test.ts fixtures
+  "b35949d04a753e64b26aa91a62f66a0cbed2d67c", # tests/api/tenant-isolation.test.ts Idempotency-Key fixtures
+  "2e0f413da3069dfd6a40d61a01e2a4f78ae29d63", # zap-nightly.yml placeholder secrets (since replaced by openssl rand)
 ]

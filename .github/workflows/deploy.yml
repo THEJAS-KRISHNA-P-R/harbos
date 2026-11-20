@@ -19,20 +19,54 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
+  verify-ci-green:
+    name: Verify HarbourOS CI Passed for Commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    steps:
+      - name: Verify CI workflow succeeded on commit SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "Checking HarbourOS CI status for commit ${TARGET_SHA}..."
+          CONCLUSION="$(gh api "repos/${REPO}/actions/workflows/ci.yml/runs?head_sha=${TARGET_SHA}&status=completed&per_page=10" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')"
+          if [ "${CONCLUSION:-0}" -lt 1 ]; then
+            echo "ERROR: Refusing to deploy ${TARGET_SHA} — no successful completed HarbourOS CI run found for this commit."
+            gh api "repos/${REPO}/actions/workflows/ci.yml/runs?head_sha=${TARGET_SHA}&per_page=10" \
+              --jq '.workflow_runs[] | {id, status, conclusion, html_url}' || true
+            exit 1
+          fi
+          echo "PASS: HarbourOS CI succeeded for commit ${TARGET_SHA}."
+
   deploy-cloud-run:
+    needs: [verify-ci-green]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      DATABASE_PLATFORM_URL: ${{ secrets.DATABASE_PLATFORM_URL }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
         with:
-          node-version: 20
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
@@ -49,7 +83,7 @@ jobs:
 
       - name: Authenticate to Google Cloud
         if: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
@@ -57,8 +91,6 @@ jobs:
       - name: Deploy Database Migrations
         if: ${{ env.DATABASE_PLATFORM_URL != '' }}
         run: npm run migrate
-        env:
-          DATABASE_PLATFORM_URL: ${{ secrets.DATABASE_PLATFORM_URL }}
 
       - name: Deploy Cloud Run Web & Worker
         if: ${{ env.GCP_PROJECT_ID != '' }}

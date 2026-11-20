@@ -6,9 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16-alpine
@@ -30,10 +39,13 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@1a4442cacd436585916779262731c5b162bc6ec7 # v4.2.0
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
           cache: npm
+
+      - name: Verify GitHub Action Pins
+        run: npx tsx scripts/check-actions.ts
 
       - name: Lockfile Synchronicity Guard
         run: npx tsx scripts/check-lockfile.ts
@@ -42,16 +54,17 @@ jobs:
         run: npm ci
 
       - name: Run Gitleaks Secret Scanner
-        uses: gitleaks/gitleaks-action@e851e44a4b2a647d33eb4341c6f4997c6c4c5cfb # v2.3.9
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Production Dependency Vulnerability Audit
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Typecheck, Empty-Catch Gate, Boundaries & WCAG Contrast
+      - name: Typecheck, i18n, Empty-Catch Gate, Boundaries & WCAG Contrast
         run: |
           npm run lint
+          npm run check:i18n
           ! grep -rnE "catch\s*(\([^)]*\))?\s*\{\s*(//[^\n]*)?\s*\}" tests scripts src
           npm run check:boundaries
           npm run check:contrast
@@ -70,19 +83,17 @@ jobs:
           DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
         run: npm run seed
 
-      - name: Run Unit, Database (RLS Strict) & Security Regression Suite (as harbour_app)
+      - name: Strict PgBouncer Transaction-Mode Gate (npm test + verify-rls via port 6432)
         env:
-          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
-          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
-          NODE_OPTIONS: --throw-deprecation
-        run: npm test
-
-      - name: Verify RLS Fail-Closed & Immutability on PostgreSQL 16 (as harbour_app)
-        env:
-          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
-          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
-          NODE_OPTIONS: --throw-deprecation
-        run: npx tsx scripts/verify-rls.ts
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGDATABASE: harbouros_test
+          HARBOUR_APP_PASSWORD: test_app_password_harbour_secret_2026
+          HARBOUR_PLATFORM_PASSWORD: test_platform_password_harbour_secret_2026
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pgbouncer postgresql-client
+          bash scripts/ci-pgbouncer.sh
 
       - name: Run Production 5-Var Boot & Fail-Closed Smoke Check (as harbour_app)
         env:
@@ -102,6 +113,60 @@ jobs:
             echo "ERROR: Hardcoded demo phone numbers found in src/web or dist"
             exit 1
           fi
+
+      - name: Seed 10-Tenant x 30-Day Scale Fixture (>100k Ledger Entries) & Run EXPLAIN Plan Gate
+        env:
+          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
+          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
+          REQUIRE_SCALE_ROWS: "true"
+        run: |
+          npx tsx scripts/scale-fixture.ts
+          npx tsx scripts/check-plans.ts
+
+      - name: 60s Multi-Instance Load Smoke Gate (2 Web Processes Behind PgBouncer)
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGDATABASE: harbouros_test
+          HARBOUR_APP_PASSWORD: test_app_password_harbour_secret_2026
+          HARBOUR_PLATFORM_PASSWORD: test_platform_password_harbour_secret_2026
+          DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@127.0.0.1:6432/harbouros_test
+          DATABASE_PLATFORM_URL: postgresql://harbour_platform:test_platform_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test
+          LOAD_TARGET_URLS: http://127.0.0.1:3001,http://127.0.0.1:3002
+          LOAD_DURATION_SEC: "60"
+        run: |
+          bash scripts/ci-pgbouncer.sh --start-only
+          JWT_SECRET="$(openssl rand -hex 32)"
+          QR_SECRET="$(openssl rand -hex 32)"
+          cleanup_load() {
+            kill "${WEB1_PID:-}" "${WEB2_PID:-}" 2>/dev/null || true
+            bash scripts/ci-pgbouncer.sh --stop || true
+          }
+          trap cleanup_load EXIT
+          NODE_ENV=production PORT=3001 JWT_ACCESS_SECRET="$JWT_SECRET" QR_HMAC_SECRET="$QR_SECRET" \
+            SMS_PROVIDER=msg91 MSG91_AUTH_KEY=ci-dummy-key MSG91_SENDER_ID=HARBOS MSG91_OTP_TEMPLATE_ID=ci-tpl \
+            node --import tsx src/server/entry/web.ts >/tmp/web1.log 2>&1 &
+          WEB1_PID=$!
+          NODE_ENV=production PORT=3002 JWT_ACCESS_SECRET="$JWT_SECRET" QR_HMAC_SECRET="$QR_SECRET" \
+            SMS_PROVIDER=msg91 MSG91_AUTH_KEY=ci-dummy-key MSG91_SENDER_ID=HARBOS MSG91_OTP_TEMPLATE_ID=ci-tpl \
+            node --import tsx src/server/entry/web.ts >/tmp/web2.log 2>&1 &
+          WEB2_PID=$!
+          for p in 3001 3002; do
+            READY=0
+            for _ in $(seq 1 40); do
+              if curl -sf "http://127.0.0.1:${p}/readyz" >/dev/null; then
+                READY=1
+                break
+              fi
+              sleep 1
+            done
+            if [ "$READY" -ne 1 ]; then
+              echo "ERROR: Web instance on port ${p} failed to become ready"
+              cat /tmp/web1.log /tmp/web2.log || true
+              exit 1
+            fi
+          done
+          JWT_ACCESS_SECRET="$JWT_SECRET" QR_HMAC_SECRET="$QR_SECRET" npx tsx scripts/load.ts
 
       - name: Install Playwright Chromium & Run Visual Smoke Suite
         env:

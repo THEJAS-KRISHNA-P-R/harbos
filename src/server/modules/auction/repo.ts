@@ -12,7 +12,7 @@ export async function fetchAllocationsKeysetPage(
     const res = await db.query<Record<string, unknown>>(
       `SELECT * FROM auction.sale_allocations
        WHERE tenant_id = $1
-         AND (created_at, allocation_id) < ($2::timestamptz, $3)
+         AND (created_at, allocation_id) < ($2, $3)
        ORDER BY created_at DESC, allocation_id DESC
        LIMIT $4`,
       [params.tenantId, params.cursor.ts, params.cursor.id, params.limitPlusOne]

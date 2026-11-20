@@ -78,7 +78,7 @@ export async function fetchAuditLogsKeysetPage(
        FROM core.audit_logs a
        LEFT JOIN core.users u ON u.user_id = a.actor_user_id
        WHERE a.tenant_id = $1
-         AND (a.created_at, a.audit_id) < ($2::timestamptz, $3)
+         AND (a.created_at, a.audit_id) < ($2, $3)
        ORDER BY a.created_at DESC, a.audit_id DESC
        LIMIT $4`,
       [params.tenantId, params.cursor.ts, params.cursor.id, params.limitPlusOne]

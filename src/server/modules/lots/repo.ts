@@ -14,7 +14,7 @@ export async function fetchLotsKeysetPage(
     const res = await db.query<Record<string, unknown>>(
       `SELECT * FROM auction.lots
        WHERE tenant_id = $1 AND status = $2
-         AND (created_at, lot_id) < ($3::timestamptz, $4)
+         AND (created_at, lot_id) < ($3, $4)
        ORDER BY created_at DESC, lot_id DESC
        LIMIT $5`,
       [
@@ -31,7 +31,7 @@ export async function fetchLotsKeysetPage(
     const res = await db.query<Record<string, unknown>>(
       `SELECT * FROM auction.lots
        WHERE tenant_id = $1
-         AND (created_at, lot_id) < ($2::timestamptz, $3)
+         AND (created_at, lot_id) < ($2, $3)
        ORDER BY created_at DESC, lot_id DESC
        LIMIT $4`,
       [params.tenantId, params.cursor.ts, params.cursor.id, params.limitPlusOne]
