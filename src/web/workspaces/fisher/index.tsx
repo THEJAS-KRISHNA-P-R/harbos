@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { Volume2, FileDown, CheckCircle2, Anchor } from 'lucide-react';
+import { Volume2, FileDown, CheckCircle2, Anchor, Printer } from 'lucide-react';
 import {
   Button,
   Card,
-  Badge,
   Metric,
   DataTable,
+  Modal,
   Toast,
-  FisherVesselPassbookIcon,
   StatutoryLedgerWaterfallSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
@@ -19,10 +18,13 @@ import {
   type AllocationRow,
 } from '@web/lib/api.ts';
 import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
+import { useI18n } from '@web/i18n/index.tsx';
+import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 
 export const FisherWorkspace: React.FC<{
   data: BootstrapData;
 }> = ({ data }) => {
+  const { t } = useI18n();
   const fisherman = data.fishermen[0];
   const vessel = data.vessels.find((v) => v.owner_fisherman_id === fisherman?.fisherman_id);
   const payableAccount = data.accounts.find(
@@ -33,6 +35,9 @@ export const FisherWorkspace: React.FC<{
   );
 
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
+  const [voucherModalOpen, setVoucherModalOpen] = useState(false);
+  const [voucherFormat, setVoucherFormat] = useState<'80mm' | 'A4'>('80mm');
+  const [isReprint, setIsReprint] = useState(false);
 
   const totalHammerPaise = data.allocations.reduce(
     (acc, a) => acc + BigInt(a.hammer_paise),
@@ -156,7 +161,7 @@ export const FisherWorkspace: React.FC<{
           <StatutoryLedgerWaterfallSvgDecor size={40} />
           <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              Fisher Passbook
+              {t('workspaces.fisherTitle')}
             </h1>
             <p className="text-xs text-[var(--text-secondary)] truncate">
               {fisherman?.full_name} · {vessel?.vessel_name_en} ({vessel?.registration_no})
@@ -171,6 +176,17 @@ export const FisherWorkspace: React.FC<{
             onClick={handleListenMalayalam}
           >
             കേൾക്കുക (Listen in Malayalam)
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Printer className="w-4 h-4" />}
+            onClick={() => {
+              setIsReprint(false);
+              setVoucherModalOpen(true);
+            }}
+          >
+            {t('actions.printSettlement')}
           </Button>
           <Button
             variant="outline"
@@ -212,7 +228,7 @@ export const FisherWorkspace: React.FC<{
       </div>
 
       {/* Transparent 5% Statutory Deduction Breakdown Card */}
-      <Card title="Statutory 95/5 Split Breakdown">
+      <Card title={t('workspaces.fisherBreakdownTitle')}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="p-4 rounded-[var(--radius-card)] bg-[var(--brand-soft)] border border-[var(--navy-200)]">
             <div className="text-xs font-bold uppercase text-[var(--brand-soft-fg)]">
@@ -272,7 +288,7 @@ export const FisherWorkspace: React.FC<{
 
       {/* Today's Catch Sales Table */}
       <Card
-        title="Itemized Catch Sales & Escrow Accruals"
+        title={t('workspaces.fisherSalesTitle')}
         subtitle="Verified against the append-only harbour ledger"
         sunkenFooter={
           <div className="flex items-center justify-between">
@@ -294,6 +310,77 @@ export const FisherWorkspace: React.FC<{
           getRowKey={(r) => r.allocation_id}
         />
       </Card>
+
+      <Modal
+        open={voucherModalOpen}
+        onClose={() => setVoucherModalOpen(false)}
+        title={t('slips.settlementSlip')}
+        description="Statutory 95% net proceeds & 40% annual bonus escrow settlement voucher"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setVoucherModalOpen(false)}>
+              Close
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Printer className="w-4 h-4" />}
+              onClick={() => window.print()}
+            >
+              {t('actions.printSlip')} ({voucherFormat})
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant={voucherFormat === '80mm' ? 'primary' : 'outline'}
+                onClick={() => setVoucherFormat('80mm')}
+              >
+                80mm
+              </Button>
+              <Button
+                size="sm"
+                variant={voucherFormat === 'A4' ? 'primary' : 'outline'}
+                onClick={() => setVoucherFormat('A4')}
+              >
+                A4
+              </Button>
+            </div>
+            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isReprint}
+                onChange={(e) => setIsReprint(e.target.checked)}
+              />
+              <span>{t('actions.reprint')}</span>
+            </label>
+          </div>
+          <DocksidePrintSlip
+            slipType="FISHERMAN_SETTLEMENT_SLIP"
+            printFormat={voucherFormat}
+            isReprint={isReprint}
+            harbourName={data.tenant?.name_en ?? 'Munambam Harbour (HMS)'}
+            referenceNo={`SET-${fisherman?.fisherman_id ?? 'FSH-01'}-${data.allocations.length}`}
+            timestampIso={new Date().toISOString()}
+            items={[
+              { label: t('dockside.fisherman'), value: fisherman?.full_name ?? 'Vessel Owner', highlight: true },
+              { label: t('dockside.vessel'), value: `${vessel?.vessel_name_en ?? ''} (${vessel?.registration_no ?? ''})` },
+              { label: 'Welfare ID', value: fisherman?.welfare_board_no ?? '—' },
+              { label: 'Sales Count', value: `${data.allocations.length} allocations` },
+            ]}
+            summaryRows={[
+              { label: 'Gross Hammer (100%)', value: formatInrFromPaise(totalHammerPaise) },
+              { label: '5% Statutory Commission', value: `-${formatInrFromPaise(totalCommissionPaise)}` },
+              { label: '40% Bonus Escrow (2% GTV)', value: `+${formatInrFromPaise(totalBonusPaise)}` },
+              { label: 'Net Payable (95%)', value: formatInrFromPaise(totalNetPaise), bold: true },
+            ]}
+            qrPayload={`HARBOUROS|SETTLEMENT|${fisherman?.fisherman_id ?? 'FSH-01'}|${totalNetPaise.toString()}|${data.ledgerVerification.headHash.slice(0, 16)}`}
+          />
+        </div>
+      </Modal>
     </div>
   );
 };

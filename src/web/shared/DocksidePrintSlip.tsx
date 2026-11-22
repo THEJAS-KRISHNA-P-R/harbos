@@ -1,5 +1,6 @@
 import React from 'react';
 import { QrCodeSvg } from './QrCodeSvg.tsx';
+import { useI18n } from '@web/i18n/index.tsx';
 
 export interface DocksidePrintSlipProps {
   readonly slipType: 'LOT_TAG' | 'BUYER_SALE_SLIP' | 'FISHERMAN_SETTLEMENT_SLIP';
@@ -38,9 +39,12 @@ export const DocksidePrintSlip: React.FC<DocksidePrintSlipProps> = ({
   items,
   summaryRows = [],
   qrPayload,
-  statutoryFooter = 'Governed by Kerala Fish Auctioning Act 2021. Tamper-evident SHA-256 audit log enabled.',
+  statutoryFooter,
   onPrint,
 }) => {
+  const { t } = useI18n();
+  const resolvedFooter = statutoryFooter ?? t('slips.statutoryNotice');
+
   const getFormatClasses = () => {
     switch (printFormat) {
       case '58mm':
@@ -56,16 +60,19 @@ export const DocksidePrintSlip: React.FC<DocksidePrintSlipProps> = ({
   const getSlipTitle = () => {
     switch (slipType) {
       case 'LOT_TAG':
-        return 'DOCK LOT WEIGHMENT TAG';
+        return t('slips.lotLabel', 'DOCK LOT WEIGHMENT TAG');
       case 'BUYER_SALE_SLIP':
-        return 'COMMERCIAL SALE MEMORANDUM';
+        return t('slips.saleSlip', 'COMMERCIAL SALE MEMORANDUM');
       case 'FISHERMAN_SETTLEMENT_SLIP':
-        return 'FISHERMAN PROCEEDS VOUCHER';
+        return t('slips.settlementSlip', 'FISHERMAN PROCEEDS VOUCHER');
     }
   };
 
   return (
-    <div className="font-mono bg-white text-black border border-neutral-300 relative print:border-none print:shadow-none shadow-sm rounded-none">
+    <div
+      data-testid="dockside-print-slip"
+      className="font-mono bg-white text-black border border-neutral-300 relative print:border-none print:shadow-none shadow-sm rounded-none"
+    >
       {/* Watermark for reprints */}
       {isReprint && (
         <div
@@ -73,7 +80,7 @@ export const DocksidePrintSlip: React.FC<DocksidePrintSlipProps> = ({
           className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-10"
         >
           <span className="text-red-700 font-extrabold text-2xl tracking-widest opacity-25 uppercase transform -rotate-25 border-4 border-dashed border-red-700 px-4 py-2 select-none">
-            REPRINT — AUDITED COPY
+            {t('slips.reprintWatermark', 'REPRINT — AUDITED COPY')}
           </span>
         </div>
       )}
@@ -128,7 +135,7 @@ export const DocksidePrintSlip: React.FC<DocksidePrintSlipProps> = ({
 
         {/* Statutory Footer */}
         <div className="border-t border-neutral-300 pt-1 text-[8px] text-neutral-500 text-center leading-tight">
-          {statutoryFooter}
+          {resolvedFooter}
         </div>
 
         {/* Print Trigger Button (Hidden when printing) */}

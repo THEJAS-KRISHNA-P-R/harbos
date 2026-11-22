@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Gavel, ShieldCheck, Timer, CheckCircle2 } from 'lucide-react';
+import { Gavel, ShieldCheck, Timer, CheckCircle2, ScanLine, Printer } from 'lucide-react';
 import {
   Button,
   Card,
@@ -9,10 +9,8 @@ import {
   Input,
   Keypad,
   DataTable,
+  Modal,
   Toast,
-  WorkflowStepStrip,
-  AuctionGavelBellIcon,
-  StatutorySealIcon,
   AuctionPitAmphitheatreSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
@@ -25,12 +23,16 @@ import {
 } from '@web/lib/api.ts';
 import type { AuctionMode } from '@shared/ids.ts';
 import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
+import { useI18n } from '@web/i18n/index.tsx';
+import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
+import { BarcodeScannerModal } from '@web/shared/BarcodeScannerModal.tsx';
 
 export const PitWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
   onRefresh: () => Promise<void>;
 }> = ({ data, token, onRefresh }) => {
+  const { t } = useI18n();
   const openLots = data.lots.filter((l) => l.available_boxes > 0);
   const [selectedLotId, setSelectedLotId] = useState(
     openLots[0]?.lot_id ?? data.lots[0]?.lot_id ?? 'LOT-2026-001'
@@ -48,6 +50,10 @@ export const PitWorkspace: React.FC<{
   const [govPermissionRef, setGovPermissionRef] = useState('GO(Rt) No. 412/2026/F&PD');
   const [submitting, setSubmitting] = useState(false);
   const [lastLatencyMs, setLastLatencyMs] = useState<number>(2);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [saleSlipAlloc, setSaleSlipAlloc] = useState<AllocationRow | null>(null);
+  const [slipFormat, setSlipFormat] = useState<'80mm' | 'A4'>('80mm');
+  const [isReprint, setIsReprint] = useState(false);
   const [feedback, setFeedback] = useState<{
     tone: 'ok' | 'warn' | 'danger' | 'info';
     title: string;
@@ -59,6 +65,30 @@ export const PitWorkspace: React.FC<{
   const currentSpecies = data.species.find((s) => s.species_id === currentLot?.species_id);
   const currentLicence = data.licences.find((l) => l.licence_id === selectedLicenceId);
   const currentBuyer = data.buyers.find((b) => b.buyer_id === selectedBuyerId);
+
+  const handleLotQrScan = (rawCode: string): void => {
+    const q = rawCode.trim().toUpperCase();
+    const matched = data.lots.find(
+      (l) =>
+        l.lot_code.toUpperCase() === q ||
+        l.lot_id.toUpperCase() === q ||
+        q.includes(l.lot_code.toUpperCase())
+    );
+    if (matched) {
+      setSelectedLotId(matched.lot_id);
+      setFeedback({
+        tone: 'ok',
+        title: `Lot Scanned: ${matched.lot_code}`,
+        msg: `Loaded lot ${matched.lot_code} (${matched.available_boxes}/${matched.total_boxes} boxes available).`,
+      });
+    } else {
+      setFeedback({
+        tone: 'warn',
+        title: 'Lot QR Not Found',
+        msg: `No landed lot matched "${rawCode}". Select from the lot dropdown.`,
+      });
+    }
+  };
 
   const handleConfirmAllocation = async (): Promise<void> => {
     if (!currentLot) return;
@@ -162,6 +192,24 @@ export const PitWorkspace: React.FC<{
       mono: true,
       render: (r) => `${r.server_latency_ms} ms`,
     },
+    {
+      key: 'slip',
+      header: 'Sale Slip',
+      align: 'right',
+      render: (r) => (
+        <Button
+          variant="outline"
+          size="sm"
+          icon={<Printer className="w-3.5 h-3.5" />}
+          onClick={() => {
+            setIsReprint(false);
+            setSaleSlipAlloc(r);
+          }}
+        >
+          {t('actions.printSaleSlip')}
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -171,7 +219,7 @@ export const PitWorkspace: React.FC<{
           <AuctionPitAmphitheatreSvgDecor size={40} />
           <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              Auction Pit Pad
+              {t('workspaces.pitTitle')}
             </h1>
             <p className="text-xs text-[var(--text-secondary)] truncate">
               {openLots.length} Open Lots · Atomic Ledger Post
@@ -179,6 +227,14 @@ export const PitWorkspace: React.FC<{
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<ScanLine className="w-4 h-4" />}
+            onClick={() => setScannerOpen(true)}
+          >
+            {t('actions.scanLotQr')}
+          </Button>
           <Badge tone="ok" label="LEADER LEASE ACTIVE" code={`FENCE #${fencingToken}`} />
           <Badge tone="info" label={`P50: ${lastLatencyMs} MS`} />
         </div>
@@ -390,7 +446,7 @@ export const PitWorkspace: React.FC<{
                 onClick={handleConfirmAllocation}
                 className="w-full"
               >
-                Confirm Hammer Drop & Post Ledger Journal
+                {t('workspaces.pitConfirmBtn')}
               </Button>
             </div>
           </Card>
@@ -399,7 +455,7 @@ export const PitWorkspace: React.FC<{
 
       {/* Confirmed Allocations Table */}
       <Card
-        title="Confirmed Pit Sale Allocations (Immutable)"
+        title={t('workspaces.pitAllocationsTitle')}
         subtitle="Corrections require a Dual-Key Reversal Journal authorized by Accountant + Harbour Admin"
       >
         <DataTable
@@ -409,6 +465,91 @@ export const PitWorkspace: React.FC<{
           getRowKey={(r) => r.allocation_id}
         />
       </Card>
+
+      <Modal
+        open={Boolean(saleSlipAlloc)}
+        onClose={() => setSaleSlipAlloc(null)}
+        title={t('slips.saleSlip')}
+        description="Audited dockside commercial sale memorandum with QR hash verification"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setSaleSlipAlloc(null)}>
+              Close
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Printer className="w-4 h-4" />}
+              onClick={() => window.print()}
+            >
+              {t('actions.printSlip')} ({slipFormat})
+            </Button>
+          </>
+        }
+      >
+        {saleSlipAlloc && (() => {
+          const lot = data.lots.find((l) => l.lot_id === saleSlipAlloc.lot_id);
+          const buyer = data.buyers.find((b) => b.buyer_id === saleSlipAlloc.buyer_id);
+          const sp = data.species.find((s) => s.species_id === lot?.species_id);
+          return (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    variant={slipFormat === '80mm' ? 'primary' : 'outline'}
+                    onClick={() => setSlipFormat('80mm')}
+                  >
+                    80mm
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={slipFormat === 'A4' ? 'primary' : 'outline'}
+                    onClick={() => setSlipFormat('A4')}
+                  >
+                    A4
+                  </Button>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isReprint}
+                    onChange={(e) => setIsReprint(e.target.checked)}
+                  />
+                  <span>{t('actions.reprint')}</span>
+                </label>
+              </div>
+              <DocksidePrintSlip
+                slipType="BUYER_SALE_SLIP"
+                printFormat={slipFormat}
+                isReprint={isReprint}
+                harbourName={data.tenant?.name_en ?? 'Munambam Harbour (HMS)'}
+                referenceNo={saleSlipAlloc.allocation_id}
+                timestampIso={saleSlipAlloc.created_at}
+                items={[
+                  { label: t('dockside.lotCode'), value: lot?.lot_code ?? saleSlipAlloc.lot_id, highlight: true },
+                  { label: t('dockside.species'), value: sp ? `${sp.name_en} / ${sp.name_ml}` : 'Catch' },
+                  { label: t('dockside.buyerPaddle'), value: `#${buyer?.paddle_no ?? '—'} ${buyer?.buyer_name ?? ''}` },
+                  { label: t('dockside.boxes'), value: `${saleSlipAlloc.boxes_allocated} boxes (${formatKgFromGrams(saleSlipAlloc.grams_allocated)})` },
+                  { label: 'Journal', value: saleSlipAlloc.journal_id },
+                ]}
+                summaryRows={[
+                  { label: t('dockside.hammerAmount'), value: formatInrFromPaise(saleSlipAlloc.hammer_paise) },
+                  { label: 'Buyer Total Payable', value: formatInrFromPaise(saleSlipAlloc.buyer_payable_paise), bold: true },
+                ]}
+                qrPayload={`HARBOUROS|SALE|${saleSlipAlloc.allocation_id}|${saleSlipAlloc.journal_id}`}
+              />
+            </div>
+          );
+        })()}
+      </Modal>
+
+      <BarcodeScannerModal
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScanSuccess={handleLotQrScan}
+        title={t('actions.scanLotQr')}
+        placeholder="e.g. LOT-2026-001"
+      />
     </div>
   );
 };

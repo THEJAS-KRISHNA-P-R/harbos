@@ -24,7 +24,15 @@
     "reprint": "Reprint Slip",
     "importMasterdata": "Bulk CSV Import",
     "exportPrivacy": "Export Personal Data",
-    "requestErasure": "Request DPDP Erasure"
+    "requestErasure": "Request DPDP Erasure",
+    "scanVesselQr": "Scan Vessel QR",
+    "scanLotQr": "Scan Lot QR",
+    "printSaleSlip": "Print Sale Slip",
+    "printSettlement": "Print Settlement Voucher",
+    "dryRunValidate": "Dry-Run Validate",
+    "atomicCommit": "Atomic Commit",
+    "downloadCsv": "Download CSV",
+    "runShadowDiff": "Run Shadow-Pilot Diff"
   },
   "status": {
     "weighed": "Weighed at Dockside",
@@ -56,5 +64,29 @@
     "settlementSlip": "FISHERMAN NET SETTLEMENT VOUCHER",
     "reprintWatermark": "REPRINT — AUDITED COPY",
     "statutoryNotice": "Statutory double-entry record under Kerala Fish Auctioning Act 16 of 2021"
+  },
+  "workspaces": {
+    "weighingTitle": "Weighing & Lots",
+    "weighingCard": "Weighing & Lot Tagging",
+    "weighingSubmit": "Lock Weight & Generate Signed QR Sticker",
+    "weighingOfflineSubmit": "Queue Lot Tag Offline",
+    "weighingScaleBtn": "Read Digital Scale (25 kg × Boxes)",
+    "inspectorTitle": "Quality Inspection (s.21)",
+    "inspectorSubtitle": "Cold-Chain & Organoleptic Certification",
+    "inspectorCard": "Inspect & Certify Lot",
+    "pitTitle": "Auction Pit Pad",
+    "pitConfirmBtn": "Confirm Hammer Drop & Post Ledger Journal",
+    "pitAllocationsTitle": "Confirmed Pit Sale Allocations (Immutable)",
+    "fisherTitle": "Fisher Passbook",
+    "fisherBreakdownTitle": "Statutory 95/5 Split Breakdown",
+    "fisherSalesTitle": "Itemized Catch Sales & Escrow Accruals",
+    "buyerTitle": "Buyer Clearing Desk",
+    "buyerWatchlistTitle": "Live Lot Watchlist & 1-Click Remote Bidding",
+    "buyerPurchasesTitle": "Confirmed Purchases & Export Dossiers",
+    "harbourTabOverview": "Overview",
+    "harbourTabMasterdata": "Masterdata",
+    "harbourTabAccounting": "Accounting",
+    "harbourTabReports": "Reports",
+    "harbourTabAudit": "Audit"
   }
 }

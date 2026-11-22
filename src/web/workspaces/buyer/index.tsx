@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Gavel, FileDown, ShieldCheck } from 'lucide-react';
+import { Gavel, FileDown, Printer } from 'lucide-react';
 import {
   Button,
   Card,
@@ -7,8 +7,8 @@ import {
   Metric,
   DataTable,
   Input,
+  Modal,
   Toast,
-  BuyerCrateEscrowIcon,
   StatutoryLedgerWaterfallSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
@@ -22,16 +22,21 @@ import {
   type AllocationRow,
 } from '@web/lib/api.ts';
 import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
+import { useI18n } from '@web/i18n/index.tsx';
+import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 
 export const BuyerWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
   onRefresh: () => Promise<void>;
 }> = ({ data, token, onRefresh }) => {
+  const { t } = useI18n();
   const buyer = data.buyers[0];
   const [bidPriceRupees, setBidPriceRupees] = useState('760');
   const [bidBoxes, setBidBoxes] = useState('2');
   const [submittingLotId, setSubmittingLotId] = useState<string | null>(null);
+  const [slipAlloc, setSlipAlloc] = useState<AllocationRow | null>(null);
+  const [slipFormat, setSlipFormat] = useState<'80mm' | 'A4'>('80mm');
   const [feedback, setFeedback] = useState<{
     tone: 'ok' | 'warn' | 'danger' | 'info';
     title: string;
@@ -219,17 +224,27 @@ export const BuyerWorkspace: React.FC<{
     },
     {
       key: 'dossier',
-      header: 'Export Traceability Dossier',
+      header: 'Sale Slip & Export Dossier',
       align: 'right',
       render: (r) => (
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<FileDown className="w-3.5 h-3.5" />}
-          onClick={() => handleDownloadDossier(r)}
-        >
-          Export Dossier (JSON)
-        </Button>
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Printer className="w-3.5 h-3.5" />}
+            onClick={() => setSlipAlloc(r)}
+          >
+            {t('actions.printSaleSlip')}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<FileDown className="w-3.5 h-3.5" />}
+            onClick={() => handleDownloadDossier(r)}
+          >
+            JSON
+          </Button>
+        </div>
       ),
     },
   ];
@@ -241,7 +256,7 @@ export const BuyerWorkspace: React.FC<{
           <StatutoryLedgerWaterfallSvgDecor size={40} />
           <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              Buyer Clearing Desk
+              {t('workspaces.buyerTitle')}
             </h1>
             <p className="text-xs text-[var(--text-secondary)] truncate">
               {buyer?.buyer_name} · Paddle #{buyer?.paddle_no} · GSTIN: {buyer?.gstin}
@@ -285,7 +300,7 @@ export const BuyerWorkspace: React.FC<{
 
       {/* Live Watchlist & Remote Bidding */}
       <Card
-        title="Live Lot Watchlist & 1-Click Remote Bidding"
+        title={t('workspaces.buyerWatchlistTitle')}
         actions={
           <div className="flex items-center gap-3">
             <Input
@@ -314,7 +329,7 @@ export const BuyerWorkspace: React.FC<{
       </Card>
 
       {/* Purchases & Export Dossiers */}
-      <Card title="Confirmed Purchases & Export Dossiers">
+      <Card title={t('workspaces.buyerPurchasesTitle')}>
         <DataTable
           caption="Buyer Purchases and Export Dossiers"
           columns={purchaseColumns}
@@ -322,6 +337,71 @@ export const BuyerWorkspace: React.FC<{
           getRowKey={(r) => r.allocation_id}
         />
       </Card>
+
+      <Modal
+        open={Boolean(slipAlloc)}
+        onClose={() => setSlipAlloc(null)}
+        title={t('slips.saleSlip')}
+        description="Commercial sale memorandum with QR verification hash"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setSlipAlloc(null)}>
+              Close
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Printer className="w-4 h-4" />}
+              onClick={() => window.print()}
+            >
+              {t('actions.printSlip')} ({slipFormat})
+            </Button>
+          </>
+        }
+      >
+        {slipAlloc && (() => {
+          const lot = data.lots.find((l) => l.lot_id === slipAlloc.lot_id);
+          const sp = data.species.find((s) => s.species_id === lot?.species_id);
+          return (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-1.5 print:hidden">
+                <Button
+                  size="sm"
+                  variant={slipFormat === '80mm' ? 'primary' : 'outline'}
+                  onClick={() => setSlipFormat('80mm')}
+                >
+                  80mm
+                </Button>
+                <Button
+                  size="sm"
+                  variant={slipFormat === 'A4' ? 'primary' : 'outline'}
+                  onClick={() => setSlipFormat('A4')}
+                >
+                  A4
+                </Button>
+              </div>
+              <DocksidePrintSlip
+                slipType="BUYER_SALE_SLIP"
+                printFormat={slipFormat}
+                harbourName={data.tenant?.name_en ?? 'Munambam Harbour (HMS)'}
+                referenceNo={slipAlloc.allocation_id}
+                timestampIso={slipAlloc.created_at}
+                items={[
+                  { label: t('dockside.lotCode'), value: lot?.lot_code ?? slipAlloc.lot_id, highlight: true },
+                  { label: t('dockside.species'), value: sp ? `${sp.name_en} / ${sp.name_ml}` : 'Catch' },
+                  { label: t('dockside.buyerPaddle'), value: `#${buyer?.paddle_no ?? '—'} ${buyer?.buyer_name ?? ''}` },
+                  { label: 'GSTIN', value: buyer?.gstin ?? '—' },
+                  { label: t('dockside.boxes'), value: `${slipAlloc.boxes_allocated} boxes (${formatKgFromGrams(slipAlloc.grams_allocated)})` },
+                ]}
+                summaryRows={[
+                  { label: t('dockside.hammerAmount'), value: formatInrFromPaise(slipAlloc.hammer_paise) },
+                  { label: 'Total Payable', value: formatInrFromPaise(slipAlloc.buyer_payable_paise), bold: true },
+                ]}
+                qrPayload={`HARBOUROS|BUYER|${slipAlloc.allocation_id}|${slipAlloc.journal_id}`}
+              />
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 };

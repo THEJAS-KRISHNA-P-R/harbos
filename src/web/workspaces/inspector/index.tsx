@@ -21,12 +21,14 @@ import {
 } from '@web/lib/api.ts';
 import type { InspectionGrade } from '@shared/ids.ts';
 import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
+import { useI18n } from '@web/i18n/index.tsx';
 
 export const InspectorWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
   onRefresh: () => Promise<void>;
 }> = ({ data, token, onRefresh }) => {
+  const { t } = useI18n();
   const [selectedLotId, setSelectedLotId] = useState(
     data.lots[0]?.lot_id ?? 'LOT-2026-001'
   );
@@ -177,10 +179,10 @@ export const InspectorWorkspace: React.FC<{
           <ColdChainInspectorSvgDecor size={40} />
           <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              Quality Inspection (s.21)
+              {t('workspaces.inspectorTitle')}
             </h1>
             <p className="text-xs text-[var(--text-secondary)] truncate">
-              Cold-Chain &amp; Organoleptic Certification
+              {t('workspaces.inspectorSubtitle')}
             </p>
           </div>
         </div>
@@ -231,7 +233,7 @@ export const InspectorWorkspace: React.FC<{
       </div>
 
       <Card
-        title="Inspect & Certify Lot"
+        title={t('workspaces.inspectorCard')}
         actions={
           <Button
             variant="secondary"

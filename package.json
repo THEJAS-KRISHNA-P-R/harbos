@@ -23,6 +23,7 @@
     "check:openapi": "tsx scripts/gen-openapi.ts --check",
     "anchor:ledger": "tsx scripts/anchor-ledger.ts",
     "verify:ledger": "tsx scripts/verify-ledger.ts",
+    "rehearse": "tsx scripts/rehearsal.ts",
     "check:actions": "tsx scripts/check-actions.ts",
     "check:lockfile": "tsx scripts/check-lockfile.ts",
     "check:boundaries": "tsx scripts/check-boundaries.ts",

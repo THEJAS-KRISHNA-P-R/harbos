@@ -670,7 +670,8 @@ describe('C1 Backend Compliance: MSG91/Outbox, Atomic CSV Import, Reports Parity
 
       // 4. Tamper detection B: mutated ledger entry digest in stream must fail at exact seq
       const tamperingProxyDb: DbPort = {
-        dialect: platformDb.dialect,
+        isPglite: platformDb.isPglite,
+        exec: (sql: string) => platformDb.exec(sql),
         query: async <T = Record<string, unknown>>(sql: string, params?: ReadonlyArray<unknown>) => {
           const r = await platformDb.query<T>(sql, params);
           if (sql.includes('FROM ledger.entries') && sql.includes('ORDER BY entry_seq ASC')) {
@@ -687,7 +688,7 @@ describe('C1 Backend Compliance: MSG91/Outbox, Atomic CSV Import, Reports Parity
           }
           return r;
         },
-        transaction: (fn) => platformDb.transaction(fn),
+        transaction: (fn, options) => platformDb.transaction(fn, options),
       };
 
       const digestTamper = await verifyTenantLedgerChain(tamperingProxyDb, iso.tenantId, {

@@ -25,7 +25,15 @@
     "reprint": "വീണ്ടും പ്രിന്റ് ചെയ്യുക",
     "importMasterdata": "CSV വഴി കൂടുതൽ വിവരങ്ങൾ ചേർക്കുക",
     "exportPrivacy": "വ്യക്തിവിവരങ്ങൾ ഡൗൺലോഡ് ചെയ്യുക",
-    "requestErasure": "വ്യക്തിവിവരങ്ങൾ നീക്കംചെയ്യാൻ അപേക്ഷിക്കുക"
+    "requestErasure": "വ്യക്തിവിവരങ്ങൾ നീക്കംചെയ്യാൻ അപേക്ഷിക്കുക",
+    "scanVesselQr": "ബോട്ട് QR സ്കാൻ ചെയ്യുക",
+    "scanLotQr": "ലോട്ട് QR സ്കാൻ ചെയ്യുക",
+    "printSaleSlip": "വിൽപ്പന സ്ലിപ്പ് പ്രിന്റ് ചെയ്യുക",
+    "printSettlement": "വിഹിത വൗച്ചർ പ്രിന്റ് ചെയ്യുക",
+    "dryRunValidate": "സാധുത പരിശോധിക്കുക (Dry-Run)",
+    "atomicCommit": "ഡാറ്റാബേസിൽ ചേർക്കുക",
+    "downloadCsv": "CSV ഡൗൺലോഡ്",
+    "runShadowDiff": "ഷാഡോ-പൈലറ്റ് വ്യത്യാസം പരിശോധിക്കുക"
   },
   "status": {
     "weighed": "തൂക്കം രേഖപ്പെടുത്തി",
@@ -57,5 +65,29 @@
     "settlementSlip": "മത്സ്യത്തൊഴിലാളി വിഹിത വൗച്ചർ",
     "reprintWatermark": "വീണ്ടും പ്രിന്റ് ചെയ്തത് — ഓഡിറ്റ് പകർപ്പ്",
     "statutoryNotice": "2021-ലെ കേരള മത്സ്യ ലേല നിയമപ്രകാരമുള്ള ഇരട്ടത്താൾ കണക്ക്"
+  },
+  "workspaces": {
+    "weighingTitle": "തൂക്കവും ലോട്ടുകളും",
+    "weighingCard": "തൂക്കവും ലോട്ട് ടാഗിംഗും",
+    "weighingSubmit": "തൂക്കം ഉറപ്പാക്കി QR സ്റ്റിക്കർ തയാറാക്കുക",
+    "weighingOfflineSubmit": "ഓഫ്‌ലൈൻ ക്യൂവിൽ ചേർക്കുക",
+    "weighingScaleBtn": "ഡിജിറ്റൽ സ്കെയിൽ വായിക്കുക (25 കിലോ × പെട്ടികൾ)",
+    "inspectorTitle": "ഗുണനിലവാര പരിശോധന (വകുപ്പ് 21)",
+    "inspectorSubtitle": "തണുപ്പ്-ശൃംഖല & ഗുണനിലവാര സാക്ഷ്യപത്രം",
+    "inspectorCard": "ലോട്ട് പരിശോധനയും സാക്ഷ്യപ്പെടുത്തലും",
+    "pitTitle": "ലേല പിറ്റ് പാഡ്",
+    "pitConfirmBtn": "ലേലം ഉറപ്പിച്ച് ലെഡ്ജർ ജേണൽ രേഖപ്പെടുത്തുക",
+    "pitAllocationsTitle": "ഉറപ്പാക്കിയ ലേല വിൽപ്പന വിഹിതങ്ങൾ",
+    "fisherTitle": "മത്സ്യത്തൊഴിലാളി പാസ്‌ബുക്ക്",
+    "fisherBreakdownTitle": "നിയമപരമായ 95/5 വിഹിത വിവരണം",
+    "fisherSalesTitle": "വിൽപ്പന വിവരങ്ങളും ബോണസ് എസ്ക്രോയും",
+    "buyerTitle": "വാങ്ങലുകാരന്റെ ക്ലിയറിംഗ് ഡെസ്ക്",
+    "buyerWatchlistTitle": "ലൈവ് ലോട്ട് പട്ടികയും റിമോട്ട് ലേലവും",
+    "buyerPurchasesTitle": "ഉറപ്പാക്കിയ വാങ്ങലുകളും എക്സ്പോർട്ട് ഡോസിയറും",
+    "harbourTabOverview": "അവലോകനം",
+    "harbourTabMasterdata": "മാസ്റ്റർഡാറ്റ",
+    "harbourTabAccounting": "അക്കൗണ്ടിംഗ്",
+    "harbourTabReports": "റിപ്പോർട്ടുകൾ",
+    "harbourTabAudit": "ഓഡിറ്റ്"
   }
 }

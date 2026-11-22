@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { QrCode, Scale, Printer, RefreshCw, ShieldAlert } from 'lucide-react';
+import { QrCode, Scale, Printer, RefreshCw, ShieldAlert, ScanLine } from 'lucide-react';
 import {
   Button,
   Card,
@@ -12,9 +12,6 @@ import {
   DataTable,
   Modal,
   Toast,
-  WorkflowStepStrip,
-  DockScaleIcon,
-  TrawlerVesselIcon,
   DocksideWeighingScaleSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
@@ -25,6 +22,9 @@ import {
   type BootstrapData,
   type LotRow,
 } from '@web/lib/api.ts';
+import { useI18n } from '@web/i18n/index.tsx';
+import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
+import { BarcodeScannerModal } from '@web/shared/BarcodeScannerModal.tsx';
 
 interface QueuedLotCommand {
   commandId: string;
@@ -40,6 +40,7 @@ export const WeighingWorkspace: React.FC<{
   token: string;
   onRefresh: () => Promise<void>;
 }> = ({ data, token, onRefresh }) => {
+  const { t } = useI18n();
   const [selectedVesselId, setSelectedVesselId] = useState(data.vessels[0]?.vessel_id ?? 'VSL-01');
   const [selectedSpeciesId, setSelectedSpeciesId] = useState(data.species[0]?.species_id ?? 'SPC-01');
   const [weightSource, setWeightSource] = useState<'BLE_SCALE' | 'MANUAL'>('BLE_SCALE');
@@ -50,6 +51,9 @@ export const WeighingWorkspace: React.FC<{
   const [simulateOffline, setSimulateOffline] = useState(false);
   const [offlineQueue, setOfflineQueue] = useState<QueuedLotCommand[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [printFormat, setPrintFormat] = useState<'58mm' | '80mm'>('80mm');
+  const [isReprint, setIsReprint] = useState(false);
   const [feedback, setFeedback] = useState<{ tone: 'ok' | 'warn' | 'danger' | 'info'; title: string; msg: string } | null>(null);
   const [stickerModalLot, setStickerModalLot] = useState<{
     lotCode: string;
@@ -58,7 +62,33 @@ export const WeighingWorkspace: React.FC<{
     boxes: number;
     netGrams: string;
     qrSignature: string;
+    createdAt: string;
   } | null>(null);
+
+  const handleVesselQrScan = (rawCode: string): void => {
+    const q = rawCode.trim().toUpperCase();
+    const matched = data.vessels.find(
+      (v) =>
+        v.qr_token.toUpperCase() === q ||
+        v.registration_no.toUpperCase() === q ||
+        v.vessel_id.toUpperCase() === q ||
+        v.registration_no.toUpperCase().includes(q)
+    );
+    if (matched) {
+      setSelectedVesselId(matched.vessel_id);
+      setFeedback({
+        tone: 'ok',
+        title: `Vessel Scanned: ${matched.vessel_name_en}`,
+        msg: `Matched registration ${matched.registration_no} (${matched.qr_token}).`,
+      });
+    } else {
+      setFeedback({
+        tone: 'warn',
+        title: 'Vessel QR Not Found',
+        msg: `No registered vessel matched "${rawCode}". Select manually from the vessel list.`,
+      });
+    }
+  };
 
   const handleSimulateScaleRead = (): void => {
     const boxes = Math.max(1, Number(totalBoxes) || 6);
@@ -118,6 +148,7 @@ export const WeighingWorkspace: React.FC<{
       const v = data.vessels.find((x) => x.vessel_id === selectedVesselId);
       const s = data.species.find((x) => x.species_id === selectedSpeciesId);
 
+      setIsReprint(false);
       setStickerModalLot({
         lotCode: res.lotCode,
         vesselName: v ? `${v.vessel_name_en} (${v.registration_no})` : selectedVesselId,
@@ -125,6 +156,7 @@ export const WeighingWorkspace: React.FC<{
         boxes: res.totalBoxes,
         netGrams: res.netGrams,
         qrSignature: res.qrSignature,
+        createdAt: new Date().toISOString(),
       });
 
       setFeedback({
@@ -257,14 +289,22 @@ export const WeighingWorkspace: React.FC<{
           <DocksideWeighingScaleSvgDecor size={40} />
           <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              Weighing &amp; Lots
+              {t('workspaces.weighingTitle')}
             </h1>
             <p className="text-xs text-[var(--text-secondary)] truncate">
-              {data.vessels.length} Vessels · HMAC-SHA256 Signed QR
+              {data.vessels.length} {t('dockside.vessel')} · HMAC-SHA256 Signed QR
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<ScanLine className="w-4 h-4" />}
+            onClick={() => setScannerOpen(true)}
+          >
+            {t('actions.scanVesselQr')}
+          </Button>
           <ConnectivityBadge
             online={!simulateOffline}
             queuedCount={offlineQueue.length}
@@ -321,7 +361,7 @@ export const WeighingWorkspace: React.FC<{
       </div>
 
       {/* Main Weighing Terminal Card */}
-      <Card title="Weighing & Lot Tagging">
+      <Card title={t('workspaces.weighingCard')}>
         <form onSubmit={handleTagLot} className="flex flex-col gap-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select
@@ -425,7 +465,7 @@ export const WeighingWorkspace: React.FC<{
               icon={<Scale className="w-5 h-5" />}
               onClick={handleSimulateScaleRead}
             >
-              Read Digital Scale (25 kg × Boxes)
+              {t('workspaces.weighingScaleBtn')}
             </Button>
             <Button
               type="submit"
@@ -435,8 +475,8 @@ export const WeighingWorkspace: React.FC<{
               icon={<QrCode className="w-5 h-5" />}
             >
               {simulateOffline
-                ? 'Queue Lot Tag Offline'
-                : 'Lock Weight & Generate Signed QR Sticker'}
+                ? t('workspaces.weighingOfflineSubmit')
+                : t('workspaces.weighingSubmit')}
             </Button>
           </div>
         </form>
@@ -455,6 +495,7 @@ export const WeighingWorkspace: React.FC<{
           onRowClick={(r) => {
             const v = data.vessels.find((x) => x.vessel_id === r.vessel_id);
             const s = data.species.find((x) => x.species_id === r.species_id);
+            setIsReprint(true);
             setStickerModalLot({
               lotCode: r.lot_code,
               vesselName: v ? `${v.vessel_name_en} (${v.registration_no})` : r.vessel_id,
@@ -462,16 +503,17 @@ export const WeighingWorkspace: React.FC<{
               boxes: r.total_boxes,
               netGrams: r.net_grams,
               qrSignature: r.qr_signature,
+              createdAt: r.created_at,
             });
           }}
         />
       </Card>
 
-      {/* Printable QR Sticker Modal */}
+      {/* Printable QR Sticker Modal using DocksidePrintSlip */}
       <Modal
         open={Boolean(stickerModalLot)}
         onClose={() => setStickerModalLot(null)}
-        title="Signed Dockside Lot QR Sticker"
+        title={t('slips.lotLabel')}
         description="HMAC-SHA256 authenticated lot tag for Auction Pit verification"
         footer={
           <>
@@ -483,50 +525,70 @@ export const WeighingWorkspace: React.FC<{
               icon={<Printer className="w-4 h-4" />}
               onClick={() => window.print()}
             >
-              Print Thermal Sticker
+              {t('actions.printSlip')} ({printFormat})
             </Button>
           </>
         }
       >
         {stickerModalLot && (
-          <div className="p-5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] flex flex-col gap-3">
-            <div className="flex items-center justify-between border-b border-[var(--border-hair)] pb-3">
-              <div>
-                <div className="text-xs font-bold uppercase text-[var(--text-muted)]">
-                  Munambam Harbour (HMS)
-                </div>
-                <div className="text-xl font-bold font-mono-code text-[var(--text-primary)]">
-                  {stickerModalLot.lotCode}
-                </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant={printFormat === '58mm' ? 'primary' : 'outline'}
+                  onClick={() => setPrintFormat('58mm')}
+                >
+                  58mm
+                </Button>
+                <Button
+                  size="sm"
+                  variant={printFormat === '80mm' ? 'primary' : 'outline'}
+                  onClick={() => setPrintFormat('80mm')}
+                >
+                  80mm
+                </Button>
               </div>
-              <Badge tone="ok" label="HMAC VERIFIED" />
+              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isReprint}
+                  onChange={(e) => setIsReprint(e.target.checked)}
+                />
+                <span>{t('actions.reprint')}</span>
+              </label>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>
-                <span className="text-xs text-[var(--text-muted)] block">Vessel</span>
-                <span className="font-semibold">{stickerModalLot.vesselName}</span>
-              </div>
-              <div>
-                <span className="text-xs text-[var(--text-muted)] block">Species</span>
-                <span className="font-semibold">{stickerModalLot.speciesName}</span>
-              </div>
-              <div>
-                <span className="text-xs text-[var(--text-muted)] block">Boxes</span>
-                <span className="font-mono-code font-bold">{stickerModalLot.boxes} BOXES</span>
-              </div>
-              <div>
-                <span className="text-xs text-[var(--text-muted)] block">Net Weight</span>
-                <span className="font-mono-code font-bold">
-                  {formatKgFromGrams(stickerModalLot.netGrams)}
-                </span>
-              </div>
-            </div>
-            <div className="pt-2 border-t border-[var(--border-hair)] text-xs font-mono-code text-[var(--text-secondary)]">
-              QR_SIG: {stickerModalLot.qrSignature}
-            </div>
+            <DocksidePrintSlip
+              slipType="LOT_TAG"
+              printFormat={printFormat}
+              isReprint={isReprint}
+              harbourName={data.tenant?.name_en ?? 'Munambam Harbour (HMS)'}
+              referenceNo={stickerModalLot.lotCode}
+              timestampIso={stickerModalLot.createdAt}
+              items={[
+                { label: t('dockside.lotCode'), value: stickerModalLot.lotCode, highlight: true },
+                { label: t('dockside.vessel'), value: stickerModalLot.vesselName },
+                { label: t('dockside.species'), value: stickerModalLot.speciesName },
+                { label: t('dockside.boxes'), value: `${stickerModalLot.boxes} BOXES` },
+                {
+                  label: t('dockside.netWeightKg'),
+                  value: formatKgFromGrams(stickerModalLot.netGrams),
+                  highlight: true,
+                },
+              ]}
+              qrPayload={`HARBOUROS|LOT|${stickerModalLot.lotCode}|${stickerModalLot.qrSignature}`}
+            />
           </div>
         )}
       </Modal>
+
+      <BarcodeScannerModal
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScanSuccess={handleVesselQrScan}
+        title={t('actions.scanVesselQr')}
+        placeholder="e.g. IND-KL-01 or QR-VSL-..."
+      />
     </div>
   );
 };

@@ -41,13 +41,17 @@ import {
   type AuditLogRow,
 } from '@web/lib/api.ts';
 import type { FloorEnforcement } from '@shared/ids.ts';
+import { useI18n } from '@web/i18n/index.tsx';
+import { MasterdataCsvPanel } from './MasterdataCsvPanel.tsx';
+import { ReportsShadowPanel } from './ReportsShadowPanel.tsx';
 
 export const HarbourWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
   onRefresh: () => Promise<void>;
 }> = ({ data, token, onRefresh }) => {
-  const [activeTab, setActiveTab] = useState<'today' | 'accounting' | 'reports' | 'audit'>('today');
+  const { t } = useI18n();
+  const [activeTab, setActiveTab] = useState<'today' | 'masterdata' | 'accounting' | 'reports' | 'audit'>('today');
   const [utrInput, setUtrInput] = useState('UTR-FEDB-20261106-994182');
   const [floorEditSpeciesId, setFloorEditSpeciesId] = useState(
     data.species[0]?.species_id ?? 'SPC-01'
@@ -532,13 +536,16 @@ export const HarbourWorkspace: React.FC<{
           </Button>
           <Tabs
             items={[
-              { id: 'today', label: 'Overview', badge: data.lots.length },
-              { id: 'accounting', label: 'Accounting', badge: data.reversals.length },
-              { id: 'reports', label: 'Reports' },
-              { id: 'audit', label: 'Audit', badge: allAuditLogs.length },
+              { id: 'today', label: t('workspaces.harbourTabOverview'), badge: data.lots.length },
+              { id: 'masterdata', label: t('workspaces.harbourTabMasterdata'), badge: data.vessels.length },
+              { id: 'accounting', label: t('workspaces.harbourTabAccounting'), badge: data.reversals.length },
+              { id: 'reports', label: t('workspaces.harbourTabReports') },
+              { id: 'audit', label: t('workspaces.harbourTabAudit'), badge: allAuditLogs.length },
             ]}
             activeId={activeTab}
-            onChange={(id) => setActiveTab(id as 'today' | 'accounting' | 'reports' | 'audit')}
+            onChange={(id) =>
+              setActiveTab(id as 'today' | 'masterdata' | 'accounting' | 'reports' | 'audit')
+            }
           />
         </div>
       </div>
@@ -669,6 +676,10 @@ export const HarbourWorkspace: React.FC<{
         </div>
       )}
 
+      {activeTab === 'masterdata' && (
+        <MasterdataCsvPanel data={data} token={token} onRefresh={onRefresh} />
+      )}
+
       {activeTab === 'accounting' && (
         <div className="flex flex-col gap-6">
           <Card
@@ -728,6 +739,7 @@ export const HarbourWorkspace: React.FC<{
 
       {activeTab === 'reports' && (
         <div className="flex flex-col gap-6">
+          <ReportsShadowPanel data={data} token={token} />
           <Card
             title="Statutory Compliance Exports & Section 22 Auctioneer Return (§12 M9)"
             subtitle="Download CSV ledgers or print-ready statutory audit statements (no external PDF lock-in)"
