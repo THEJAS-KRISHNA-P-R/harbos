@@ -185,6 +185,46 @@ async function main(): Promise<void> {
       console.log(
         `[verify-rls] PASS: connected as ${role.current_user} (rolsuper=${role.rolsuper}, rolbypassrls=${role.rolbypassrls})`
       );
+
+      // Verify harbour_platform role attributes match configured RLS_PLATFORM_MODE (bypassrls vs owner)
+      if (platformDb !== db) {
+        const platRoleRes = await platformDb.query<{
+          current_user: string;
+          rolsuper: boolean;
+          rolbypassrls: boolean;
+        }>(
+          `SELECT current_user, r.rolsuper, r.rolbypassrls
+           FROM pg_roles r
+           WHERE r.rolname = current_user`
+        );
+        const platRole = platRoleRes.rows[0];
+        assert.ok(platRole, 'Must resolve harbour_platform role from pg_roles');
+        assert.equal(platRole.rolsuper, false, 'harbour_platform must NOT be a superuser');
+        if (config.RLS_PLATFORM_MODE === 'owner') {
+          assert.equal(
+            platRole.rolbypassrls,
+            false,
+            'In RLS_PLATFORM_MODE=owner, harbour_platform must NOT require BYPASSRLS'
+          );
+          const ownerCheck = await platformDb.query<{ tableowner: string }>(
+            `SELECT tableowner FROM pg_tables WHERE schemaname = 'core' AND tablename = 'tenants'`
+          );
+          assert.equal(
+            ownerCheck.rows[0]?.tableowner,
+            'harbour_platform',
+            'In RLS_PLATFORM_MODE=owner, core.tenants must be owned by harbour_platform'
+          );
+        } else {
+          assert.equal(
+            platRole.rolbypassrls,
+            true,
+            'In RLS_PLATFORM_MODE=bypassrls, harbour_platform must have BYPASSRLS'
+          );
+        }
+        console.log(
+          `[verify-rls] PASS: platform role ${platRole.current_user} verified for RLS_PLATFORM_MODE=${config.RLS_PLATFORM_MODE} (rolsuper=${platRole.rolsuper}, rolbypassrls=${platRole.rolbypassrls})`
+        );
+      }
     }
 
     // Ensure at least one tenant + user row exists (demo tenant if seeded, else self-contained throwaway tenant via platformDb)

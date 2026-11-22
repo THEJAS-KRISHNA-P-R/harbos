@@ -15,7 +15,7 @@ import {
 
 export async function runDailyLedgerAnchorJob(
   platformDb: DbPort,
-  options?: { anchorDate?: string; sinkDir?: string }
+  options?: { anchorDate?: string; sinkDir?: string; tenantId?: string }
 ): Promise<
   ReadonlyArray<{
     tenantId: string;
@@ -36,7 +36,9 @@ export async function runDailyLedgerAnchorJob(
   const sinkFile = path.join(sinkDir, `ledger-anchors-${anchorDate}.jsonl`);
 
   return withPlatform(platformDb, async (tx) => {
-    const tenants = await fetchAllTenantIdsInTx(tx);
+    const tenants = options?.tenantId
+      ? [{ tenant_id: options.tenantId }]
+      : await fetchAllTenantIdsInTx(tx);
     const anchors: Array<{
       tenantId: string;
       anchorDate: string;

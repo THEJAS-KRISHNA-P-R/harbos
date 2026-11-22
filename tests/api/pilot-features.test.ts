@@ -51,14 +51,15 @@ describe('Phase 3 Pilot Features & DPDP Privacy Compliance', () => {
       },
     };
 
-    // Queue test notification in sync.outbox_events
+    // Queue test notification in sync.outbox_events with unique ID for repeatable PG runs
+    const testEventId = `EVT-TEST-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     await platformDb.query(
       `INSERT INTO sync.outbox_events (
         event_id, tenant_id, channel, recipient, template_code, payload_json, status, created_at, attempts, next_attempt_at
       ) VALUES (
-        'EVT-TEST-001', $1, 'SMS', $2, 'OTP_LOGIN', '{"otpCode":"882199"}', 'PENDING', (NOW() - INTERVAL '10 minutes')::text, 0, NOW() - INTERVAL '1 minute'
+        $1, $2, 'SMS', $3, 'OTP_LOGIN', '{"otpCode":"882199"}', 'PENDING', (NOW() - INTERVAL '10 minutes')::text, 0, NOW() - INTERVAL '1 minute'
       )`,
-      [iso.tenantId, iso.users[0]!.userId]
+      [testEventId, iso.tenantId, iso.users[0]!.userId]
     );
 
     const stats = await processOutboxBatchOnce(platformDb, mockSmsPort, { batchLimit: 10 });

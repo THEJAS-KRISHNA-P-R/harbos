@@ -52,12 +52,6 @@ export function validateIndianGstin(gstin: string): { valid: boolean; reason?: s
   return { valid: true };
 }
 
-export function hasCsvFormulaInjection(cell: string, fieldName = ''): boolean {
-  if (!cell) return false;
-  if (fieldName === 'phoneE164' && /^\+[1-9]\d{9,14}$/.test(cell.trim())) return false;
-  const firstChar = cell[0];
-  return firstChar === '=' || firstChar === '+' || firstChar === '-' || firstChar === '@' || firstChar === '\t' || firstChar === '\r';
-}
 
 export async function createOrUpdateCoopSociety(
   db: DbPort,
@@ -488,75 +482,5 @@ export async function updateSection19FloorSchedule(
   return { updated: true };
 }
 
-export async function importMasterdataCsv(
-  db: DbPort,
-  claims: AuthSessionClaims,
-  entityType: 'coop-societies' | 'fishermen' | 'vessels' | 'buyers' | 'species' | 'licences',
-  csvText: string,
-  dryRun: boolean
-) {
-  const lines = csvText.replace(/\r\n/g, '\n').split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
-  if (lines.length < 2) {
-    throw new AppError('VALIDATION_ERROR', 'CSV must include a header row and at least one data row', 400);
-  }
-
-  const headers = lines[0]!.split(',').map((h) => h.trim());
-  const errors: Array<{ row: number; field: string; message: string }> = [];
-  const validRowsData: Array<Record<string, string>> = [];
-
-  for (let i = 1; i < lines.length; i += 1) {
-    const rowNum = i + 1;
-    const cols = lines[i]!.split(',').map((c) => c.trim());
-    const record: Record<string, string> = {};
-    let rowHasError = false;
-
-    for (let c = 0; c < headers.length; c += 1) {
-      const field = headers[c]!;
-      const val = cols[c] ?? '';
-      if (hasCsvFormulaInjection(val, field)) {
-        errors.push({ row: rowNum, field, message: `Blocked CSV formula injection prefix in field '${field}'` });
-        rowHasError = true;
-      }
-      record[field] = val;
-    }
-
-    if (entityType === 'buyers' && record.gstin) {
-      const gstCheck = validateIndianGstin(record.gstin);
-      if (!gstCheck.valid) {
-        errors.push({ row: rowNum, field: 'gstin', message: gstCheck.reason! });
-        rowHasError = true;
-      }
-    }
-
-    if (entityType === 'fishermen' && (!record.phoneE164 || !/^\+[1-9]\d{9,14}$/.test(record.phoneE164))) {
-      errors.push({ row: rowNum, field: 'phoneE164', message: 'Invalid E.164 phone number' });
-      rowHasError = true;
-    }
-
-    if (!rowHasError) validRowsData.push(record);
-  }
-
-  const totalRows = lines.length - 1;
-
-  if (!dryRun && errors.length === 0) {
-    for (const r of validRowsData) {
-      if (entityType === 'coop-societies') {
-        await createOrUpdateCoopSociety(db, claims, { societyId: r.societyId || undefined, regNo: r.regNo || 'KL-COOP', nameEn: r.nameEn || 'Society', nameMl: r.nameMl || r.nameEn });
-      } else if (entityType === 'fishermen') {
-        await createOrUpdateFisherman(db, claims, { fishermanId: r.fishermanId || undefined, fullName: r.fullName || 'Fisherman', phoneE164: r.phoneE164!, welfareBoardNo: r.welfareBoardNo || 'KFWFB-001', coopSocietyId: r.coopSocietyId || null, nfdpId: r.nfdpId || null, bankAccountRef: r.bankAccountRef || null });
-      } else if (entityType === 'vessels') {
-        await createOrUpdateVessel(db, claims, { vesselId: r.vesselId || undefined, registrationNo: r.registrationNo || 'IND-KL-01', vesselNameEn: r.vesselNameEn || 'Vessel', vesselNameMl: r.vesselNameMl || r.vesselNameEn, ownerFishermanId: r.ownerFishermanId!, hasActiveSocietyLoan: r.hasActiveSocietyLoan === 'true', loanCoopSocietyId: r.loanCoopSocietyId || null });
-      } else if (entityType === 'buyers') {
-        await createOrUpdateBuyer(db, claims, { buyerId: r.buyerId || undefined, buyerName: r.buyerName || 'Buyer', paddleNo: Number(r.paddleNo || 101), gstin: r.gstin || null, exportRegNo: r.exportRegNo || null, escrowBalancePaise: r.escrowBalancePaise || '0', approvedCreditPaise: r.approvedCreditPaise || '0' });
-      } else if (entityType === 'species') {
-        await createOrUpdateSpecies(db, claims, { speciesId: r.speciesId || undefined, code: r.code || 'SPC', nameEn: r.nameEn || 'Species', nameMl: r.nameMl || r.nameEn, scientificName: r.scientificName || 'Marine Teleost', floorPricePaisePerKg: r.floorPricePaisePerKg || '50000', exportEligible: r.exportEligible !== 'false' });
-      } else if (entityType === 'licences') {
-        await createOrUpdateLicence(db, claims, { licenceId: r.licenceId || undefined, auctioneerUserId: r.auctioneerUserId!, auctioneerName: r.auctioneerName || 'Auctioneer', licenceNo: r.licenceNo || 'AUCT-01', validFrom: r.validFrom!, validUntil: r.validUntil!, deputedBySocietyId: r.deputedBySocietyId || null });
-      }
-    }
-  }
-
-  return { dryRun, entityType, totalRows, validRows: validRowsData.length, committed: !dryRun && errors.length === 0, errors };
-}
-
+export { hasCsvFormulaInjection, importMasterdataCsv } from './csv-import.ts';
 export { listMasterdataEntities };

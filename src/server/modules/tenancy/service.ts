@@ -303,11 +303,21 @@ export async function getWorkspaceBootstrap(
       role === 'HARBOUR_ADMIN' ||
       role === 'ACCOUNTANT';
 
-    const scopedFishermen = isFisherman
-      ? collections.fishermenRows.filter(
-          (f) => String(f.fisherman_id) === String(entityRefId)
-        )
-      : collections.fishermenRows;
+    const scopedFishermen = isAdminOrAccountant
+      ? collections.fishermenRows
+      : isFisherman
+        ? collections.fishermenRows.filter(
+            (f) => String(f.fisherman_id) === String(entityRefId)
+          )
+        : collections.fishermenRows.map((f) => {
+            const {
+              phone_e164: _phone,
+              bank_account_ref: _bank,
+              nfdp_id: _nfdp,
+              ...safeFisherman
+            } = f;
+            return safeFisherman;
+          });
 
     const scopedVessels = isFisherman
       ? collections.vesselsRows.filter(
@@ -326,6 +336,20 @@ export async function getWorkspaceBootstrap(
     const scopedUsers = isAdminOrAccountant
       ? collections.usersRows
       : collections.usersRows.filter((u) => String(u.user_id) === claims.sub);
+
+    const scopedOutboxEvents = isAdminOrAccountant
+      ? collections.outboxRows.map((ev) => ({
+          ...ev,
+          payload_json:
+            String(ev.template_code) === 'OTP_LOGIN'
+              ? '{"redacted":true}'
+              : ev.payload_json,
+        }))
+      : [];
+
+    const scopedAuditLogs = isAdminOrAccountant
+      ? cachedAuditAndBatches.auditLogs
+      : [];
 
     return {
       cacheStatus: cachedAuditAndBatches.cacheStatus,
@@ -348,8 +372,8 @@ export async function getWorkspaceBootstrap(
         entries: collections.entriesRows,
         reversals: collections.reversalsRows,
         payoutBatches: cachedAuditAndBatches.payoutBatches,
-        outboxEvents: collections.outboxRows,
-        auditLogs: cachedAuditAndBatches.auditLogs,
+        outboxEvents: scopedOutboxEvents,
+        auditLogs: scopedAuditLogs,
         ledgerVerification: chainVerification,
         auditSqlLruCache: {
           cacheStatus: cachedAuditAndBatches.cacheStatus,

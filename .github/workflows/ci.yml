@@ -95,6 +95,27 @@ jobs:
           sudo apt-get install -y -qq pgbouncer postgresql-client
           bash scripts/ci-pgbouncer.sh
 
+      - name: Verify Managed-Postgres RLS Gate (RLS_PLATFORM_MODE=owner, NOBYPASSRLS)
+        env:
+          PGPASSWORD: postgrespassword
+          HARBOUR_APP_PASSWORD: test_app_password_harbour_secret_2026
+          HARBOUR_PLATFORM_PASSWORD: test_platform_password_harbour_secret_2026
+        run: |
+          restore_bypassrls() {
+            psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER ROLE harbour_platform WITH BYPASSRLS;" || true
+            psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS harbouros_owner_test;" || true
+          }
+          trap restore_bypassrls EXIT
+          psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS harbouros_owner_test;"
+          psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE harbouros_owner_test;"
+          RLS_PLATFORM_MODE=owner \
+            DATABASE_PLATFORM_URL="postgresql://postgres:postgrespassword@127.0.0.1:5432/harbouros_owner_test" \
+            npm run migrate
+          RLS_PLATFORM_MODE=owner \
+            DATABASE_URL="postgresql://harbour_app:${HARBOUR_APP_PASSWORD}@127.0.0.1:5432/harbouros_owner_test" \
+            DATABASE_PLATFORM_URL="postgresql://harbour_platform:${HARBOUR_PLATFORM_PASSWORD}@127.0.0.1:5432/harbouros_owner_test" \
+            npx tsx scripts/verify-rls.ts
+
       - name: Run Production 5-Var Boot & Fail-Closed Smoke Check (as harbour_app)
         env:
           DATABASE_URL: postgresql://harbour_app:test_app_password_harbour_secret_2026@127.0.0.1:5432/harbouros_test

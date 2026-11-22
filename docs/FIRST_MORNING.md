@@ -17,7 +17,7 @@ This guide details the exact operational sequence for harbour administrators, we
 3. **Database Readiness**:
    - Verify ledger chain integrity for the tenant:
      ```bash
-     npm run job:ledger:verify -- MUN-TENANT-001
+     npm run verify:ledger -- MUN-TENANT-001
      ```
 
 ---

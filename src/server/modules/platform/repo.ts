@@ -194,12 +194,12 @@ export async function upsertDailyAnchorInTx(
   }
 ): Promise<void> {
   await tx.query(
-    `INSERT INTO ledger.daily_anchors (tenant_id, anchor_date, last_entry_seq, head_hash, created_at)
-     VALUES ($1, $2::date, $3, $4, now())
+    `INSERT INTO ledger.daily_anchors (tenant_id, anchor_date, last_entry_seq, head_hash, anchored_at)
+     VALUES ($1, $2, $3, $4, now())
      ON CONFLICT (tenant_id, anchor_date) DO UPDATE
        SET last_entry_seq = EXCLUDED.last_entry_seq,
            head_hash = EXCLUDED.head_hash,
-           created_at = now()`,
+           anchored_at = now()`,
     [
       params.tenantId,
       params.anchorDate,
