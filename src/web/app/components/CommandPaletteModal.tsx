@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search, ArrowRight, CornerDownLeft } from 'lucide-react';
 import { Badge, Button, Modal } from '@web/ui/index.tsx';
 import {
@@ -6,11 +6,14 @@ import {
   type BootstrapData,
   type CommandPaletteItem,
 } from '@web/lib/api.ts';
+import type { WorkspaceId } from '@shared/contracts/rbac.ts';
 
 export interface CommandPaletteModalProps {
   open: boolean;
   onClose: () => void;
   bootstrap: BootstrapData | null;
+  allowedWorkspaceIds: ReadonlySet<WorkspaceId>;
+  canAccessLedger: boolean;
   onExecuteItem: (item: CommandPaletteItem) => void;
 }
 
@@ -18,12 +21,32 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   open,
   onClose,
   bootstrap,
+  allowedWorkspaceIds,
+  canAccessLedger,
   onExecuteItem,
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const items = buildCommandPaletteItems(bootstrap, query);
+  const items = useMemo(
+    () =>
+      buildCommandPaletteItems(bootstrap, query).filter((item) => {
+        if (item.actionType === 'OPEN_WORKSPACE' && item.targetWorkspace) {
+          return allowedWorkspaceIds.has(item.targetWorkspace);
+        }
+        if (
+          item.actionType === 'OPEN_LEDGER_DRAWER' ||
+          item.actionType === 'OPEN_UTR_CSV_IMPORT'
+        ) {
+          return canAccessLedger;
+        }
+        if (item.actionType === 'OPEN_UI_KIT' && import.meta.env.PROD) {
+          return false;
+        }
+        return true;
+      }),
+    [bootstrap, query, allowedWorkspaceIds, canAccessLedger]
+  );
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -39,7 +62,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       footer={
         <div className="w-full flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-secondary)]">
           <span className="font-mono-code">
-            ↑↓ Navigate · ↵ Run · 1–7 Workspaces · L Ledger
+            ↑↓ Navigate · ↵ Run · 1–{Math.max(1, allowedWorkspaceIds.size)} Workspaces
+            {canAccessLedger ? ' · L Ledger' : ''}
           </span>
           <Button variant="secondary" size="sm" onClick={onClose}>
             Close (Esc)

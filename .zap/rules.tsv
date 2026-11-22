@@ -1,0 +1,9 @@
+# OWASP ZAP Baseline rules for HarbourOS loopback CI scan (http://127.0.0.1:8080)
+# All real security rules (CSP 10055, Spectre 90004, X-Frame-Options 10020,
+# X-Content-Type-Options 10021, Permissions-Policy 10063, Cookies 10010/10011/10054,
+# XSS, SQLi, Path Traversal) remain enforced at default WARN/FAIL.
+# Only plain-HTTP loopback & static Vite bundle informational noise is ignored:
+10035	IGNORE	(Strict-Transport-Security Header Not Set — loopback CI target uses plain HTTP behind TLS-terminating ingress in prod)
+10049	IGNORE	(Storable and Cacheable Content — intentional immutable hashed /assets/* caching and no-cache index.html)
+10027	IGNORE	(Information Disclosure - Suspicious Comments — false positives inside minified React/Vite vendor bundles)
+10096	IGNORE	(Timestamp Disclosure - Unix — false positives inside minified JS chunks and standard HTTP Date headers)

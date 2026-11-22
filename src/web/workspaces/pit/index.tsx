@@ -213,29 +213,31 @@ export const PitWorkspace: React.FC<{
   ];
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <AuctionPitAmphitheatreSvgDecor size={40} />
+    <div className="flex flex-col gap-3.5 sm:gap-5">
+      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="hidden sm:block shrink-0">
+            <AuctionPitAmphitheatreSvgDecor size={36} />
+          </div>
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
               {t('workspaces.pitTitle')}
             </h1>
-            <p className="text-xs text-[var(--text-secondary)] truncate">
+            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
               {openLots.length} Open Lots · Atomic Ledger Post
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
           <Button
             variant="secondary"
             size="sm"
-            icon={<ScanLine className="w-4 h-4" />}
+            icon={<ScanLine className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             onClick={() => setScannerOpen(true)}
           >
             {t('actions.scanLotQr')}
           </Button>
-          <Badge tone="ok" label="LEADER LEASE ACTIVE" code={`FENCE #${fencingToken}`} />
+          <Badge tone="ok" label="LEADER LEASE" code={`#${fencingToken}`} />
           <Badge tone="info" label={`P50: ${lastLatencyMs} MS`} />
         </div>
       </div>
@@ -251,23 +253,25 @@ export const PitWorkspace: React.FC<{
 
       {/* Current Lot Status Metrics */}
       {currentLot && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-          <Metric
-            featured
-            label={`Current Lot: ${currentLot.lot_code}`}
-            value={`${currentLot.available_boxes} / ${currentLot.total_boxes}`}
-            unit="BOXES"
-            sublabel={formatKgFromGrams(currentLot.available_grams)}
-            status={{
-              tone:
-                currentLot.inspection_grade === 'REJECTED_UNFIT'
-                  ? 'danger'
-                  : currentLot.available_boxes > 0
-                  ? 'ok'
-                  : 'neutral',
-              label: currentLot.inspection_grade,
-            }}
-          />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+          <div className="col-span-2 sm:col-span-1">
+            <Metric
+              featured
+              label={`Current Lot: ${currentLot.lot_code}`}
+              value={`${currentLot.available_boxes} / ${currentLot.total_boxes}`}
+              unit="BOXES"
+              sublabel={formatKgFromGrams(currentLot.available_grams)}
+              status={{
+                tone:
+                  currentLot.inspection_grade === 'REJECTED_UNFIT'
+                    ? 'danger'
+                    : currentLot.available_boxes > 0
+                    ? 'ok'
+                    : 'neutral',
+                label: currentLot.inspection_grade || 'PENDING',
+              }}
+            />
+          </div>
           <Metric
             label="Floor Price (s.19)"
             value={formatInrFromPaise(currentSpecies?.floor_price_paise_per_kg ?? '0')}
@@ -291,10 +295,10 @@ export const PitWorkspace: React.FC<{
       )}
 
       {/* Pit Allocation Grid: Left = Lot & Statutory Controls, Right = Keypad */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        <div className="lg:col-span-7 flex flex-col gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-5">
+        <div className="lg:col-span-7 flex flex-col gap-3.5 sm:gap-4">
           <Card title="Lot, Mode & Licence Selection">
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:gap-4">
               <Select
                 label="Select Landed Lot (Includes Open, Society-Loan & Unfit s.21 Lots)"
                 dockSize
@@ -424,12 +428,12 @@ export const PitWorkspace: React.FC<{
         </div>
 
         {/* Right Column: Numeric Keypad & Hammer Drop Button */}
-        <div className="lg:col-span-5 flex flex-col gap-4">
+        <div className="lg:col-span-5 flex flex-col gap-3.5 sm:gap-4">
           <Card
             title="2. Pit Numeric Keypad & Hammer Drop"
-            subtitle="Large >= 64px keys for rapid one-handed tablet bidding"
+            subtitle="Rapid one-handed bidding keypad"
           >
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:gap-4">
               <Keypad
                 value={bidPriceRupeesPerKg}
                 onChange={setBidPriceRupeesPerKg}

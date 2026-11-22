@@ -451,20 +451,22 @@ export const PlatformWorkspace: React.FC<{
   const appliedCount = migrationsInfo?.migrations.length ?? 9;
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <MaritimeCrestSvgEmblem size={40} />
+    <div className="flex flex-col gap-3.5 sm:gap-5">
+      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="hidden sm:block shrink-0">
+            <MaritimeCrestSvgEmblem size={36} />
+          </div>
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
               Platform &amp; Governance
             </h1>
-            <p className="text-xs text-[var(--text-secondary)] truncate">
+            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
               Node.js 22 · PostgreSQL 16 · Statutory Multi-Tenant RLS
             </p>
           </div>
         </div>
-        <div className="shrink-0 max-w-full">
+        <div className="w-full sm:w-auto min-w-0">
           <Tabs
             items={[
               {
@@ -499,7 +501,7 @@ export const PlatformWorkspace: React.FC<{
         />
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3.5">
         <Metric
           label="Backend Runtime"
           value="Node.js 22"

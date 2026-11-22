@@ -121,6 +121,22 @@ body {
   background: var(--navy-400);
 }
 
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  :root {
+    --radius-card: 12px;
+    --radius-control: 8px;
+  }
+}
+
 .tabular-nums,
 .font-mono-tabular,
 .font-mono-code,

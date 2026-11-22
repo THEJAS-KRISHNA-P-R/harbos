@@ -51,6 +51,13 @@ PLATFORM_USER="${HARBOUR_PLATFORM_USER:-harbour_platform}"
 PLATFORM_PASS="${HARBOUR_PLATFORM_PASSWORD:-test_platform_password_harbour_secret_2026}"
 BOUNCER_PORT="${PGBOUNCER_PORT:-6432}"
 
+# Stop default OS pgbouncer service if apt-get auto-started it on port 6432
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet pgbouncer 2>/dev/null; then
+  echo "[pgbouncer] Stopping default OS pgbouncer.service to free port ${BOUNCER_PORT}..."
+  (sudo systemctl stop pgbouncer 2>/dev/null || systemctl stop pgbouncer 2>/dev/null || true)
+  sleep 1
+fi
+
 # Stop any stale PgBouncer from a prior interrupted run
 if [ -f "$WORK_DIR/pgbouncer.pid" ]; then
   OLD_PID="$(cat "$WORK_DIR/pgbouncer.pid" 2>/dev/null || true)"

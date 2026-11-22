@@ -102,9 +102,9 @@ export const Button: React.FC<ButtonProps> = ({
   ...rest
 }) => {
   const sizeClasses: Record<ButtonSize, string> = {
-    sm: 'h-9 px-3 text-xs rounded-[var(--radius-pill)]',
-    md: 'h-10 px-5 text-sm rounded-[var(--radius-pill)]',
-    dock: 'min-h-[64px] px-6 text-base rounded-[var(--radius-pill)]',
+    sm: 'h-8 sm:h-9 px-2.5 sm:px-3 text-xs rounded-[var(--radius-pill)]',
+    md: 'h-9 sm:h-10 px-3.5 sm:px-5 text-xs sm:text-sm rounded-[var(--radius-pill)]',
+    dock: 'h-11 sm:min-h-[52px] px-4 sm:px-6 text-sm sm:text-base rounded-[var(--radius-pill)]',
   };
 
   const variantClasses: Record<ButtonVariant, string> = {
@@ -190,13 +190,15 @@ export const Input: React.FC<InputProps> = ({
   ...rest
 }) => {
   const inputId = id ?? `input-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-  const heightClass = dockSize ? 'min-h-[64px] text-base px-4' : 'h-10 text-sm px-3.5';
+  const heightClass = dockSize
+    ? 'h-10 sm:h-12 text-sm sm:text-base px-3 sm:px-4'
+    : 'h-9 sm:h-10 text-sm px-3';
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1 sm:gap-1.5">
       <label
         htmlFor={inputId}
-        className="text-xs font-semibold text-[var(--text-secondary)] tracking-wide"
+        className="text-[11px] sm:text-xs font-semibold text-[var(--text-secondary)] tracking-wide"
       >
         {label}
       </label>
@@ -248,15 +250,17 @@ export const Select: React.FC<SelectProps> = ({
   ...rest
 }) => {
   const selectId = id ?? `select-${(label || 'control').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-  const heightClass = dockSize ? 'min-h-[64px] text-base px-4' : 'h-9 text-[13px] font-semibold px-3.5';
+  const heightClass = dockSize
+    ? 'h-10 sm:h-12 text-sm sm:text-base px-3 sm:px-4'
+    : 'h-9 text-xs sm:text-[13px] font-semibold px-3';
   const radiusClass = pill ? 'rounded-[var(--radius-pill)]' : 'rounded-[var(--radius-control)]';
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1 sm:gap-1.5">
       {label ? (
         <label
           htmlFor={selectId}
-          className="text-xs font-semibold text-[var(--text-secondary)] tracking-wide"
+          className="text-[11px] sm:text-xs font-semibold text-[var(--text-secondary)] tracking-wide"
         >
           {label}
         </label>
@@ -323,23 +327,23 @@ export const Card: React.FC<CardProps> = ({
       className={`bg-[var(--bg-surface)] border border-[var(--border-hair)] rounded-[var(--radius-card)] overflow-hidden transition-colors ${className}`}
     >
       {(title || actions) && (
-        <header className="px-5 py-3.5 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
+        <header className="px-3.5 py-2.5 sm:px-5 sm:py-3.5 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+          <div className="min-w-[140px] flex-1">
             {title && (
-              <h3 className="text-[15px] leading-5 font-bold text-[var(--text-primary)] tracking-tight truncate">
+              <h3 className="text-sm sm:text-[15px] leading-5 font-bold text-[var(--text-primary)] tracking-tight truncate">
                 {title}
               </h3>
             )}
             {subtitle && (
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5 truncate">{subtitle}</p>
+              <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] mt-0.5 truncate">{subtitle}</p>
             )}
           </div>
-          {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
+          {actions && <div className="flex flex-wrap items-center gap-2 shrink-0 max-w-full">{actions}</div>}
         </header>
       )}
-      <div className="p-4 sm:p-5">{children}</div>
+      <div className="p-3 sm:p-5">{children}</div>
       {sunkenFooter && (
-        <footer className="px-5 py-3 bg-[var(--bg-sunken)] border-t border-[var(--border-hair)] text-xs text-[var(--text-secondary)]">
+        <footer className="px-3.5 py-2.5 sm:px-5 sm:py-3 bg-[var(--bg-sunken)] border-t border-[var(--border-hair)] text-[11px] sm:text-xs text-[var(--text-secondary)]">
           {sunkenFooter}
         </footer>
       )}
@@ -392,11 +396,11 @@ export const Badge: React.FC<BadgeProps> = ({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-pill)] border text-xs leading-none font-semibold tabular-nums whitespace-nowrap shrink-0 ${current.style} ${className}`}
+      className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-[var(--radius-pill)] border text-[10px] sm:text-xs leading-none font-semibold tabular-nums whitespace-nowrap shrink-0 max-w-full overflow-hidden ${current.style} ${className}`}
     >
       {current.icon}
-      <span className="whitespace-nowrap">{label}</span>
-      {code && <span className="font-mono-code opacity-85 whitespace-nowrap">({code})</span>}
+      <span className="truncate">{label}</span>
+      {code && <span className="font-mono-code opacity-85 truncate">({code})</span>}
     </span>
   );
 };
@@ -429,32 +433,32 @@ export const Metric: React.FC<MetricProps> = ({
 }) => {
   return (
     <div
-      className={`rounded-[var(--radius-card)] p-4 sm:p-5 flex flex-col justify-between gap-2 border transition-colors ${
+      className={`rounded-[var(--radius-card)] p-3 sm:p-4 md:p-5 flex flex-col justify-between gap-1 sm:gap-2 border transition-colors min-w-0 ${
         featured
           ? 'bg-[var(--brand-soft)]/50 border-[var(--navy-200)]'
           : 'bg-[var(--bg-surface)] border-[var(--border-hair)]'
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-[var(--text-secondary)] truncate">
+      <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+        <span className="text-[11px] sm:text-xs font-semibold text-[var(--text-secondary)] truncate">
           {label}
         </span>
         {status && <Badge tone={status.tone} label={status.label} className="shrink-0" />}
       </div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="text-2xl font-bold text-[var(--text-primary)] font-mono-code tabular-nums tracking-tight">
+      <div className="flex items-baseline gap-1 sm:gap-1.5 min-w-0">
+        <span className="text-lg sm:text-2xl font-bold text-[var(--text-primary)] font-mono-code tabular-nums tracking-tight truncate">
           {value}
         </span>
         {unit && (
-          <span className="text-xs font-semibold text-[var(--text-muted)] font-mono-code">
+          <span className="text-[10px] sm:text-xs font-semibold text-[var(--text-muted)] font-mono-code shrink-0">
             {unit}
           </span>
         )}
       </div>
       {(sublabel || action) && (
-        <div className="flex items-center justify-between gap-2 pt-1">
+        <div className="flex items-center justify-between gap-2 pt-0.5">
           {sublabel && (
-            <p className="text-xs text-[var(--text-muted)] truncate">{sublabel}</p>
+            <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate">{sublabel}</p>
           )}
           {action}
         </div>
@@ -574,9 +578,104 @@ export function DataTable<T>({
     );
   }
 
+  const primaryCol = columns[0];
+  const trailingCol = columns.length > 2 ? columns[columns.length - 1] : undefined;
+  const detailCols = columns.slice(1, trailingCol ? -1 : undefined);
+
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-hair)] rounded-[var(--radius-card)] overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* Mobile stacked card-row view (< 768px): zero horizontal scrolling */}
+      <div
+        data-testid="datatable-mobile-list"
+        className="md:hidden divide-y divide-[var(--border-hair)] overflow-x-hidden"
+      >
+        {loading ? (
+          Array.from({ length: 3 }).map((_, idx) => (
+            <div key={`mobile-skeleton-${idx}`} aria-busy="true" className="p-3 flex flex-col gap-2">
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-3.5 w-full" />
+              <Skeleton className="h-3.5 w-4/5" />
+            </div>
+          ))
+        ) : rows.length === 0 ? (
+          <div className="p-4">
+            <EmptyState title={emptyTitle} description={emptyDescription} />
+          </div>
+        ) : (
+          rows.map((row) => {
+            const key = getRowKey(row);
+            return (
+              <div
+                key={key}
+                role={onRowClick ? 'button' : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                onKeyDown={
+                  onRowClick
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onRowClick(row);
+                        }
+                      }
+                    : undefined
+                }
+                className={`p-3 flex flex-col gap-2 transition-colors ${
+                  onRowClick
+                    ? 'cursor-pointer hover:bg-[var(--bg-tint)] active:bg-[var(--bg-sunken)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]'
+                    : ''
+                }`}
+              >
+                {primaryCol && (
+                  <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
+                    <div
+                      className={`min-w-0 flex-1 text-xs font-semibold text-[var(--text-primary)] [overflow-wrap:anywhere] ${
+                        primaryCol.mono ? 'font-mono-code tabular-nums' : ''
+                      }`}
+                    >
+                      {primaryCol.render(row)}
+                    </div>
+                    {trailingCol && (
+                      <div
+                        className={`min-w-0 max-w-full text-right text-xs text-[var(--text-primary)] [overflow-wrap:anywhere] ${
+                          trailingCol.mono ? 'font-mono-code tabular-nums' : ''
+                        }`}
+                      >
+                        {trailingCol.render(row)}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {detailCols.length > 0 && (
+                  <dl className="grid grid-cols-1 gap-1.5 pt-1.5 border-t border-[var(--border-hair)]">
+                    {detailCols.map((col) => (
+                      <div
+                        key={col.key}
+                        className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-xs min-w-0"
+                      >
+                        <dt className="text-[10px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)] shrink-0">
+                          {col.header}
+                        </dt>
+                        <dd
+                          className={`text-right text-[var(--text-primary)] min-w-0 max-w-full [overflow-wrap:anywhere] tabular-nums ${
+                            col.mono ? 'font-mono-code text-[11px]' : ''
+                          }`}
+                        >
+                          {col.render(row)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Tablet & Desktop semantic table (>= 768px) */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full border-collapse text-left">
           {caption && <caption className="sr-only">{caption}</caption>}
           <thead>
@@ -585,7 +684,7 @@ export function DataTable<T>({
                 <th
                   key={col.key}
                   scope="col"
-                  className={`px-4 py-3 text-[11px] leading-4 font-semibold uppercase tracking-[0.05em] text-[var(--text-secondary)] ${
+                  className={`px-3 py-2.5 lg:px-4 text-[11px] leading-4 font-semibold uppercase tracking-[0.04em] text-[var(--text-secondary)] whitespace-nowrap ${
                     col.align === 'right' ? 'text-right' : 'text-left'
                   }`}
                 >
@@ -599,7 +698,7 @@ export function DataTable<T>({
               Array.from({ length: 3 }).map((_, idx) => (
                 <tr key={`skeleton-${idx}`} aria-busy="true">
                   {columns.map((col) => (
-                    <td key={col.key} className="px-4 py-3.5">
+                    <td key={col.key} className="px-3 py-3 lg:px-4">
                       <Skeleton className="h-4 w-full" />
                     </td>
                   ))}
@@ -623,7 +722,7 @@ export function DataTable<T>({
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`px-4 py-3.5 text-sm leading-5 text-[var(--text-primary)] tabular-nums ${
+                      className={`px-3 py-3 lg:px-4 text-sm leading-5 text-[var(--text-primary)] tabular-nums ${
                         col.align === 'right' ? 'text-right' : 'text-left'
                       } ${col.mono ? 'font-mono-code text-[13px]' : ''}`}
                     >
@@ -747,23 +846,23 @@ export const Modal: React.FC<ModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--scrim)]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-[var(--scrim)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
       <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
-      <div className="relative z-10 w-full max-w-xl bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-[var(--radius-card)] shadow-[var(--shadow-overlay)] overflow-hidden">
-        <header className="px-6 py-5 bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] flex items-start justify-between gap-4">
-          <div>
+      <div className="relative z-10 w-full max-w-xl max-h-[92vh] flex flex-col bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-[var(--radius-card)] shadow-[var(--shadow-overlay)] overflow-hidden">
+        <header className="px-4 py-3 sm:px-6 sm:py-4 bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] flex items-start justify-between gap-3 shrink-0">
+          <div className="min-w-0">
             <h2
               id="modal-title"
-              className="text-lg font-semibold text-[var(--text-primary)] tracking-tight"
+              className="text-base sm:text-lg font-semibold text-[var(--text-primary)] tracking-tight truncate"
             >
               {title}
             </h2>
             {description && (
-              <p className="text-sm text-[var(--text-secondary)] mt-0.5">{description}</p>
+              <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">{description}</p>
             )}
           </div>
           <Button
@@ -776,9 +875,9 @@ export const Modal: React.FC<ModalProps> = ({
             Close
           </Button>
         </header>
-        <div className="p-6">{children}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1">{children}</div>
         {footer && (
-          <footer className="px-6 py-4 bg-[var(--bg-sunken)] border-t border-[var(--border-hair)] flex items-center justify-end gap-3">
+          <footer className="px-4 py-3 sm:px-6 sm:py-4 bg-[var(--bg-sunken)] border-t border-[var(--border-hair)] flex items-center justify-end gap-2 sm:gap-3 shrink-0">
             {footer}
           </footer>
         )}
@@ -849,7 +948,7 @@ export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange }) => {
   return (
     <div
       role="tablist"
-      className="inline-flex items-center gap-1.5 p-1.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] overflow-x-auto max-w-full"
+      className="flex sm:inline-flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] overflow-x-auto no-scrollbar max-w-full w-full sm:w-auto"
     >
       {items.map((item) => {
         const active = item.id === activeId;
@@ -860,7 +959,7 @@ export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange }) => {
             type="button"
             aria-selected={active}
             onClick={() => onChange(item.id)}
-            className={`min-h-[36px] py-1.5 px-3.5 sm:px-4 rounded-[var(--radius-pill)] text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer inline-flex items-center gap-2 ${
+            className={`min-h-[30px] sm:min-h-[36px] py-1 px-2.5 sm:px-3.5 rounded-[var(--radius-pill)] text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer inline-flex items-center gap-1.5 ${
               active
                 ? 'bg-[var(--brand)] text-[var(--brand-fg)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)]/60'
@@ -869,7 +968,7 @@ export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange }) => {
             <span className="whitespace-nowrap">{item.label}</span>
             {item.badge !== undefined && (
               <span
-                className={`px-2 py-0.5 text-xs rounded-[var(--radius-pill)] font-mono-code whitespace-nowrap shrink-0 leading-none ${
+                className={`px-1.5 py-0.5 text-[10px] sm:text-xs rounded-[var(--radius-pill)] font-mono-code whitespace-nowrap shrink-0 leading-none ${
                   active
                     ? 'bg-[var(--brand-hover)] text-[var(--brand-fg)]'
                     : 'bg-[var(--brand-soft)] text-[var(--brand-soft-fg)]'
@@ -942,18 +1041,18 @@ export const Keypad: React.FC<KeypadProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] flex items-baseline justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+    <div className="flex flex-col gap-2.5 sm:gap-3">
+      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] flex items-baseline justify-between gap-2">
+        <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
           {label}
         </span>
-        <span className="text-3xl font-bold font-mono-code tabular-nums text-[var(--text-primary)]">
+        <span className="text-xl sm:text-3xl font-bold font-mono-code tabular-nums text-[var(--text-primary)]">
           ₹{Number(value || '0').toLocaleString('en-IN')}/kg
         </span>
       </div>
 
       {onQuickIncrement && (
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
           {[5, 10, 25, 50].map((inc) => (
             <Button
               key={inc}
@@ -968,15 +1067,15 @@ export const Keypad: React.FC<KeypadProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         {keys.map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => handleKey(k)}
-            className="min-h-[64px] rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-strong)] hover:bg-[var(--brand-soft)] text-xl font-bold font-mono-code text-[var(--text-primary)] flex items-center justify-center cursor-pointer transition-colors"
+            className="min-h-[46px] sm:min-h-[58px] rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-strong)] hover:bg-[var(--brand-soft)] text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] flex items-center justify-center cursor-pointer transition-colors"
           >
-            {k === 'BACK' ? <Delete className="w-5 h-5" /> : k}
+            {k === 'BACK' ? <Delete className="w-4 h-4 sm:w-5 sm:h-5" /> : k}
           </button>
         ))}
       </div>
@@ -1008,24 +1107,26 @@ export const SpeciesTile: React.FC<SpeciesTileProps> = ({
     <button
       type="button"
       onClick={onSelect}
-      className={`min-h-[84px] p-4 rounded-[var(--radius-card)] border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+      className={`min-h-[64px] sm:min-h-[80px] p-2.5 sm:p-4 rounded-[var(--radius-card)] border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 sm:gap-2 ${
         selected
           ? 'bg-[var(--brand-soft)] border-[var(--brand)] ring-2 ring-[var(--brand)]'
           : 'bg-[var(--bg-surface)] border-[var(--border-strong)] hover:bg-[var(--bg-tint)]'
       }`}
     >
-      <div className="flex items-center justify-between gap-2 w-full">
-        <span className="inline-flex items-center gap-1.5 text-xs font-bold font-mono-code uppercase px-2.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] text-[var(--text-secondary)]">
-          <SpeciesGlyph code={`${code} ${nameEn}`} size={16} />
+      <div className="flex items-center justify-between gap-1.5 w-full">
+        <span className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold font-mono-code uppercase px-2 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] text-[var(--text-secondary)]">
+          <SpeciesGlyph code={`${code} ${nameEn}`} size={14} />
           <span>{code}</span>
         </span>
-        <span className="text-xs font-mono-code font-semibold text-[var(--text-secondary)]">
-          Floor: {floorPriceFormatted}/kg
+        <span className="text-[10px] sm:text-xs font-mono-code font-semibold text-[var(--text-secondary)] truncate">
+          {floorPriceFormatted}/kg
         </span>
       </div>
       <div>
-        <div className="text-base font-bold text-[var(--text-primary)]">{nameEn}</div>
-        <div lang="ml" className="text-sm font-medium text-[var(--text-secondary)] mt-0.5">
+        <div className="text-sm sm:text-base font-bold text-[var(--text-primary)] leading-tight">
+          {nameEn}
+        </div>
+        <div lang="ml" className="text-xs sm:text-sm font-medium text-[var(--text-secondary)] mt-0.5">
           {nameMl}
         </div>
       </div>
@@ -1053,17 +1154,17 @@ export const ConnectivityBadge: React.FC<ConnectivityBadgeProps> = ({
         type="button"
         onClick={onToggleSimulateOffline}
         title="Click to toggle offline queue simulation"
-        className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-[var(--radius-pill)] border text-xs font-semibold cursor-pointer ${
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-[var(--radius-pill)] border text-[11px] sm:text-xs font-semibold cursor-pointer ${
           online
             ? 'bg-[var(--brand-soft)] text-[var(--brand-soft-fg)] border-[var(--navy-200)]'
             : 'bg-[var(--warning-bg)] text-[var(--warning)] border-[var(--warning)]/40'
         }`}
       >
-        {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-        <span>{online ? 'ONLINE (SSE)' : 'OFFLINE QUEUE MODE'}</span>
+        {online ? <Wifi className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <WifiOff className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
+        <span>{online ? 'ONLINE' : 'OFFLINE QUEUE'}</span>
         {queuedCount > 0 && (
-          <span className="px-2 py-0.5 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] font-mono-code">
-            {queuedCount} queued
+          <span className="px-1.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] font-mono-code">
+            {queuedCount}
           </span>
         )}
       </button>
@@ -1391,24 +1492,24 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
 
       {/* Main Workspace Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-30 min-h-[54px] px-4 sm:px-6 lg:px-8 py-2 bg-[var(--bg-surface)]/95 backdrop-blur-sm border-b border-[var(--border-hair)] flex items-center justify-between gap-4 no-print">
-          <div className="flex items-center gap-2.5 min-w-0 shrink-0">
+        <header className="sticky top-0 z-30 min-h-[48px] sm:min-h-[54px] px-2.5 sm:px-6 lg:px-8 py-1.5 sm:py-2 bg-[var(--bg-surface)]/95 backdrop-blur-sm border-b border-[var(--border-hair)] flex items-center justify-between gap-2 sm:gap-4 no-print">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
               aria-label="Open mobile navigation menu"
-              className="md:hidden w-9 h-9 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-[var(--text-primary)] inline-flex items-center justify-center shrink-0 cursor-pointer"
+              className="md:hidden w-8 h-8 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-[var(--text-primary)] inline-flex items-center justify-center shrink-0 cursor-pointer"
             >
               <Menu className="w-4 h-4" />
             </button>
-            <span className="text-sm font-bold text-[var(--text-primary)] truncate">
+            <span className="text-[13px] sm:text-sm font-bold text-[var(--text-primary)] truncate">
               {activeItem?.labelEn ?? 'Workspace'}
             </span>
             <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-[11px] font-mono-code text-[var(--text-muted)] whitespace-nowrap">
               1–7 Workspaces · L Ledger · ⌘K Search
             </span>
           </div>
-          <div className="flex items-center gap-2 overflow-x-auto max-w-full py-0.5">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {headerRight}
           </div>
         </header>
@@ -1416,7 +1517,7 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
         {/* Mobile Horizontal Pill Navigation (< 768px) */}
         <nav
           aria-label="Mobile Workspace Navigation"
-          className="md:hidden px-3 py-2 bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] flex items-center gap-1.5 overflow-x-auto no-print"
+          className="md:hidden px-2.5 py-1.5 bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] flex items-center gap-1.5 overflow-x-auto no-scrollbar no-print"
         >
           {navItems.map((item) => {
             const active = item.id === activeNavId;
@@ -1425,13 +1526,13 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
                 key={item.id}
                 type="button"
                 onClick={() => onSelectNav(item.id)}
-                className={`h-8 px-3 rounded-[var(--radius-pill)] inline-flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                className={`h-7 px-2.5 rounded-[var(--radius-pill)] inline-flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                   active
                     ? 'bg-[var(--brand)] text-[var(--brand-fg)]'
                     : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-hair)]'
                 }`}
               >
-                <span className="shrink-0">{item.icon}</span>
+                <span className="shrink-0 scale-90">{item.icon}</span>
                 <span lang={lang === 'ml' ? 'ml' : 'en'} className="whitespace-nowrap">
                   {lang === 'ml' ? item.labelMl : item.labelEn}
                 </span>
@@ -1440,8 +1541,8 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
           })}
         </nav>
 
-        {/* Responsive Content Container: Fluid from 390px Mobile up to 1440px Desktop */}
-        <main className="flex-1 w-full max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 py-4 sm:py-6 md:py-7 flex flex-col gap-5 sm:gap-6 lg:gap-7">
+        {/* Responsive Content Container: Compact on Mobile (360-639px), Airy on Desktop */}
+        <main className="flex-1 w-full max-w-[1440px] mx-auto px-2.5 sm:px-6 lg:px-8 xl:px-10 py-3 sm:py-6 flex flex-col gap-3.5 sm:gap-6">
           {children}
         </main>
       </div>

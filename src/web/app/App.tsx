@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Globe,
   CheckCircle2,
@@ -108,6 +108,22 @@ const ROLE_DEFAULT_WORKSPACE: Record<Role, WorkspaceId> = {
   SUPER_ADMIN: 'platform',
 };
 
+const DEV_DEEP_LINK_ROLE: Record<WorkspaceId, Role> = {
+  weighing: 'WEIGHING_OPERATOR',
+  pit: 'LICENSED_AUCTIONEER',
+  buyer: 'WHOLESALE_BUYER',
+  fisher: 'FISHERMAN_BOAT_OWNER',
+  inspector: 'AUTHORIZED_INSPECTOR',
+  harbour: 'HARBOUR_ADMIN',
+  platform: 'SUPER_ADMIN',
+};
+
+const LEDGER_ALLOWED_ROLES: ReadonlySet<Role> = new Set([
+  'SUPER_ADMIN',
+  'HARBOUR_ADMIN',
+  'ACCOUNTANT',
+]);
+
 const GOLDEN_VECTOR_ROWS: ReadonlyArray<GoldenVectorRow> = [
   {
     mode: 'A: FIXED_SAAS_ONLY',
@@ -203,7 +219,10 @@ export const App: React.FC = () => {
   }, []);
 
   const handlePersonaSwitch = useCallback(
-    async (role: Role, options?: { silentFallbackToLogin?: boolean }): Promise<void> => {
+    async (
+      role: Role,
+      options?: { silentFallbackToLogin?: boolean; preservePathIfAllowed?: boolean }
+    ): Promise<void> => {
       try {
         const res = await apiRequest<{ accessToken: string; user: SessionUser }>(
           '/api/v1/auth/persona-switch',
@@ -217,14 +236,26 @@ export const App: React.FC = () => {
         setPhoneInput(res.user.phoneE164);
         setEditFullName(res.user.fullName);
         setEditPhoneE164(res.user.phoneE164);
+        if (!LEDGER_ALLOWED_ROLES.has(res.user.role)) {
+          setLedgerDrawerOpen(false);
+        }
         const pathMatch =
           typeof window !== 'undefined'
             ? window.location.pathname.match(/^\/w\/([a-z]+)$/)
             : null;
-        if (pathMatch && pathMatch[1]) {
-          setActiveWorkspace(pathMatch[1] as WorkspaceId);
-        } else {
-          setActiveWorkspace(ROLE_DEFAULT_WORKSPACE[res.user.role] ?? 'harbour');
+        const requestedWs = pathMatch?.[1] as WorkspaceId | undefined;
+        const requestedDef = requestedWs
+          ? WORKSPACES.find((w) => w.id === requestedWs)
+          : undefined;
+        const targetWorkspace =
+          options?.preservePathIfAllowed &&
+          requestedDef &&
+          requestedDef.allowedRoles.includes(res.user.role)
+            ? requestedDef.id
+            : (ROLE_DEFAULT_WORKSPACE[res.user.role] ?? 'harbour');
+        setActiveWorkspace(targetWorkspace);
+        if (typeof window !== 'undefined' && window.location.pathname !== '/ui') {
+          window.history.replaceState({}, '', `/w/${targetWorkspace}`);
         }
         setScreenMode((prev) => (prev === 'gallery' ? 'gallery' : 'workspace'));
         await Promise.all([
@@ -248,11 +279,36 @@ export const App: React.FC = () => {
       return;
     }
     if (!import.meta.env.PROD) {
-      void handlePersonaSwitch('HARBOUR_ADMIN', { silentFallbackToLogin: true });
+      const pathMatch =
+        typeof window !== 'undefined'
+          ? window.location.pathname.match(/^\/w\/([a-z]+)$/)
+          : null;
+      const requestedWs = pathMatch?.[1] as WorkspaceId | undefined;
+      const initialRole: Role =
+        requestedWs && requestedWs in DEV_DEEP_LINK_ROLE
+          ? DEV_DEEP_LINK_ROLE[requestedWs]
+          : 'HARBOUR_ADMIN';
+      void handlePersonaSwitch(initialRole, {
+        silentFallbackToLogin: true,
+        preservePathIfAllowed: true,
+      });
     } else {
       setScreenMode('login');
     }
   }, [handlePersonaSwitch]);
+
+  const allowedWorkspaces = useMemo(
+    () => (user ? WORKSPACES.filter((w) => w.allowedRoles.includes(user.role)) : []),
+    [user]
+  );
+  const allowedWorkspaceIds = useMemo(
+    () => new Set<WorkspaceId>(allowedWorkspaces.map((w) => w.id)),
+    [allowedWorkspaces]
+  );
+  const canAccessLedger = Boolean(user && LEDGER_ALLOWED_ROLES.has(user.role));
+  const isActiveWorkspaceAuthorized = Boolean(
+    user && allowedWorkspaceIds.has(activeWorkspace)
+  );
 
   // Global keyboard shortcuts: ⌘K (Command Palette), L (Ledger Drawer), / or F (Focus Audit Filter), 1-7 (Switch Workspace)
   useEffect(() => {
@@ -277,7 +333,7 @@ export const App: React.FC = () => {
       if (intent.type === 'TOGGLE_COMMAND_PALETTE') {
         e.preventDefault();
         setCommandPaletteOpen((prev) => !prev);
-      } else if (intent.type === 'TOGGLE_LEDGER_DRAWER') {
+      } else if (intent.type === 'TOGGLE_LEDGER_DRAWER' && canAccessLedger) {
         e.preventDefault();
         setLedgerDrawerOpen((prev) => !prev);
       } else if (intent.type === 'FOCUS_AUDIT_FILTER') {
@@ -292,7 +348,7 @@ export const App: React.FC = () => {
         !commandPaletteOpen &&
         !profileDrawerOpen
       ) {
-        const ws = WORKSPACES[intent.workspaceIndex];
+        const ws = allowedWorkspaces[intent.workspaceIndex];
         if (ws) {
           e.preventDefault();
           setActiveWorkspace(ws.id);
@@ -305,7 +361,13 @@ export const App: React.FC = () => {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [ledgerDrawerOpen, commandPaletteOpen, profileDrawerOpen]);
+  }, [
+    ledgerDrawerOpen,
+    commandPaletteOpen,
+    profileDrawerOpen,
+    allowedWorkspaces,
+    canAccessLedger,
+  ]);
 
   const handleRequestOtp = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
@@ -418,17 +480,24 @@ export const App: React.FC = () => {
     return undefined;
   };
 
-  const navItems: ReadonlyArray<NavItem> = WORKSPACES.map((w) => ({
-    id: w.id,
-    labelEn: w.titleEn,
-    labelMl: w.titleMl,
-    icon: WORKSPACE_ICONS[w.id],
-    badge: getWorkspaceBadge(w.id),
-    group: WORKSPACE_GROUPS[w.id],
-  }));
+  const navItems: ReadonlyArray<NavItem> = useMemo(
+    () =>
+      allowedWorkspaces.map((w) => ({
+        id: w.id,
+        labelEn: w.titleEn,
+        labelMl: w.titleMl,
+        icon: WORKSPACE_ICONS[w.id],
+        badge: getWorkspaceBadge(w.id),
+        group: WORKSPACE_GROUPS[w.id],
+      })),
+    [allowedWorkspaces, bootstrap]
+  );
 
   const handleSelectWorkspace = (wsId: string): void => {
     const target = wsId as WorkspaceId;
+    if (user && !allowedWorkspaceIds.has(target)) {
+      return;
+    }
     setActiveWorkspace(target);
     setScreenMode('workspace');
     if (typeof window !== 'undefined') {
@@ -440,9 +509,9 @@ export const App: React.FC = () => {
     setCommandPaletteOpen(false);
     if (item.actionType === 'OPEN_WORKSPACE' && item.targetWorkspace) {
       handleSelectWorkspace(item.targetWorkspace);
-    } else if (item.actionType === 'OPEN_LEDGER_DRAWER') {
+    } else if (item.actionType === 'OPEN_LEDGER_DRAWER' && canAccessLedger) {
       setLedgerDrawerOpen(true);
-    } else if (item.actionType === 'OPEN_UTR_CSV_IMPORT') {
+    } else if (item.actionType === 'OPEN_UTR_CSV_IMPORT' && canAccessLedger) {
       setLedgerDrawerOpen(true);
       setAutoOpenUtrSignal((n) => n + 1);
     } else if (item.actionType === 'OPEN_PROFILE_DRAWER') {
@@ -450,7 +519,7 @@ export const App: React.FC = () => {
       if (token) void loadOperatorProfile(token);
     } else if (item.actionType === 'OPEN_LOGIN') {
       setScreenMode('login');
-    } else if (item.actionType === 'OPEN_UI_KIT') {
+    } else if (item.actionType === 'OPEN_UI_KIT' && !import.meta.env.PROD) {
       setScreenMode('gallery');
     }
   };
@@ -461,17 +530,19 @@ export const App: React.FC = () => {
 
   const headerControls = (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        icon={<Search className="w-3.5 h-3.5" />}
+      <button
+        type="button"
         onClick={() => setCommandPaletteOpen(true)}
+        aria-label="Open Command Palette"
+        title="Command Palette (⌘K)"
+        className="h-8 w-8 sm:w-auto sm:h-9 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-tint)] inline-flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
       >
-        ⌘K
-      </Button>
+        <Search className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline">⌘K</span>
+      </button>
 
       {!import.meta.env.PROD && (
-        <div className="hidden sm:block shrink-0">
+        <div className="hidden md:block shrink-0">
           <Select
             label=""
             pill
@@ -495,25 +566,26 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      <Button
-        variant="primary"
-        size="sm"
-        icon={<BookOpen className="w-3.5 h-3.5" />}
-        onClick={() => setLedgerDrawerOpen(true)}
-      >
-        Ledger
-      </Button>
-
-      <span className="hidden sm:inline-flex shrink-0">
+      {canAccessLedger && (
         <Button
-          variant="outline"
+          variant="primary"
           size="sm"
-          icon={<Globe className="w-3.5 h-3.5" />}
-          onClick={() => setLang(lang === 'en' ? 'ml' : 'en')}
+          icon={<BookOpen className="w-3.5 h-3.5" />}
+          onClick={() => setLedgerDrawerOpen(true)}
         >
-          {lang === 'en' ? 'മലയാളം' : 'EN'}
+          Ledger
         </Button>
-      </span>
+      )}
+
+      <Button
+        variant="outline"
+        size="sm"
+        icon={<Globe className="w-3.5 h-3.5 hidden sm:inline-block" />}
+        onClick={() => setLang(lang === 'en' ? 'ml' : 'en')}
+        aria-label={lang === 'en' ? 'Switch to Malayalam' : 'Switch to English'}
+      >
+        {lang === 'en' ? 'മലയാളം' : 'EN'}
+      </Button>
 
       <button
         type="button"
@@ -524,9 +596,9 @@ export const App: React.FC = () => {
         }}
         title={`${shortOperatorName} (${activeRoleMeta.shortBadge})`}
         aria-label="Open Operator Profile & Session Settings"
-        className="h-9 pl-1.5 pr-2.5 rounded-[var(--radius-pill)] bg-[var(--brand-soft)] border border-[var(--navy-200)] hover:border-[var(--brand)] inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+        className="h-8 w-8 sm:w-auto sm:h-9 sm:pl-1.5 sm:pr-2.5 rounded-[var(--radius-pill)] bg-[var(--brand-soft)] border border-[var(--navy-200)] hover:border-[var(--brand)] inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
       >
-        <span className="w-6 h-6 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-[11px] font-bold font-mono-code inline-flex items-center justify-center shrink-0">
+        <span className="w-6 h-6 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-[10px] sm:text-[11px] font-bold font-mono-code inline-flex items-center justify-center shrink-0">
           {activeInitials}
         </span>
         <span className="hidden lg:inline text-xs font-bold text-[var(--brand-soft-fg)] whitespace-nowrap">
@@ -608,6 +680,22 @@ export const App: React.FC = () => {
           title="Loading HarbourOS Statutory Clearing Engine…"
           description="Initializing Node.js 22 + PostgreSQL 16 and verifying SHA-256 ledger hash chain."
         />
+      ) : !isActiveWorkspaceAuthorized && user ? (
+        <div data-testid="rbac-access-restricted">
+          <EmptyState
+            title="Access Restricted by Role Policy"
+            description={`Your signed-in role (${activeRoleMeta.titleEn}) is not authorized to open the "${activeWorkspace}" workspace under Kerala Act 16 of 2021 RBAC controls.`}
+            action={
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => handleSelectWorkspace(ROLE_DEFAULT_WORKSPACE[user.role])}
+              >
+                Return to {activeRoleMeta.defaultWorkspace} workspace
+              </Button>
+            }
+          />
+        </div>
       ) : (
         <React.Suspense
           fallback={
@@ -689,27 +777,31 @@ export const App: React.FC = () => {
         }}
       />
 
-      <LedgerInspectorDrawer
-        open={ledgerDrawerOpen}
-        onClose={() => setLedgerDrawerOpen(false)}
-        bootstrap={bootstrap}
-        token={token}
-        goldenVectorRows={GOLDEN_VECTOR_ROWS}
-        autoOpenUtrMapperSignal={autoOpenUtrSignal}
-        onRefresh={async () => {
-          if (token) {
-            await Promise.all([
-              loadBootstrap(token),
-              loadOperatorProfile(token),
-            ]);
-          }
-        }}
-      />
+      {canAccessLedger && (
+        <LedgerInspectorDrawer
+          open={ledgerDrawerOpen}
+          onClose={() => setLedgerDrawerOpen(false)}
+          bootstrap={bootstrap}
+          token={token}
+          goldenVectorRows={GOLDEN_VECTOR_ROWS}
+          autoOpenUtrMapperSignal={autoOpenUtrSignal}
+          onRefresh={async () => {
+            if (token) {
+              await Promise.all([
+                loadBootstrap(token),
+                loadOperatorProfile(token),
+              ]);
+            }
+          }}
+        />
+      )}
 
       <CommandPaletteModal
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         bootstrap={bootstrap}
+        allowedWorkspaceIds={allowedWorkspaceIds}
+        canAccessLedger={canAccessLedger}
         onExecuteItem={handleExecuteCommandItem}
       />
 

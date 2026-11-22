@@ -153,10 +153,7 @@ export async function provisionTenantUser(
   }
 
   const userId = `USR-${crypto.randomUUID().slice(0, 12).toUpperCase()}`;
-  const pinHash = hashSupervisorPin(
-    pinCode,
-    'a1b2c3d4e5f60718293a4b5c6d7e8f90'
-  );
+  const pinHash = hashSupervisorPin(pinCode);
 
   const runInsert = (tx: DbPort) =>
     insertTenantUserInTx(tx, {
@@ -351,11 +348,53 @@ export async function getWorkspaceBootstrap(
       ? cachedAuditAndBatches.auditLogs
       : [];
 
+    const ownFisherAccountIds = new Set<string>();
+    if (isFisherman) {
+      for (const f of scopedFishermen) {
+        if (f.payable_account_id) ownFisherAccountIds.add(String(f.payable_account_id));
+        if (f.bonus_escrow_account_id) ownFisherAccountIds.add(String(f.bonus_escrow_account_id));
+      }
+    }
+
+    const ownVesselIds = new Set(scopedVessels.map((v) => String(v.vessel_id)));
+    const ownLotIds = isFisherman
+      ? new Set(
+          collections.lotsRows
+            .filter((l) => ownVesselIds.has(String(l.vessel_id)))
+            .map((l) => String(l.lot_id))
+        )
+      : null;
+
+    const scopedAllocations = isAdminOrAccountant || role === 'LICENSED_AUCTIONEER'
+      ? collections.allocationsRows
+      : isBuyer && entityRefId
+        ? collections.allocationsRows.filter(
+            (a) => String(a.buyer_id) === String(entityRefId)
+          )
+        : isFisherman && ownLotIds
+          ? collections.allocationsRows.filter((a) => ownLotIds.has(String(a.lot_id)))
+          : [];
+
+    const scopedAccounts = isAdminOrAccountant
+      ? collections.accountsRows
+      : isFisherman
+        ? collections.accountsRows.filter((a) =>
+            ownFisherAccountIds.has(String(a.account_id))
+          )
+        : [];
+
+    const scopedJournals = isAdminOrAccountant ? collections.journalsRows : [];
+    const scopedEntries = isAdminOrAccountant ? collections.entriesRows : [];
+    const scopedReversals = isAdminOrAccountant ? collections.reversalsRows : [];
+    const scopedPayoutBatches = isAdminOrAccountant
+      ? cachedAuditAndBatches.payoutBatches
+      : [];
+
     return {
       cacheStatus: cachedAuditAndBatches.cacheStatus,
       body: {
         tenant: collections.tenantRows[0] ?? null,
-        allTenants: collections.allTenantsRows,
+        allTenants: role === 'SUPER_ADMIN' ? collections.allTenantsRows : collections.tenantRows,
         policies: collections.policiesRows,
         users: scopedUsers,
         societies: collections.societiesRows,
@@ -366,12 +405,12 @@ export async function getWorkspaceBootstrap(
         species: collections.speciesRows,
         lots: collections.lotsRows,
         sessions: collections.sessionsRows,
-        allocations: collections.allocationsRows,
-        accounts: collections.accountsRows,
-        journals: collections.journalsRows,
-        entries: collections.entriesRows,
-        reversals: collections.reversalsRows,
-        payoutBatches: cachedAuditAndBatches.payoutBatches,
+        allocations: scopedAllocations,
+        accounts: scopedAccounts,
+        journals: scopedJournals,
+        entries: scopedEntries,
+        reversals: scopedReversals,
+        payoutBatches: scopedPayoutBatches,
         outboxEvents: scopedOutboxEvents,
         auditLogs: scopedAuditLogs,
         ledgerVerification: chainVerification,

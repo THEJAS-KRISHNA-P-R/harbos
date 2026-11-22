@@ -191,7 +191,24 @@ export const ReportsShadowPanel: React.FC<{
                 <Badge tone="ok" label={`${reportData.rows.length} ROWS`} />
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="md:hidden divide-y divide-[var(--border-hair)] rounded-[var(--radius-control)] border border-[var(--border-hair)] bg-[var(--bg-surface)] overflow-hidden">
+                {reportData.rows.slice(0, 15).map((row, idx) => (
+                  <div key={idx} className="p-2.5 flex flex-col gap-1">
+                    {reportData.headers.map((h) => (
+                      <div key={h} className="flex items-baseline justify-between gap-2 text-xs min-w-0">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] shrink-0">
+                          {h}
+                        </span>
+                        <span className="font-mono-code text-right text-[var(--text-primary)] break-words min-w-0">
+                          {String(row[h] ?? '')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-[var(--border-strong)] text-left text-[var(--text-secondary)]">
@@ -283,7 +300,32 @@ export const ReportsShadowPanel: React.FC<{
                 />
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="md:hidden divide-y divide-[var(--border-hair)] rounded-[var(--radius-control)] border border-[var(--border-hair)] bg-[var(--bg-surface)] overflow-hidden">
+                {diffResult.diffs.map((d) => (
+                  <div key={d.lotCode} className="p-2.5 flex flex-col gap-1.5 text-xs font-mono-code">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-[var(--text-primary)] truncate">{d.lotCode}</span>
+                      <Badge tone={d.matched ? 'ok' : 'danger'} label={d.matched ? 'EXACT' : 'DIFF'} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 pt-1 border-t border-[var(--border-hair)] text-[11px]">
+                      <div>
+                        <span className="block text-[10px] text-[var(--text-muted)]">Hammer Δ</span>
+                        <span>{d.hammerDeltaPaise} p</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-[var(--text-muted)]">Net Δ</span>
+                        <span>{d.fishermanNetDeltaPaise} p</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="block text-[10px] text-[var(--text-muted)]">Comm Δ</span>
+                        <span>{d.commissionDeltaPaise} p</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-xs border-collapse font-mono-code">
                   <thead>
                     <tr className="border-b border-[var(--border-strong)] text-left text-[var(--text-secondary)]">

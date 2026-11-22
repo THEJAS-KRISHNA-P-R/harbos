@@ -102,29 +102,29 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
     displayedOperators.length > 0 ? displayedOperators : fetchedDemoOperators;
 
   return (
-    <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] py-8 px-4 sm:px-6 lg:px-10 flex flex-col items-center justify-center">
-      <div className="w-full max-w-[1160px] flex flex-col gap-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-hair)]">
-          <div className="flex items-center gap-3.5">
-            <MaritimeCrestSvgEmblem size={44} className="shrink-0" />
-            <div>
+    <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] py-4 sm:py-8 px-3 sm:px-6 lg:px-10 flex flex-col items-center justify-center">
+      <div className="w-full max-w-[1160px] flex flex-col gap-4 sm:gap-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-[var(--border-hair)]">
+          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+            <MaritimeCrestSvgEmblem size={36} className="shrink-0" />
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight">
+                <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight">
                   HarbourOS Operator Identity &amp; Sign-In Portal
                 </h1>
                 <Badge tone="ok" label="HS256 JWT + RLS" />
               </div>
-              <p className="text-xs text-[var(--text-secondary)]">
+              <p className="text-[11px] sm:text-xs text-[var(--text-secondary)]">
                 Kerala Fish Auctioning, Marketing and Maintenance of Quality Act, 2021 (Act 16 of 2021) · Node.js 22 + PostgreSQL 16
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             {user && (
               <Button
                 variant="secondary"
                 size="sm"
-                icon={<UserCheck className="w-4 h-4" />}
+                icon={<UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                 onClick={onOpenActiveProfile}
               >
                 Active: {user.fullName}
@@ -133,7 +133,7 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
             <Button
               variant="primary"
               size="sm"
-              icon={<ArrowRight className="w-4 h-4" />}
+              icon={<ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
               onClick={onBackToWorkspace}
             >
               Back to Workspace
@@ -141,10 +141,10 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className={isDevSandbox && operators.length > 0 ? 'lg:col-span-6 flex flex-col gap-5' : 'lg:col-span-8 lg:col-start-3 flex flex-col gap-5'}>
-            <div className="p-4 rounded-[var(--radius-card)] border border-[var(--border-hair)] bg-[var(--bg-surface)] bg-pattern-isobath flex flex-col sm:flex-row items-center gap-4">
-              <DawnHarbourHeroScene className="w-[180px] sm:w-[200px] shrink-0" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+          <div className={isDevSandbox && operators.length > 0 ? 'lg:col-span-6 flex flex-col gap-3.5 sm:gap-5' : 'lg:col-span-8 lg:col-start-3 flex flex-col gap-3.5 sm:gap-5'}>
+            <div className="p-3 sm:p-4 rounded-[var(--radius-card)] border border-[var(--border-hair)] bg-[var(--bg-surface)] bg-pattern-isobath flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+              <DawnHarbourHeroScene className="w-[140px] sm:w-[200px] shrink-0" />
               <div className="flex flex-col gap-1 min-w-0">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--brand)]">
                   Munambam Fishing Harbour (HMS)

@@ -424,14 +424,32 @@ export async function handleBankNodalWebhook(
   }
 ) {
   const body = params.rawBody ?? {};
-  const tenantId = String(body.tenantId || DEMO_TENANT_ID).trim();
+  const isDemoSandbox = config.DEMO_MODE && config.NODE_ENV !== 'production';
+  const tenantId = String(body.tenantId || (isDemoSandbox ? DEMO_TENANT_ID : '')).trim();
+  if (!tenantId) {
+    throw new AppError('WEBHOOK_SIGNATURE_INVALID', 'Missing tenantId or valid webhook signature', 401);
+  }
   const eventId = String(body.eventId || `EVT-NODAL-${crypto.randomUUID()}`).trim();
   const bankCode = String(body.bankCode || 'HMS-NODAL-GATEWAY').trim().toUpperCase();
   const timestampSec = typeof body.timestampSec === 'number' && body.timestampSec > 0 ? body.timestampSec : Math.floor(Date.now() / 1000);
 
+  if (!isDemoSandbox) {
+    const rawSettlements = Array.isArray(body.settlements) ? body.settlements : [];
+    const prodPayload: BankNodalWebhookPayload = { eventId, bankCode, tenantId, timestampSec, settlements: rawSettlements };
+    const preCheck = verifyBankNodalWebhookSignature({
+      payload: prodPayload,
+      signatureHeader: params.signatureHeader,
+      timestampHeader: params.timestampHeader,
+      webhookSecret: config.QR_HMAC_SECRET,
+    });
+    if (!preCheck.valid) {
+      throw new AppError('WEBHOOK_SIGNATURE_INVALID', preCheck.reason, 401);
+    }
+  }
+
   return withTenant(db, tenantId, async (tenantTx) => {
     let rawSettlements = Array.isArray(body.settlements) ? body.settlements : [];
-    if (rawSettlements.length === 0) {
+    if (isDemoSandbox && rawSettlements.length === 0) {
       const pendingRows = await listTenantPayoutBatchesInTx(tenantTx, tenantId);
       rawSettlements = pendingRows.map((b, idx) => ({
         batchCodeOrId: b.batch_code,
@@ -444,7 +462,7 @@ export async function handleBankNodalWebhook(
     let signatureHeader = params.signatureHeader;
     let timestampHeader = params.timestampHeader;
 
-    if (config.DEMO_MODE && (body.simulateSigned || !signatureHeader)) {
+    if (isDemoSandbox && (body.simulateSigned || !signatureHeader)) {
       const signed = signBankNodalWebhookPayload(webhookPayload, config.QR_HMAC_SECRET);
       signatureHeader = signed.headers['X-HarbourOS-Webhook-Signature'];
       timestampHeader = signed.headers['X-HarbourOS-Webhook-Timestamp'];

@@ -155,32 +155,34 @@ export const FisherWorkspace: React.FC<{
   ];
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <StatutoryLedgerWaterfallSvgDecor size={40} />
+    <div className="flex flex-col gap-3.5 sm:gap-5">
+      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="hidden sm:block shrink-0">
+            <StatutoryLedgerWaterfallSvgDecor size={36} />
+          </div>
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
               {t('workspaces.fisherTitle')}
             </h1>
-            <p className="text-xs text-[var(--text-secondary)] truncate">
+            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
               {fisherman?.full_name} · {vessel?.vessel_name_en} ({vessel?.registration_no})
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
           <Button
             variant="primary"
             size="sm"
-            icon={<Volume2 className="w-4 h-4" />}
+            icon={<Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             onClick={handleListenMalayalam}
           >
-            കേൾക്കുക (Listen in Malayalam)
+            കേൾക്കുക (Listen)
           </Button>
           <Button
             variant="secondary"
             size="sm"
-            icon={<Printer className="w-4 h-4" />}
+            icon={<Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             onClick={() => {
               setIsReprint(false);
               setVoucherModalOpen(true);
@@ -191,10 +193,10 @@ export const FisherWorkspace: React.FC<{
           <Button
             variant="outline"
             size="sm"
-            icon={<FileDown className="w-4 h-4" />}
+            icon={<FileDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             onClick={handleExportPassbookCsv}
           >
-            Download Passbook CSV
+            Passbook CSV
           </Button>
         </div>
       </div>
@@ -209,12 +211,15 @@ export const FisherWorkspace: React.FC<{
       )}
 
       {/* Passbook Top Balances */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-        <Metric
-          label="Net Payout (95%)"
-          value={formatInrFromPaise(payableAccount?.balance_paise ?? totalNetPaise)}
-          status={{ tone: 'ok', label: 'SETTLED' }}
-        />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+        <div className="col-span-2 sm:col-span-1">
+          <Metric
+            featured
+            label="Net Payout (95%)"
+            value={formatInrFromPaise(payableAccount?.balance_paise ?? totalNetPaise)}
+            status={{ tone: 'ok', label: 'SETTLED' }}
+          />
+        </div>
         <Metric
           label="Bonus Escrow (40%)"
           value={formatInrFromPaise(bonusEscrowAccount?.balance_paise ?? totalBonusPaise)}
@@ -229,59 +234,59 @@ export const FisherWorkspace: React.FC<{
 
       {/* Transparent 5% Statutory Deduction Breakdown Card */}
       <Card title={t('workspaces.fisherBreakdownTitle')}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="p-4 rounded-[var(--radius-card)] bg-[var(--brand-soft)] border border-[var(--navy-200)]">
-            <div className="text-xs font-bold uppercase text-[var(--brand-soft-fg)]">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
+          <div className="col-span-2 lg:col-span-1 p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--brand-soft)] border border-[var(--navy-200)]">
+            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--brand-soft-fg)]">
               1. Your Net Payout (95%)
             </div>
-            <div className="text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
+            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
               {formatInrFromPaise(totalNetPaise)}
             </div>
-            <div className="text-xs text-[var(--text-secondary)] mt-1">
+            <div className="text-[11px] sm:text-xs text-[var(--text-secondary)] mt-0.5 sm:mt-1">
               Credited directly to vessel owner
             </div>
           </div>
 
-          <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
-            <div className="text-xs font-bold uppercase text-[var(--text-secondary)]">
-              2. Your Bonus Escrow (40% of 5%)
+          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
+            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
+              2. Bonus Escrow (40%)
             </div>
-            <div className="text-xl font-bold font-mono-code text-[var(--brand)] mt-1">
+            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--brand)] mt-1">
               {formatInrFromPaise(totalBonusPaise)}
             </div>
-            <div className="text-xs text-[var(--text-muted)] mt-1">
-              2.00% of GTV returned annually
+            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">
+              2.00% GTV annual return
             </div>
           </div>
 
-          <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
-            <div className="text-xs font-bold uppercase text-[var(--text-secondary)]">
-              3. Licensed Auctioneer (20% of 5%)
+          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
+            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
+              3. Auctioneer (20%)
             </div>
-            <div className="text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
+            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
               {formatInrFromPaise(totalCommissionPaise / 5n)}
             </div>
-            <div className="text-xs text-[var(--text-muted)] mt-1">1.00% of GTV (Act s.4(5))</div>
+            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">1.00% GTV (Act s.4(5))</div>
           </div>
 
-          <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
-            <div className="text-xs font-bold uppercase text-[var(--text-secondary)]">
-              4. Harbour Society HMS (20% of 5%)
+          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
+            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
+              4. Harbour HMS (20%)
             </div>
-            <div className="text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
+            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
               {formatInrFromPaise(totalCommissionPaise / 5n)}
             </div>
-            <div className="text-xs text-[var(--text-muted)] mt-1">1.00% of GTV (Act s.4(5))</div>
+            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">1.00% GTV (Act s.4(5))</div>
           </div>
 
-          <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
-            <div className="text-xs font-bold uppercase text-[var(--text-secondary)]">
-              5. Primary Co-op Society (20% of 5%)
+          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
+            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
+              5. Primary Co-op (20%)
             </div>
-            <div className="text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
+            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
               {formatInrFromPaise(totalCommissionPaise / 5n)}
             </div>
-            <div className="text-xs text-[var(--text-muted)] mt-1">1.00% of GTV (Act s.4(5))</div>
+            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">1.00% GTV (Act s.4(5))</div>
           </div>
         </div>
       </Card>

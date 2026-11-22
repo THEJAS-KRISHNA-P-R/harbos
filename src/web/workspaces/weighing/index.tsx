@@ -282,25 +282,27 @@ export const WeighingWorkspace: React.FC<{
   ];
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3.5 sm:gap-5">
       {/* Top Status & Connectivity Banner */}
-      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <DocksideWeighingScaleSvgDecor size={40} />
+      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="hidden sm:block shrink-0">
+            <DocksideWeighingScaleSvgDecor size={36} />
+          </div>
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
               {t('workspaces.weighingTitle')}
             </h1>
-            <p className="text-xs text-[var(--text-secondary)] truncate">
+            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
               {data.vessels.length} {t('dockside.vessel')} · HMAC-SHA256 Signed QR
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
           <Button
             variant="secondary"
             size="sm"
-            icon={<ScanLine className="w-4 h-4" />}
+            icon={<ScanLine className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             onClick={() => setScannerOpen(true)}
           >
             {t('actions.scanVesselQr')}
@@ -314,7 +316,7 @@ export const WeighingWorkspace: React.FC<{
             <Button
               variant="primary"
               size="sm"
-              icon={<RefreshCw className="w-4 h-4" />}
+              icon={<RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
               onClick={handleSyncOfflineQueue}
               loading={submitting}
             >
@@ -334,15 +336,17 @@ export const WeighingWorkspace: React.FC<{
       )}
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-        <Metric
-          featured
-          label="Total Landed Weight"
-          value={formatKgFromGrams(
-            data.lots.reduce((acc, l) => acc + BigInt(l.net_grams), 0n)
-          )}
-          status={{ tone: 'info', label: 'BIGINT GRAMS' }}
-        />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+        <div className="col-span-2 sm:col-span-1">
+          <Metric
+            featured
+            label="Total Landed Weight"
+            value={formatKgFromGrams(
+              data.lots.reduce((acc, l) => acc + BigInt(l.net_grams), 0n)
+            )}
+            status={{ tone: 'info', label: 'BIGINT GRAMS' }}
+          />
+        </div>
         <Metric
           label="Tagged Lots Today"
           value={String(data.lots.length)}
@@ -362,8 +366,8 @@ export const WeighingWorkspace: React.FC<{
 
       {/* Main Weighing Terminal Card */}
       <Card title={t('workspaces.weighingCard')}>
-        <form onSubmit={handleTagLot} className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <form onSubmit={handleTagLot} className="flex flex-col gap-3.5 sm:gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <Select
               label="1. Landed Fishing Vessel (QR Token / Registration)"
               dockSize
@@ -391,10 +395,10 @@ export const WeighingWorkspace: React.FC<{
           </div>
 
           <div>
-            <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
+            <div className="text-[11px] sm:text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2 sm:mb-3">
               2. Select Catch Species (Malayalam + English + Section 19 Floor Price)
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
               {data.species.map((sp) => (
                 <SpeciesTile
                   key={sp.species_id}
@@ -409,7 +413,7 @@ export const WeighingWorkspace: React.FC<{
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-[var(--border-hair)]">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4 pt-2 border-t border-[var(--border-hair)]">
             <Input
               label="3. Box Count (Boxes)"
               type="number"
@@ -419,7 +423,7 @@ export const WeighingWorkspace: React.FC<{
               onChange={(e) => setTotalBoxes(e.target.value)}
             />
             <Input
-              label="4. Net Catch Weight (kg → stored as integer grams)"
+              label="4. Net Catch Weight (kg → grams)"
               type="number"
               step="0.001"
               mono
@@ -428,15 +432,17 @@ export const WeighingWorkspace: React.FC<{
               onChange={(e) => setNetKgInput(e.target.value)}
               hint={`Exact integer storage: ${Math.round((Number(netKgInput) || 0) * 1000).toLocaleString('en-IN')} grams`}
             />
-            <Input
-              label="5. Core Temperature (°C — s.21 Quality)"
-              type="number"
-              step="0.1"
-              mono
-              dockSize
-              value={coreTempC}
-              onChange={(e) => setCoreTempC(e.target.value)}
-            />
+            <div className="col-span-2 sm:col-span-1">
+              <Input
+                label="5. Core Temperature (°C — s.21 Quality)"
+                type="number"
+                step="0.1"
+                mono
+                dockSize
+                value={coreTempC}
+                onChange={(e) => setCoreTempC(e.target.value)}
+              />
+            </div>
           </div>
 
           {weightSource === 'MANUAL' && (
@@ -457,13 +463,14 @@ export const WeighingWorkspace: React.FC<{
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-2 sm:gap-3 pt-1 sm:pt-2">
             <Button
               type="button"
               variant="secondary"
               size="dock"
-              icon={<Scale className="w-5 h-5" />}
+              icon={<Scale className="w-4 h-4 sm:w-5 sm:h-5" />}
               onClick={handleSimulateScaleRead}
+              className="w-full sm:w-auto"
             >
               {t('workspaces.weighingScaleBtn')}
             </Button>
@@ -472,7 +479,8 @@ export const WeighingWorkspace: React.FC<{
               variant="primary"
               size="dock"
               loading={submitting}
-              icon={<QrCode className="w-5 h-5" />}
+              icon={<QrCode className="w-4 h-4 sm:w-5 sm:h-5" />}
+              className="w-full sm:w-auto"
             >
               {simulateOffline
                 ? t('workspaces.weighingOfflineSubmit')

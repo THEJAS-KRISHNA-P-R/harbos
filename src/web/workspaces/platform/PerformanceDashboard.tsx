@@ -517,8 +517,46 @@ export const PerformanceDashboard: React.FC<{
             ))}
           </div>
 
-          <div className="rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)] overflow-x-auto max-h-64">
-            <table className="w-full text-left border-collapse text-xs">
+          <div className="rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)] max-h-64 overflow-y-auto overflow-x-hidden md:overflow-x-auto">
+            <div className="md:hidden divide-y divide-[var(--border-hair)] font-mono-code text-xs">
+              {filteredLogs.length === 0 ? (
+                <div className="py-6 px-3 text-center text-[var(--text-muted)]">
+                  No centralized log entries match the current service or search filter.
+                </div>
+              ) : (
+                filteredLogs.slice(0, 20).map((log) => (
+                  <div key={log.id} className="p-2.5 flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-[var(--text-primary)] truncate">
+                        {log.actionCode}
+                      </span>
+                      <Badge
+                        tone={
+                          log.level === 'error'
+                            ? 'danger'
+                            : log.level === 'warn'
+                              ? 'warn'
+                              : 'ok'
+                        }
+                        label={log.level.toUpperCase()}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
+                      <span className="text-[var(--brand)] font-semibold">{log.service}</span>
+                      <span>
+                        {log.timestampIso.slice(11, 23)}
+                        {log.durationMs !== undefined ? ` · ${log.durationMs} ms` : ''}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-secondary)] break-words">
+                      {log.message}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <table className="hidden md:table w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-[var(--border-hair)] bg-[var(--bg-sunken)] text-[11px] uppercase text-[var(--text-muted)]">
                   <th className="py-2 px-3">Timestamp</th>

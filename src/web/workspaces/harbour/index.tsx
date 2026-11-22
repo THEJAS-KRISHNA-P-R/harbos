@@ -515,38 +515,41 @@ export const HarbourWorkspace: React.FC<{
   );
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">
+    <div className="flex flex-col gap-3.5 sm:gap-5">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-2.5 sm:gap-3">
+        <div className="min-w-0">
+          <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
             {data.tenant?.name_en ?? 'Harbour Operations'}
           </h1>
-          <p className="text-xs text-[var(--text-muted)]">
+          <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate">
             Policy {data.tenant?.active_policy_id} · <span lang="ml">{data.tenant?.name_ml}</span>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto min-w-0">
           <Button
             variant="secondary"
             size="sm"
             icon={<FileDown className="w-3.5 h-3.5" />}
             onClick={handleExportSection22ReturnCsv}
+            className="self-start sm:self-auto"
           >
             Export s.22 CSV
           </Button>
-          <Tabs
-            items={[
-              { id: 'today', label: t('workspaces.harbourTabOverview'), badge: data.lots.length },
-              { id: 'masterdata', label: t('workspaces.harbourTabMasterdata'), badge: data.vessels.length },
-              { id: 'accounting', label: t('workspaces.harbourTabAccounting'), badge: data.reversals.length },
-              { id: 'reports', label: t('workspaces.harbourTabReports') },
-              { id: 'audit', label: t('workspaces.harbourTabAudit'), badge: allAuditLogs.length },
-            ]}
-            activeId={activeTab}
-            onChange={(id) =>
-              setActiveTab(id as 'today' | 'masterdata' | 'accounting' | 'reports' | 'audit')
-            }
-          />
+          <div className="w-full sm:w-auto min-w-0">
+            <Tabs
+              items={[
+                { id: 'today', label: t('workspaces.harbourTabOverview'), badge: data.lots.length },
+                { id: 'masterdata', label: t('workspaces.harbourTabMasterdata'), badge: data.vessels.length },
+                { id: 'accounting', label: t('workspaces.harbourTabAccounting'), badge: data.reversals.length },
+                { id: 'reports', label: t('workspaces.harbourTabReports') },
+                { id: 'audit', label: t('workspaces.harbourTabAudit'), badge: allAuditLogs.length },
+              ]}
+              activeId={activeTab}
+              onChange={(id) =>
+                setActiveTab(id as 'today' | 'masterdata' | 'accounting' | 'reports' | 'audit')
+              }
+            />
+          </div>
         </div>
       </div>
 
@@ -560,14 +563,16 @@ export const HarbourWorkspace: React.FC<{
       )}
 
       {/* Compact 3-Metric Strip */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Metric
-          featured
-          label="Gross Turnover (GTV)"
-          value={formatInrFromPaise(totalGtvPaise)}
-          sublabel={`${data.allocations.length} allocations settled`}
-          status={{ tone: 'ok', label: 'BALANCED' }}
-        />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4">
+        <div className="col-span-2 sm:col-span-1">
+          <Metric
+            featured
+            label="Gross Turnover (GTV)"
+            value={formatInrFromPaise(totalGtvPaise)}
+            sublabel={`${data.allocations.length} allocations settled`}
+            status={{ tone: 'ok', label: 'BALANCED' }}
+          />
+        </div>
         <Metric
           label="Fisher Bonus Pool (40%)"
           value={formatInrFromPaise(totalBonusEscrowPaise)}
@@ -586,19 +591,19 @@ export const HarbourWorkspace: React.FC<{
       </div>
 
       {activeTab === 'today' && (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-3.5 sm:gap-5">
           {/* 1-Click Payout Batch & UTR Reconciliation surfaced directly on Overview */}
           <Card
             title="Payout Batches & UTR Clearing"
             actions={
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 <input
                   type="text"
                   value={utrInput}
                   onChange={(e) => setUtrInput(e.target.value)}
                   aria-label="Bank UTR Reference"
                   placeholder="UTR reference…"
-                  className="h-9 px-3 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-xs font-mono-code text-[var(--text-primary)]"
+                  className="h-8 sm:h-9 px-2.5 sm:px-3 flex-1 sm:flex-none min-w-0 w-full sm:w-48 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-xs font-mono-code text-[var(--text-primary)]"
                 />
                 <Button
                   variant="primary"

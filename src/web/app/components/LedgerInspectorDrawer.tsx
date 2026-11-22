@@ -816,7 +816,6 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
                         return (
                           <div
                             key={`${row.rowKey}-${row.rowNumber}`}
-                            style={{ animationDelay: `${idx * 45}ms` }}
                             className={`p-3 rounded-[var(--radius-control)] border text-xs flex flex-col gap-1.5 animate-utr-row-in transition-utr-pill ${
                               upgradedFromInvalid
                                 ? 'bg-[var(--brand-soft)] border-[var(--brand)]'

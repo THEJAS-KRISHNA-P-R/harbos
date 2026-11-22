@@ -110,10 +110,12 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
         <Tabs
           items={[
             { id: 'identity', label: 'Edit Profile & Authority' },
-            { id: 'switch', label: 'Switch Persona', badge: 8 },
+            ...(!import.meta.env.PROD
+              ? [{ id: 'switch', label: 'Switch Persona', badge: 8 }]
+              : []),
             { id: 'session', label: 'JWT & Activity', badge: profileData?.recentAudit.length ?? 0 },
           ]}
-          activeId={profileTab}
+          activeId={import.meta.env.PROD && profileTab === 'switch' ? 'identity' : profileTab}
           onChange={(id) => onChangeTab(id as 'identity' | 'switch' | 'session')}
         />
 

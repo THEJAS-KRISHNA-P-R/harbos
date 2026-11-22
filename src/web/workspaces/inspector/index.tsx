@@ -173,20 +173,22 @@ export const InspectorWorkspace: React.FC<{
   ];
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <ColdChainInspectorSvgDecor size={40} />
+    <div className="flex flex-col gap-3.5 sm:gap-5">
+      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="hidden sm:block shrink-0">
+            <ColdChainInspectorSvgDecor size={36} />
+          </div>
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
               {t('workspaces.inspectorTitle')}
             </h1>
-            <p className="text-xs text-[var(--text-secondary)] truncate">
+            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
               {t('workspaces.inspectorSubtitle')}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
           <Badge tone="ok" label="ACT 16 s.21" />
           <Badge tone="info" label="<= 2.5°C" />
         </div>
@@ -201,15 +203,17 @@ export const InspectorWorkspace: React.FC<{
         />
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-        <Metric
-          label="Export Grade (A_EXPORT)"
-          value={String(
-            data.lots.filter((l) => l.inspection_grade === 'A_EXPORT').length
-          )}
-          unit="LOTS"
-          status={{ tone: 'ok', label: 'CERTIFIED' }}
-        />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+        <div className="col-span-2 sm:col-span-1">
+          <Metric
+            label="Export Grade (A_EXPORT)"
+            value={String(
+              data.lots.filter((l) => l.inspection_grade === 'A_EXPORT').length
+            )}
+            unit="LOTS"
+            status={{ tone: 'ok', label: 'CERTIFIED' }}
+          />
+        </div>
         <Metric
           label="Domestic / Processing"
           value={String(
@@ -245,9 +249,9 @@ export const InspectorWorkspace: React.FC<{
           </Button>
         }
       >
-        <form onSubmit={handleSaveInspection} className="flex flex-col gap-5">
+        <form onSubmit={handleSaveInspection} className="flex flex-col gap-3.5 sm:gap-5">
           {aiAdvisory && (
-            <div className="p-4 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 text-[var(--info)] flex flex-col gap-1">
+            <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 text-[var(--info)] flex flex-col gap-1">
               <div className="text-xs font-bold uppercase tracking-wide">
                 {aiAdvisory.advisoryDisclaimer}
               </div>
@@ -264,7 +268,7 @@ export const InspectorWorkspace: React.FC<{
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
             <Select
               label="Select Lot to Inspect"
               dockSize
@@ -313,11 +317,12 @@ export const InspectorWorkspace: React.FC<{
               variant={grade === 'REJECTED_UNFIT' ? 'danger' : 'primary'}
               size="dock"
               loading={submitting}
+              className="w-full sm:w-auto"
               icon={
                 grade === 'REJECTED_UNFIT' ? (
-                  <ThermometerSnowflake className="w-5 h-5" />
+                  <ThermometerSnowflake className="w-4 h-4 sm:w-5 sm:h-5" />
                 ) : (
-                  <ShieldCheck className="w-5 h-5" />
+                  <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
                 )
               }
             >

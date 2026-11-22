@@ -141,9 +141,9 @@ test.describe('HarbourOS Visual & Responsive Smoke Suite (Phase C6)', () => {
     await page.goto('/w/weighing', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: 'Weighing & Lots' })).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole('button', { name: 'മലയാളം' }).click();
+    await page.getByRole('button', { name: 'Switch to Malayalam' }).click();
     await expect(page.getByRole('heading', { name: 'തൂക്കവും ലോട്ടുകളും' })).toBeVisible();
-    await page.getByRole('button', { name: 'EN' }).click();
+    await page.getByRole('button', { name: 'Switch to English' }).click();
     await expect(page.getByRole('heading', { name: 'Weighing & Lots' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Scan Vessel QR' }).click();
@@ -160,7 +160,7 @@ test.describe('HarbourOS Visual & Responsive Smoke Suite (Phase C6)', () => {
     await expect(lotSlip).toBeVisible();
     await expect(lotSlip.locator('svg').first()).toBeVisible();
     await page.getByRole('button', { name: '58mm' }).click();
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
 
     // 2. Inspector workspace
     await page.goto('/w/inspector', { waitUntil: 'domcontentloaded' });
@@ -177,7 +177,7 @@ test.describe('HarbourOS Visual & Responsive Smoke Suite (Phase C6)', () => {
     if (await pitSlipBtn.isVisible()) {
       await pitSlipBtn.click();
       await expect(page.getByTestId('dockside-print-slip')).toBeVisible();
-      await page.getByRole('button', { name: 'Close' }).click();
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
     }
 
     // 4. Buyer workspace: Sale Slip modal
@@ -187,7 +187,7 @@ test.describe('HarbourOS Visual & Responsive Smoke Suite (Phase C6)', () => {
     if (await buyerSlipBtn.isVisible()) {
       await buyerSlipBtn.click();
       await expect(page.getByTestId('dockside-print-slip')).toBeVisible();
-      await page.getByRole('button', { name: 'Close' }).click();
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
     }
 
     // 5. Fisher workspace: Fisherman Settlement Voucher
@@ -195,7 +195,7 @@ test.describe('HarbourOS Visual & Responsive Smoke Suite (Phase C6)', () => {
     await expect(page.getByRole('heading', { name: 'Fisher Passbook' })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: 'Print Settlement Voucher' }).click();
     await expect(page.getByTestId('dockside-print-slip')).toBeVisible();
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
 
     // 6. Harbour Admin: Masterdata CSV Dry-Run + 5 Statutory Reports + Shadow-Pilot Diff
     await page.goto('/w/harbour', { waitUntil: 'domcontentloaded' });
@@ -216,6 +216,60 @@ test.describe('HarbourOS Visual & Responsive Smoke Suite (Phase C6)', () => {
       () => document.documentElement.scrollWidth > window.innerWidth
     );
     expect(overflow).toBe(false);
+
+    // 7. Frontend RBAC gating check: Buyer role only sees Buyer Clearing nav and cannot see Ledger button
+    await page.goto('/w/buyer', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: 'Buyer Clearing Desk' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Ledger' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Platform Admin/ })).toHaveCount(0);
+
+    // 8. Mobile responsiveness guard (360px & 390px): zero horizontal overflow, zero header clipping, zero horizontal table scrolling
+    for (const vp of [
+      { width: 390, height: 844 },
+      { width: 360, height: 740 },
+    ]) {
+      await page.setViewportSize(vp);
+      for (const route of ['/w/harbour', '/w/weighing', '/w/pit', '/w/buyer']) {
+        await page.goto(route, { waitUntil: 'domcontentloaded' });
+        await expect(page.locator('header').first()).toBeVisible({ timeout: 15_000 });
+        await page.waitForSelector('[data-testid="datatable-mobile-list"]', {
+          state: 'visible',
+          timeout: 15_000,
+        });
+        const layoutCheck = await page.evaluate(() => {
+          const docOverflow = document.documentElement.scrollWidth > window.innerWidth;
+          const header = document.querySelector('header');
+          const clippedButtons: string[] = [];
+          if (header) {
+            const buttons = Array.from(header.querySelectorAll('button'));
+            for (const btn of buttons) {
+              const rect = btn.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0 && rect.right > window.innerWidth + 1) {
+                clippedButtons.push(btn.getAttribute('aria-label') || btn.textContent?.trim() || 'button');
+              }
+            }
+          }
+          const visibleTables = Array.from(document.querySelectorAll('table')).filter((tbl) => {
+            const style = window.getComputedStyle(tbl);
+            return style.display !== 'none' && tbl.getBoundingClientRect().width > 0;
+          });
+          const overflowingMobileLists = Array.from(
+            document.querySelectorAll('[data-testid="datatable-mobile-list"]')
+          ).filter((el) => el.scrollWidth > el.clientWidth + 1).length;
+          return {
+            docOverflow,
+            clippedButtons,
+            visibleTableCount: visibleTables.length,
+            overflowingMobileLists,
+          };
+        });
+        expect(layoutCheck.docOverflow, `Overflow on ${route} at ${vp.width}px`).toBe(false);
+        expect(layoutCheck.clippedButtons, `Clipped header controls on ${route} at ${vp.width}px`).toEqual([]);
+        expect(layoutCheck.visibleTableCount, `Visible horizontal <table> on ${route} at ${vp.width}px`).toBe(0);
+        expect(layoutCheck.overflowingMobileLists, `Overflowing mobile DataTable list on ${route} at ${vp.width}px`).toBe(0);
+      }
+    }
+
     expect(filterFatalConsoleErrors(consoleErrors)).toHaveLength(0);
   });
 });

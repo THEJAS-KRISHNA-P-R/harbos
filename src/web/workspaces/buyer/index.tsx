@@ -250,20 +250,22 @@ export const BuyerWorkspace: React.FC<{
   ];
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="p-4 sm:p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <StatutoryLedgerWaterfallSvgDecor size={40} />
+    <div className="flex flex-col gap-3.5 sm:gap-5">
+      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="hidden sm:block shrink-0">
+            <StatutoryLedgerWaterfallSvgDecor size={36} />
+          </div>
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
               {t('workspaces.buyerTitle')}
             </h1>
-            <p className="text-xs text-[var(--text-secondary)] truncate">
+            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
               {buyer?.buyer_name} · Paddle #{buyer?.paddle_no} · GSTIN: {buyer?.gstin}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
           <Badge tone="ok" label="CREDIT LINE ACTIVE" code={`PADDLE #${buyer?.paddle_no ?? 101}`} />
         </div>
       </div>
@@ -278,13 +280,15 @@ export const BuyerWorkspace: React.FC<{
       )}
 
       {/* Buyer Credit Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-        <Metric
-          featured
-          label="Available Trading Limit"
-          value={formatInrFromPaise(availablePaise)}
-          status={{ tone: 'ok', label: 'LOCKED' }}
-        />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+        <div className="col-span-2 sm:col-span-1">
+          <Metric
+            featured
+            label="Available Trading Limit"
+            value={formatInrFromPaise(availablePaise)}
+            status={{ tone: 'ok', label: 'LOCKED' }}
+          />
+        </div>
         <Metric
           label="Escrow + Credit"
           value={formatInrFromPaise(escrowPaise + creditPaise)}
@@ -302,7 +306,7 @@ export const BuyerWorkspace: React.FC<{
       <Card
         title={t('workspaces.buyerWatchlistTitle')}
         actions={
-          <div className="flex items-center gap-3">
+          <div className="w-full sm:w-auto grid grid-cols-2 sm:flex items-center gap-2 sm:gap-3">
             <Input
               label="Remote Bid (₹/kg)"
               type="number"

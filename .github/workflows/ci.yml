@@ -93,6 +93,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq pgbouncer postgresql-client
+          sudo systemctl stop pgbouncer 2>/dev/null || true
+          sudo systemctl disable pgbouncer 2>/dev/null || true
           bash scripts/ci-pgbouncer.sh
 
       - name: Verify Managed-Postgres RLS Gate (RLS_PLATFORM_MODE=owner, NOBYPASSRLS)
