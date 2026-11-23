@@ -54,4 +54,46 @@ HarbourOS enforces strict least-privilege separation across two distinct applica
    - Inject `DATABASE_URL`, `DATABASE_PLATFORM_URL`, and `RLS_PLATFORM_MODE` (`bypassrls` or `owner`) directly as runtime environment variables.
    - Neither application role is ever granted `SUPERUSER` or `CREATEROLE`.
 
+## 4. Cloud Run Deployment (`.github/workflows/deploy.yml`)
 
+Deployments run via `workflow_dispatch` (selecting `staging`, `pilot-munambam`, or `production`) or on Git tag push (`v*.*.*-pilot` -> `pilot-munambam`, `v*.*.*` -> `production`). The workflow refuses to deploy unless `CI & Quality Gates` (`ci.yml`) has already succeeded on the exact commit SHA (`verify-ci-green`).
+
+### One-Time GCP & GitHub Environment Setup
+1. **Artifact Registry:** Create a Docker repository named `harbouros` in `asia-south1`.
+2. **Cloud SQL for PostgreSQL 16:** Provision with Point-in-Time Recovery (PITR) and private IP / VPC connector, configure `RLS_PLATFORM_MODE=owner`, and create two non-superuser database roles (`harbour_app` and `harbour_platform`).
+3. **Secret Manager Secrets:** Create the 6 runtime secrets referenced by `deploy/cloud-run-web.yaml` and `deploy/cloud-run-worker.yaml` (all bound at version `latest`):
+   - `harbouros-database-app-url` (`DATABASE_URL` — `harbour_app` role via PgBouncer / pooler)
+   - `harbouros-database-platform-url` (`DATABASE_PLATFORM_URL` — `harbour_platform` role)
+   - `harbouros-jwt-access-secret` (`JWT_ACCESS_SECRET` — `>= 32` random bytes)
+   - `harbouros-qr-hmac-secret` (`QR_HMAC_SECRET` — distinct `>= 32` random bytes)
+   - `harbouros-msg91-auth-key` (`MSG91_AUTH_KEY` — DLT-registered MSG91 API key)
+   - `harbouros-msg91-otp-template-id` (`MSG91_OTP_TEMPLATE_ID` — DLT-approved OTP template ID)
+4. **Workload Identity Federation (WIF):** Configure a GCP WIF provider + deploy service account with `roles/artifactregistry.writer`, `roles/run.admin`, and `roles/iam.serviceAccountUser` on the Cloud Run runtime service account.
+5. **GitHub Environment Secrets (`staging` / `pilot-munambam` / `production`):**
+   - `GCP_PROJECT_ID`
+   - `GCP_WORKLOAD_IDENTITY_PROVIDER`
+   - `GCP_SERVICE_ACCOUNT`
+   - `DATABASE_MIGRATION_URL` (owner connection string used only during migration step)
+   - `HARBOUR_APP_PASSWORD` & `HARBOUR_PLATFORM_PASSWORD`
+
+### Deploy Pipeline Stages
+1. `verify-ci-green`: Confirms a successful completed `ci.yml` run exists for `${GITHUB_SHA}`.
+2. Preflight & static gates: Fails loudly if any of the 6 required secrets is missing, then runs `npm run lint`, `npm run check:actions`, `npm run check:deploy`, `npm run build`, and `npm run check:budget`.
+3. Image build & push: Builds `Dockerfile` and pushes `asia-south1-docker.pkg.dev/${GCP_PROJECT_ID}/harbouros/harbouros:${GITHUB_SHA}`.
+4. Owner-role migration: Runs `DATABASE_URL="$DATABASE_MIGRATION_URL" RLS_PLATFORM_MODE=owner npm run migrate` before traffic shift.
+5. Revision capture & deploy: Records the currently serving web revision, renders `IMAGE_PLACEHOLDER` in `deploy/cloud-run-web.yaml` and `deploy/cloud-run-worker.yaml`, and applies both via `gcloud run services replace`.
+6. Post-deploy smoke & automatic rollback: Verifies `GET /readyz` (`200`), `GET /healthz` (`200`), `Content-Security-Policy` containing `frame-ancestors 'none'`, and worker `Ready=True` status. If smoke fails and a previous web revision existed, the workflow immediately routes 100% of web traffic back to the previous revision.
+
+### Manual Rollback
+```bash
+# List recent revisions
+gcloud run revisions list --service=harbouros-web --region=asia-south1
+
+# Route 100% traffic back to a known-good revision
+gcloud run services update-traffic harbouros-web \
+  --region=asia-south1 \
+  --to-revisions="<PREVIOUS_REVISION>=100"
+```
+
+### Manifest–Config Parity Gate (`npm run check:deploy`)
+Every PR and deploy runs `scripts/check-deploy.ts`, which parses `deploy/cloud-run-web.yaml` and `deploy/cloud-run-worker.yaml`, rejects reserved `PORT` env overrides or non-versioned `secretKeyRef` keys, boots `parseEnvConfig()` with each manifest's exact production environment, and runs a negative control dropping `JWT_ACCESS_SECRET` to prove validation is active.

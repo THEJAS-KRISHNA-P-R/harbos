@@ -1,0 +1,5 @@
+# Fixture-only false positives in git history (fake bank ref / stub MSG91 key in tests).
+# Current files carry inline `gitleaks:allow`. Per-finding fingerprints, not whole commits.
+0b8393e66502a9489d3f5d821640091ca7d0328a:tests/api/c1-backend-compliance.test.ts:generic-api-key:722
+0b8393e66502a9489d3f5d821640091ca7d0328a:tests/api/pilot-completeness.test.ts:generic-api-key:149
+0b8393e66502a9489d3f5d821640091ca7d0328a:tests/api/pilot-completeness.test.ts:generic-api-key:169

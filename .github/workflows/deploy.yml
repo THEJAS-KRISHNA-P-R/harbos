@@ -23,7 +23,7 @@ permissions:
 jobs:
   verify-ci-green:
     name: Verify HarbourOS CI Passed for Commit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -49,17 +49,45 @@ jobs:
           echo "PASS: HarbourOS CI succeeded for commit ${TARGET_SHA}."
 
   deploy-cloud-run:
+    name: Build, Migrate, Deploy & Smoke-Test on Cloud Run
     needs: [verify-ci-green]
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # GitHub Environment holds that environment's secrets and (recommended) required reviewers.
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target_env || (endsWith(github.ref_name, '-pilot') && 'pilot-munambam' || 'production') }}
+    concurrency:
+      group: deploy-${{ github.event_name == 'workflow_dispatch' && inputs.target_env || (endsWith(github.ref_name, '-pilot') && 'pilot-munambam' || 'production') }}
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
     env:
-      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-      DATABASE_PLATFORM_URL: ${{ secrets.DATABASE_PLATFORM_URL }}
+      REGION: asia-south1
+      AR_REPO: harbouros
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     steps:
+      - name: Preflight - required secrets (fail loudly, never skip silently)
+        env:
+          S_GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          S_GCP_WIP: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          S_GCP_SA: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          S_DB_MIGRATION: ${{ secrets.DATABASE_MIGRATION_URL }}
+          S_APP_PW: ${{ secrets.HARBOUR_APP_PASSWORD }}
+          S_PLATFORM_PW: ${{ secrets.HARBOUR_PLATFORM_PASSWORD }}
+        run: |
+          missing=""
+          [ -n "$S_GCP_PROJECT_ID" ] || missing="$missing GCP_PROJECT_ID"
+          [ -n "$S_GCP_WIP" ] || missing="$missing GCP_WORKLOAD_IDENTITY_PROVIDER"
+          [ -n "$S_GCP_SA" ] || missing="$missing GCP_SERVICE_ACCOUNT"
+          [ -n "$S_DB_MIGRATION" ] || missing="$missing DATABASE_MIGRATION_URL"
+          [ -n "$S_APP_PW" ] || missing="$missing HARBOUR_APP_PASSWORD"
+          [ -n "$S_PLATFORM_PW" ] || missing="$missing HARBOUR_PLATFORM_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Refusing to deploy: missing required secrets:${missing}. See docs/RUNBOOK.md (Cloud Run deploy)."
+            exit 1
+          fi
+          echo "All required deploy secrets are present."
+
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -72,30 +100,92 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify Quality Gates
-        run: npm run check
+      # The full test suite already passed for this exact SHA (verify-ci-green). Re-run only the cheap,
+      # DB-free gates here so the deploy cannot drift from what CI approved.
+      - name: Static gates (typecheck, action pins, deploy manifests)
+        run: |
+          npm run lint
+          npm run check:actions
+          npm run check:deploy
 
-      - name: Build Web Assets
-        run: npm run build
+      - name: Build web assets and verify bundle budget
+        run: |
+          npm run build
+          npm run check:budget
 
-      - name: Verify Bundle Budget
-        run: npm run check:budget
-
-      - name: Authenticate to Google Cloud
-        if: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: Deploy Database Migrations
-        if: ${{ env.DATABASE_PLATFORM_URL != '' }}
+      - name: Build and push container image (tagged with commit SHA)
+        run: |
+          set -euo pipefail
+          IMAGE="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/harbouros:${GITHUB_SHA}"
+          if ! gcloud artifacts repositories describe "${AR_REPO}" --location="${REGION}" --project="${GCP_PROJECT_ID}" >/dev/null 2>&1; then
+            echo "::error::Artifact Registry repo '${AR_REPO}' not found in ${REGION}. Create it once: gcloud artifacts repositories create ${AR_REPO} --repository-format=docker --location=${REGION}"
+            exit 1
+          fi
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build --pull -t "${IMAGE}" .
+          docker push "${IMAGE}"
+          echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Run database migrations (owner role, before new revision ships)
+        env:
+          RLS_PLATFORM_MODE: owner
+          # migrate reads DATABASE_PLATFORM_URL first; here it MUST be an owner/admin connection, not the runtime role.
+          DATABASE_PLATFORM_URL: ${{ secrets.DATABASE_MIGRATION_URL }}
+          HARBOUR_APP_PASSWORD: ${{ secrets.HARBOUR_APP_PASSWORD }}
+          HARBOUR_PLATFORM_PASSWORD: ${{ secrets.HARBOUR_PLATFORM_PASSWORD }}
         run: npm run migrate
 
-      - name: Deploy Cloud Run Web & Worker
-        if: ${{ env.GCP_PROJECT_ID != '' }}
+      - name: Record currently serving web revision (rollback target)
         run: |
-          echo "Deploying Cloud Run service to asia-south1..."
-          # gcloud run services replace deploy/cloud-run-web.yaml --region=asia-south1
-          # gcloud run services replace deploy/cloud-run-worker.yaml --region=asia-south1
-          echo "Deployment successful."
+          PREV="$(gcloud run services describe harbouros-web --region="${REGION}" --project="${GCP_PROJECT_ID}" --format='value(status.latestReadyRevisionName)' 2>/dev/null || true)"
+          echo "PREV_WEB_REVISION=${PREV}" >> "$GITHUB_ENV"
+          echo "Previous web revision: ${PREV:-<none, first deploy>}"
+
+      - name: Render manifests with the built image
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/deploy"
+          for f in cloud-run-web cloud-run-worker; do
+            sed "s#IMAGE_PLACEHOLDER#${IMAGE}#g" "deploy/${f}.yaml" > "${RUNNER_TEMP}/deploy/${f}.yaml"
+            grep -q "IMAGE_PLACEHOLDER" "${RUNNER_TEMP}/deploy/${f}.yaml" && { echo "::error::placeholder not replaced in ${f}"; exit 1; }
+          done
+
+      - name: Deploy web and worker to Cloud Run
+        run: |
+          set -euo pipefail
+          gcloud run services replace "${RUNNER_TEMP}/deploy/cloud-run-web.yaml" --region="${REGION}" --project="${GCP_PROJECT_ID}"
+          gcloud run services replace "${RUNNER_TEMP}/deploy/cloud-run-worker.yaml" --region="${REGION}" --project="${GCP_PROJECT_ID}"
+          # Public web endpoint (OTP login happens in-app). The worker stays private.
+          gcloud run services add-iam-policy-binding harbouros-web --region="${REGION}" --project="${GCP_PROJECT_ID}" \
+            --member=allUsers --role=roles/run.invoker --quiet >/dev/null
+
+      - name: Post-deploy smoke test (readiness, security headers, worker health)
+        run: |
+          set -euo pipefail
+          URL="$(gcloud run services describe harbouros-web --region="${REGION}" --project="${GCP_PROJECT_ID}" --format='value(status.url)')"
+          echo "Web URL: ${URL}"
+          ok=0
+          for i in $(seq 1 24); do
+            if curl -fsS --max-time 10 "${URL}/readyz" >/dev/null; then ok=1; break; fi
+            sleep 5
+          done
+          [ "$ok" = "1" ] || { echo "::error::/readyz never became healthy at ${URL}"; exit 1; }
+          curl -fsS --max-time 10 "${URL}/healthz" >/dev/null
+          curl -sI --max-time 10 "${URL}/" | grep -iq "frame-ancestors 'none'" || { echo "::error::CSP frame-ancestors 'none' header missing"; exit 1; }
+          gcloud run services describe harbouros-worker --region="${REGION}" --project="${GCP_PROJECT_ID}" --format=json \
+            | jq -e '.status.conditions[] | select(.type=="Ready") | .status=="True"' >/dev/null \
+            || { echo "::error::worker service is not Ready"; exit 1; }
+          echo "Smoke test passed for ${GITHUB_SHA}."
+
+      - name: Roll back web traffic to previous revision on failure
+        if: failure() && env.PREV_WEB_REVISION != ''
+        run: |
+          echo "Deploy failed after revision change; shifting web traffic back to ${PREV_WEB_REVISION}"
+          gcloud run services update-traffic harbouros-web --region="${REGION}" --project="${GCP_PROJECT_ID}" \
+            --to-revisions="${PREV_WEB_REVISION}=100"

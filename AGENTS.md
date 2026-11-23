@@ -20,3 +20,4 @@ Follow these rules in every session to keep builds deterministic, safe, and fast
 - Every tenant-scoped table must have `ENABLE ROW LEVEL SECURITY`, `FORCE ROW LEVEL SECURITY`, and a **PERMISSIVE** policy using `core.tenant_access_allowed(tenant_id)`.
 - Keep SQL `.query()` calls strictly inside `src/server/modules/**/repo.ts`, `src/server/adapters/**`, `src/server/ports/db.ts`, or `src/server/platform/seed.ts`.
 - Report evidence (actual command output) for every claim, and mark anything that cannot be executed locally as `UNVERIFIED` with the exact human command.
+- Deploy manifests (`deploy/*.yaml`) are validated by `npm run check:deploy`, which boots the real production config with each manifest's exact env. Any env/secret change in config.ts must be mirrored in both manifests or CI fails.

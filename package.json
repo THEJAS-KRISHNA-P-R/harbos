@@ -29,10 +29,11 @@
     "check:boundaries": "tsx scripts/check-boundaries.ts",
     "check:contrast": "tsx scripts/check-contrast.ts",
     "check:budget": "tsx scripts/check-budget.ts",
+    "check:deploy": "tsx scripts/check-deploy.ts",
     "check:i18n": "tsx scripts/check-i18n.ts",
-    "check:fast": "tsx scripts/check-lockfile.ts && tsc --noEmit && tsx scripts/check-i18n.ts && tsx scripts/check-boundaries.ts && tsx scripts/check-contrast.ts && tsx --test tests/unit/*.test.ts",
+    "check:fast": "tsx scripts/check-lockfile.ts && tsc --noEmit && tsx scripts/check-i18n.ts && tsx scripts/check-boundaries.ts && tsx scripts/check-contrast.ts && tsx scripts/check-deploy.ts && tsx --test tests/unit/*.test.ts",
     "ci:local": "bash scripts/ci-local.sh",
-    "check": "tsx scripts/check-lockfile.ts && tsc --noEmit && tsx scripts/check-i18n.ts && ! grep -rnE \"catch\\s*(\\([^)]*\\))?\\s*\\{\\s*(//[^\\n]*)?\\s*\\}\" tests scripts src && tsx --test --test-concurrency=1 tests/characterization/*.test.ts tests/unit/*.test.ts tests/db/*.test.ts tests/api/*.test.ts tests/multi-instance/*.test.ts && tsx scripts/check-boundaries.ts && tsx scripts/check-contrast.ts && vite build && tsx scripts/check-budget.ts"
+    "check": "tsx scripts/check-lockfile.ts && tsc --noEmit && tsx scripts/check-i18n.ts && ! grep -rnE \"catch\\s*(\\([^)]*\\))?\\s*\\{\\s*(//[^\\n]*)?\\s*\\}\" tests scripts src && tsx --test --test-concurrency=1 tests/characterization/*.test.ts tests/unit/*.test.ts tests/db/*.test.ts tests/api/*.test.ts tests/multi-instance/*.test.ts && tsx scripts/check-boundaries.ts && tsx scripts/check-deploy.ts && tsx scripts/check-contrast.ts && vite build && tsx scripts/check-budget.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",

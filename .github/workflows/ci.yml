@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       postgres:
@@ -61,13 +61,14 @@ jobs:
       - name: Production Dependency Vulnerability Audit
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Typecheck, i18n, Empty-Catch Gate, Boundaries & WCAG Contrast
+      - name: Typecheck, i18n, Empty-Catch Gate, Boundaries, WCAG Contrast & Deploy Manifests
         run: |
           npm run lint
           npm run check:i18n
           ! grep -rnE "catch\s*(\([^)]*\))?\s*\{\s*(//[^\n]*)?\s*\}" tests scripts src
           npm run check:boundaries
           npm run check:contrast
+          npm run check:deploy
 
       - name: Run Migrations Against PostgreSQL 16 Service Container (Owner Role)
         env:
@@ -92,9 +93,15 @@ jobs:
           HARBOUR_PLATFORM_PASSWORD: test_platform_password_harbour_secret_2026
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq pgbouncer postgresql-client
-          sudo systemctl stop pgbouncer 2>/dev/null || true
-          sudo systemctl disable pgbouncer 2>/dev/null || true
+          sudo apt-get install -y -qq pgbouncer postgresql-client iproute2
+          sudo systemctl stop pgbouncer.service pgbouncer.socket 2>/dev/null || true
+          sudo systemctl disable pgbouncer.service pgbouncer.socket 2>/dev/null || true
+          if ss -H -ltn "sport = :6432" | grep -q .; then
+            echo "[ci] Existing listener detected on port 6432:"
+            sudo ss -H -ltnp "sport = :6432" || true
+            sudo pkill -TERM -x pgbouncer 2>/dev/null || true
+            sleep 1
+          fi
           bash scripts/ci-pgbouncer.sh
 
       - name: Verify Managed-Postgres RLS Gate (RLS_PLATFORM_MODE=owner, NOBYPASSRLS)

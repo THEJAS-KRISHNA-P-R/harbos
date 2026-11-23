@@ -97,6 +97,24 @@ export async function bootstrapTestDatabase(): Promise<BootstrappedTestDb> {
       // 3. Seed demo data idempotently as harbour_platform (never swallow errors)
       await seedDemo(platformDb);
 
+      // 3b. Hermetic rate-limit state. Buckets live in core.auth_rate_limits and survive between runs, so
+      // a second `npm test` against the same database would hit spurious 429s. Start every suite empty.
+      await platformDb.query(`DELETE FROM core.auth_rate_limits`);
+
+      // 3c. Hermetic outbox state. The worker claims PENDING events FIFO in batches, so a backlog left by an
+      // earlier run or the scale fixture starves rows a test just enqueued. Destructive, so guarded to
+      // databases whose name contains "test" (harbouros_test locally and in CI).
+      const dbNameRes = await platformDb.query<{ db: string }>(`SELECT current_database() AS db`);
+      const dbName = dbNameRes.rows[0]?.db ?? '';
+      if (/test/i.test(dbName)) {
+        await platformDb.query(`DELETE FROM sync.outbox_events WHERE status = 'PENDING'`);
+      } else {
+        console.warn(
+          `[pg-bootstrap] database "${dbName}" is not named *test*: leaving sync.outbox_events untouched. ` +
+            'A PENDING backlog can make outbox tests flaky; use a dedicated test database.'
+        );
+      }
+
       // 4. Verify seeded state (demo tenant, >= 9 demo users, >= 12 demo ledger entries)
       const tenantCheck = await platformDb.query<{ tenant_id: string }>(
         `SELECT tenant_id FROM core.tenants WHERE tenant_id = $1`,

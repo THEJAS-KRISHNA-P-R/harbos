@@ -24,9 +24,10 @@ Adopt a strict **Modular Monolith** architecture with clean domain isolation und
 - `tenancy`: Cross-tenant RLS policy boundaries and administrative provisioning.
 
 ### Enforcement Rules
-1. **Zero Direct SQL Outside Repos**: Routes, services, and UI components never execute raw SQL statements directly. All queries are encapsulated in dedicated `repo.ts` modules.
-2. **App Shell Size Limit**: `src/server/app.ts` must remain lean (`<= 150 lines`), serving strictly as a route mounting harness.
-3. **Module File Limits**: No file inside `src/server/**/*.ts` may exceed 600 lines.
+1. **Zero Direct SQL Outside Repos**: Routes, services, and UI components never execute raw SQL statements directly. All `.query()` calls are restricted to `src/server/modules/**/repo.ts`, `src/server/adapters/**`, `src/server/ports/db.ts`, and `src/server/platform/seed.ts` (enforced by `npm run check:boundaries`).
+2. **Centralized Config & Manifest Parity**: `process.env` is read exclusively in `src/server/config.ts`. Cloud Run manifests (`deploy/cloud-run-web.yaml`, `deploy/cloud-run-worker.yaml`) are tested against `parseEnvConfig()` in CI via `npm run check:deploy`.
+3. **Worker Health Listener**: `src/server/entry/worker.ts` binds an HTTP `/healthz` and `/readyz` probe listener on `config.PORT` (`unref()`'d so `SIGTERM` drains cleanly) to satisfy Cloud Run container startup/liveness probes alongside the transactional outbox poll loop.
+4. **App Shell & Module Size Limits**: `src/server/app.ts` must remain lean (`<= 150 lines`), and no file inside `src/server/**/*.ts` may exceed `600 lines`.
 
 ---
 
@@ -55,6 +56,9 @@ In high-throughput dockside operations, intermittent cellular connectivity cause
 To defend against SQL injection and unauthorized tenant data leakage, the database connection must not operate as a database superuser.
 
 ### Decision
-- **`harbour_app` Role**: Restricted operational role with zero table-owner privileges, denied access to `core.schema_migrations` and `core.otp_challenges`, and strictly bound by PostgreSQL Row-Level Security (FORCE RLS across all 32 tenant tables).
-- **`harbour_platform` Role**: Multi-tenant administrative role used exclusively for migrations, daily ledger anchoring, and cross-tenant benchmarks.
-- **Fail-Closed Isolation**: When no session context is provided, `core.tenant_access_allowed(tenant_id)` returns `false`, ensuring 0 rows are returned across all tables.
+- **`harbour_app` Role**: Restricted operational role (`LOGIN, NOBYPASSRLS, NOCREATEDB, NOCREATEROLE`) with zero table-owner privileges, denied access to `core.schema_migrations`, `core.otp_challenges`, and `core.refresh_tokens`, and strictly bound by PostgreSQL Row-Level Security across all **33 tenant-scoped tables**.
+- **`harbour_platform` Role**: Multi-tenant administrative role used for pre-auth phone/OTP lookups, rotating refresh tokens, migrations, daily ledger anchoring, and cross-tenant governance. Supports two deployment modes via `RLS_PLATFORM_MODE`:
+  - `bypassrls` (self-hosted Postgres, default): `harbour_platform` holds `BYPASSRLS`; all 33 tenant tables retain `FORCE ROW LEVEL SECURITY`.
+  - `owner` (managed Postgres such as Cloud SQL / RDS / Supabase): `harbour_platform` is `NOBYPASSRLS` and owns the schema tables with `NO FORCE ROW LEVEL SECURITY`, while `harbour_app` remains strictly constrained by RLS on all 33 tenant tables.
+- **Fail-Closed Isolation**: When no session context (`set_config('app.tenant_id', ..., true)`) is set, `core.tenant_access_allowed(tenant_id)` evaluates to `false`, returning 0 rows across every tenant table.
+

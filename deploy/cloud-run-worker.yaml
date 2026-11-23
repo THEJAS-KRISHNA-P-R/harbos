@@ -1,3 +1,7 @@
+# HarbourOS outbox worker (SMS delivery). Same image as web; different entrypoint.
+# The worker opens a tiny health listener on the injected PORT because Cloud Run requires every
+# Service container to listen. minScale=1 + no CPU throttling keeps the poll loop running.
+# Validated in CI by `npm run check:deploy`.
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
@@ -16,27 +20,68 @@ spec:
         run.googleapis.com/cpu-throttling: "false"
     spec:
       containerConcurrency: 1
+      timeoutSeconds: 30
       containers:
-        - image: asia-south1-docker.pkg.dev/harbouros-prod/harbouros/worker:v1.0.0-pilot
-          command: ["node", "--loader", "tsx", "src/server/entry/worker.ts"]
+        - image: IMAGE_PLACEHOLDER
+          command: ["node", "--import", "tsx", "src/server/entry/worker.ts"]
           resources:
             limits:
               cpu: "1000m"
               memory: "1Gi"
+          ports:
+            - name: http1
+              containerPort: 8080
           env:
             - name: NODE_ENV
               value: "production"
+            - name: DEMO_MODE
+              value: "false"
+            - name: OTP_DEV_ECHO
+              value: "false"
+            - name: RLS_PLATFORM_MODE
+              value: "owner"
             - name: SMS_PROVIDER
               value: "msg91"
+            - name: MSG91_SENDER_ID
+              value: "HARBOS"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: harbouros-database-app-url
+                  key: latest
             - name: DATABASE_PLATFORM_URL
               valueFrom:
                 secretKeyRef:
-                  name: harbouros-secrets
-                  key: database_platform_url
+                  name: harbouros-database-platform-url
+                  key: latest
+            - name: JWT_ACCESS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: harbouros-jwt-access-secret
+                  key: latest
+            - name: QR_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: harbouros-qr-hmac-secret
+                  key: latest
             - name: MSG91_AUTH_KEY
               valueFrom:
                 secretKeyRef:
-                  name: harbouros-secrets
-                  key: msg91_auth_key
-            - name: MSG91_SENDER_ID
-              value: "HARBOS"
+                  name: harbouros-msg91-auth-key
+                  key: latest
+            - name: MSG91_OTP_TEMPLATE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: harbouros-msg91-otp-template-id
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10

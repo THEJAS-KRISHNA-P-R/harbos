@@ -1,3 +1,10 @@
+# HarbourOS web (API + SPA). Deployed by .github/workflows/deploy.yml, which replaces
+# IMAGE_PLACEHOLDER with the image it just built and pushed for the tagged commit.
+# Validated in CI by `npm run check:deploy` (boots the real config loader with exactly this env).
+#
+# Cloud Run semantics (differs from Kubernetes):
+#  - secretKeyRef.name = Secret Manager secret ID, secretKeyRef.key = version ("latest" or a number).
+#  - PORT is reserved and injected from containerPort; it must NOT be set in env.
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
@@ -14,12 +21,13 @@ spec:
         autoscaling.knative.dev/maxScale: "20"
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/startup-cpu-boost: "true"
     spec:
       containerConcurrency: 80
       timeoutSeconds: 30
       containers:
-        - image: asia-south1-docker.pkg.dev/harbouros-prod/harbouros/web:v1.0.0-pilot
-          command: ["node", "--loader", "tsx", "src/server/entry/web.ts"]
+        - image: IMAGE_PLACEHOLDER
+          command: ["node", "--import", "tsx", "src/server/entry/web.ts"]
           resources:
             limits:
               cpu: "2000m"
@@ -30,43 +38,61 @@ spec:
           env:
             - name: NODE_ENV
               value: "production"
-            - name: PORT
-              value: "8080"
             - name: DEMO_MODE
               value: "false"
             - name: OTP_DEV_ECHO
               value: "false"
             - name: RUN_MIGRATIONS_ON_BOOT
               value: "false"
+            - name: RLS_PLATFORM_MODE
+              value: "owner"
+            - name: SMS_PROVIDER
+              value: "msg91"
+            - name: MSG91_SENDER_ID
+              value: "HARBOS"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: harbouros-secrets
-                  key: database_app_url
+                  name: harbouros-database-app-url
+                  key: latest
             - name: DATABASE_PLATFORM_URL
               valueFrom:
                 secretKeyRef:
-                  name: harbouros-secrets
-                  key: database_platform_url
+                  name: harbouros-database-platform-url
+                  key: latest
             - name: JWT_ACCESS_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: harbouros-secrets
-                  key: jwt_access_secret
+                  name: harbouros-jwt-access-secret
+                  key: latest
             - name: QR_HMAC_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: harbouros-secrets
-                  key: qr_hmac_secret
+                  name: harbouros-qr-hmac-secret
+                  key: latest
+            - name: MSG91_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: harbouros-msg91-auth-key
+                  key: latest
+            - name: MSG91_OTP_TEMPLATE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: harbouros-msg91-otp-template-id
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 3
+            failureThreshold: 20
           livenessProbe:
             httpGet:
               path: /healthz
               port: 8080
-            initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /readyz
               port: 8080
-            initialDelaySeconds: 10
             periodSeconds: 5

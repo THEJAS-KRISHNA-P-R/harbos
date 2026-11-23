@@ -51,22 +51,96 @@ PLATFORM_USER="${HARBOUR_PLATFORM_USER:-harbour_platform}"
 PLATFORM_PASS="${HARBOUR_PLATFORM_PASSWORD:-test_platform_password_harbour_secret_2026}"
 BOUNCER_PORT="${PGBOUNCER_PORT:-6432}"
 
-# Stop default OS pgbouncer service if apt-get auto-started it on port 6432
-if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet pgbouncer 2>/dev/null; then
-  echo "[pgbouncer] Stopping default OS pgbouncer.service to free port ${BOUNCER_PORT}..."
-  (sudo systemctl stop pgbouncer 2>/dev/null || systemctl stop pgbouncer 2>/dev/null || true)
-  sleep 1
-fi
-
-# Stop any stale PgBouncer from a prior interrupted run
-if [ -f "$WORK_DIR/pgbouncer.pid" ]; then
-  OLD_PID="$(cat "$WORK_DIR/pgbouncer.pid" 2>/dev/null || true)"
-  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-    kill "$OLD_PID" 2>/dev/null || true
-    sleep 1
+# Helper: detect processes listening on BOUNCER_PORT (supports ss, lsof, fuser)
+list_port_listeners() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    (sudo ss -H -ltnp "sport = :${port}" 2>/dev/null || ss -H -ltnp "sport = :${port}" 2>/dev/null || true)
+  elif command -v lsof >/dev/null 2>&1; then
+    (sudo lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null || lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)
+  else
+    true
   fi
-  rm -f "$WORK_DIR/pgbouncer.pid"
-fi
+}
+
+is_port_in_use() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltn "sport = :${port}" 2>/dev/null | grep -q .
+    return $?
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  elif command -v fuser >/dev/null 2>&1; then
+    fuser "${port}/tcp" >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+terminate_pid() {
+  local pid="$1"
+  if [ -z "$pid" ]; then
+    return 0
+  fi
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+  elif command -v sudo >/dev/null 2>&1 && sudo kill -0 "$pid" 2>/dev/null; then
+    sudo kill "$pid" 2>/dev/null || true
+  fi
+}
+
+ensure_bouncer_port_free() {
+  local port="$1"
+
+  # 1. Stop default OS pgbouncer service/socket if apt-get or systemd auto-started it
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl is-active --quiet pgbouncer.service 2>/dev/null || systemctl is-active --quiet pgbouncer.socket 2>/dev/null; then
+      echo "[pgbouncer] Stopping default OS pgbouncer.service/socket to free port ${port}..."
+      (sudo systemctl stop pgbouncer.service pgbouncer.socket 2>/dev/null || systemctl stop pgbouncer.service pgbouncer.socket 2>/dev/null || true)
+      (sudo systemctl disable pgbouncer.service pgbouncer.socket 2>/dev/null || systemctl disable pgbouncer.service pgbouncer.socket 2>/dev/null || true)
+    fi
+  elif command -v service >/dev/null 2>&1; then
+    (sudo service pgbouncer stop 2>/dev/null || service pgbouncer stop 2>/dev/null || true)
+  fi
+
+  # 2. Stop any stale PgBouncer recorded in our work directory pidfile
+  if [ -f "$WORK_DIR/pgbouncer.pid" ]; then
+    OLD_PID="$(cat "$WORK_DIR/pgbouncer.pid" 2>/dev/null || true)"
+    terminate_pid "$OLD_PID"
+    rm -f "$WORK_DIR/pgbouncer.pid"
+  fi
+
+  # 3. Inspect port ${port}; if any lingering pgbouncer process still holds it, stop it cleanly
+  if is_port_in_use "$port"; then
+    echo "[pgbouncer] Port ${port} is currently in use. Inspecting listeners:"
+    list_port_listeners "$port"
+    if command -v pgrep >/dev/null 2>&1 && pgrep -x pgbouncer >/dev/null 2>&1; then
+      echo "[pgbouncer] Stopping lingering pgbouncer process(es)..."
+      (sudo pkill -TERM -x pgbouncer 2>/dev/null || pkill -TERM -x pgbouncer 2>/dev/null || true)
+    fi
+  fi
+
+  # 4. Wait up to 10s for port ${port} to be released (force-kill stubborn pgbouncer after 5s)
+  local attempt
+  for attempt in $(seq 1 20); do
+    if ! is_port_in_use "$port"; then
+      echo "[pgbouncer] Verified port ${port} is free."
+      return 0
+    fi
+    if [ "$attempt" -eq 10 ] && command -v pgrep >/dev/null 2>&1 && pgrep -x pgbouncer >/dev/null 2>&1; then
+      echo "[pgbouncer] Force-stopping unresponsive pgbouncer process(es) on port ${port}..."
+      (sudo pkill -KILL -x pgbouncer 2>/dev/null || pkill -KILL -x pgbouncer 2>/dev/null || true)
+    fi
+    sleep 0.5
+  done
+
+  echo "ERROR: Port ${port} is still in use after cleanup. Active listeners:" >&2
+  list_port_listeners "$port" >&2
+  exit 1
+}
+
+ensure_bouncer_port_free "${BOUNCER_PORT}"
 
 # 1. Generate strict transaction-mode PgBouncer config (ZERO ignore_startup_parameters)
 cat <<EOF > "$WORK_DIR/pgbouncer.ini"
@@ -119,9 +193,7 @@ fi
 cleanup() {
   if [ -f "$WORK_DIR/pgbouncer.pid" ]; then
     PID="$(cat "$WORK_DIR/pgbouncer.pid" 2>/dev/null || true)"
-    if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-      kill "$PID" 2>/dev/null || true
-    fi
+    terminate_pid "$PID"
     rm -f "$WORK_DIR/pgbouncer.pid"
   fi
 }
@@ -130,8 +202,9 @@ if [ "$MODE" != "--start-only" ]; then
   trap cleanup EXIT
 fi
 
+: > "$WORK_DIR/pgbouncer.log"
 echo "[pgbouncer] Starting strict transaction-mode PgBouncer ($(pgbouncer --version | head -n1)) on 127.0.0.1:${BOUNCER_PORT}"
-pgbouncer -d "${PGBOUNCER_USER_ARGS[@]}" "$WORK_DIR/pgbouncer.ini"
+pgbouncer -d "${PGBOUNCER_USER_ARGS[@]+"${PGBOUNCER_USER_ARGS[@]}"}" "$WORK_DIR/pgbouncer.ini"
 
 # 3. Wait for PgBouncer readiness
 READY=0

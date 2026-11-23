@@ -146,7 +146,7 @@ describe('Phase C2 Pilot Completeness — SMS Retries/MSG91, Atomic CSV, Reports
 
     try {
       const adapter = new Msg91SmsAdapter({
-        authKey: 'stub-msg91-key',
+        authKey: 'stub-msg91-key', // gitleaks:allow
         senderId: 'HRBROS',
         otpTemplateId: 'TPL-DLT-01',
         baseUrl: `http://127.0.0.1:${stubPort}`,
@@ -166,7 +166,7 @@ describe('Phase C2 Pilot Completeness — SMS Retries/MSG91, Atomic CSV, Reports
       assert.equal(okRes.providerMessageId, 'MSG91-REQ-9988');
       assert.equal(capturedRequests.length, 1);
       assert.equal(capturedRequests[0]?.url, '/api/v5/flow/');
-      assert.equal(capturedRequests[0]?.authkey, 'stub-msg91-key');
+      assert.equal(capturedRequests[0]?.authkey, 'stub-msg91-key'); // gitleaks:allow
       assert.equal(capturedRequests[0]?.body.template_id, 'TPL-DLT-01');
       assert.equal(capturedRequests[0]?.body.sender, 'HRBROS');
 

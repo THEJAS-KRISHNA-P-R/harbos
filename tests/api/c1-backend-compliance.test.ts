@@ -90,7 +90,7 @@ describe('C1 Backend Compliance: MSG91/Outbox, Atomic CSV Import, Reports Parity
 
     try {
       const adapter = new Msg91SmsAdapter({
-        authKey: 'test-msg91-auth-key-2026',
+        authKey: 'test-msg91-auth-key-2026', // gitleaks:allow
         senderId: 'HRBROS',
         otpTemplateId: 'DLT-TPL-TEST-01',
         baseUrl: `http://127.0.0.1:${stubAddr.port}`,
@@ -111,7 +111,7 @@ describe('C1 Backend Compliance: MSG91/Outbox, Atomic CSV Import, Reports Parity
       assert.equal(okRes.providerMessageId, 'MSG91-REQ-998877');
       assert.equal(receivedRequests.length, 1);
       assert.equal(receivedRequests[0]!.url, '/api/v5/flow/');
-      assert.equal(receivedRequests[0]!.authkey, 'test-msg91-auth-key-2026');
+      assert.equal(receivedRequests[0]!.authkey, 'test-msg91-auth-key-2026'); // gitleaks:allow
       assert.equal(receivedRequests[0]!.body.template_id, 'DLT-TPL-TEST-01');
       assert.equal(receivedRequests[0]!.body.sender, 'HRBROS');
       const recipients = receivedRequests[0]!.body.recipients as Array<Record<string, unknown>>;
@@ -669,17 +669,23 @@ describe('C1 Backend Compliance: MSG91/Outbox, Atomic CSV Import, Reports Parity
       assert.match(anchorTamper.failureReason ?? '', /Daily anchor head_hash mismatch/);
 
       // 4. Tamper detection B: mutated ledger entry digest in stream must fail at exact seq
+      let tamperHits = 0;
       const tamperingProxyDb: DbPort = {
         isPglite: platformDb.isPglite,
         exec: (sql: string) => platformDb.exec(sql),
         query: async <T = Record<string, unknown>>(sql: string, params?: ReadonlyArray<unknown>) => {
           const r = await platformDb.query<T>(sql, params);
-          if (sql.includes('FROM ledger.entries') && sql.includes('ORDER BY entry_seq ASC')) {
+          if (
+            /FROM ledger\.entries/.test(sql) &&
+            /ORDER BY (?:entries\.)?entry_seq ASC/.test(sql) &&
+            /row_hash/.test(sql)
+          ) {
             return {
               ...r,
               rows: r.rows.map((row) => {
                 const rec = row as Record<string, unknown>;
                 if (String(rec.entry_seq) === '2') {
+                  tamperHits += 1;
                   return { ...rec, row_hash: 'f'.repeat(64) } as T;
                 }
                 return row;
@@ -695,6 +701,7 @@ describe('C1 Backend Compliance: MSG91/Outbox, Atomic CSV Import, Reports Parity
         batchSize: 2,
         useLatestAnchor: false,
       });
+      assert.ok(tamperHits > 0, 'tamper proxy must intercept the paged ledger.entries query');
       assert.equal(digestTamper.verified, false);
       assert.equal(digestTamper.failedAtSeq, '2');
       assert.match(digestTamper.failureReason ?? '', /SHA-256 digest mismatch at seq 2/);
@@ -720,7 +727,7 @@ describe('C1 Backend Compliance: MSG91/Outbox, Atomic CSV Import, Reports Parity
     ]);
 
     const secretPhone = '+919876543219';
-    const secretBankRef = 'SBIN0009876-PRIV-554433';
+    const secretBankRef = 'SBIN0009876-PRIV-554433'; // gitleaks:allow (fake fixture proving log redaction)
 
     // Update isolated fisherman with distinct sensitive PII fields
     const upsertFsh = await fetch(`${baseUrl}/api/v1/masterdata/fishermen`, {
