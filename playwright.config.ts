@@ -29,7 +29,8 @@ export default defineConfig({
     command: 'npx tsx server.ts',
     url: 'http://127.0.0.1:3000/healthz',
     reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    // In-memory PGlite migrates and seeds on boot (~18s measured locally); 30s was too tight for CI runners.
+    timeout: 90_000,
     env: {
       NODE_ENV: 'development',
       PORT: '3000',

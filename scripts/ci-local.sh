@@ -163,6 +163,9 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
       -e JWT_ACCESS_SECRET="$(openssl rand -hex 32)" \
       -e QR_HMAC_SECRET="$(openssl rand -hex 32)" \
       -e SMS_PROVIDER=msg91 \
+      -e MSG91_AUTH_KEY="$(openssl rand -hex 16)" \
+      -e MSG91_SENDER_ID="HARBOS" \
+      -e MSG91_OTP_TEMPLATE_ID="$(openssl rand -hex 8)" \
       harbouros:ci
     READY=0
     for i in $(seq 1 30); do
@@ -210,6 +213,9 @@ else
       JWT_ACCESS_SECRET="$(openssl rand -hex 32)" \
       QR_HMAC_SECRET="$(openssl rand -hex 32)" \
       SMS_PROVIDER=msg91 \
+      MSG91_AUTH_KEY="$(openssl rand -hex 16)" \
+      MSG91_SENDER_ID="HARBOS" \
+      MSG91_OTP_TEMPLATE_ID="$(openssl rand -hex 8)" \
       npm start >/tmp/harbouros-runner-sim.log 2>&1 &
     SIM_PID=$!
     trap "kill ${SIM_PID} >/dev/null 2>&1 || true" EXIT

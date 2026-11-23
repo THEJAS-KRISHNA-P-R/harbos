@@ -7,6 +7,8 @@ import { ROUTE_RBAC_MATRIX } from '../../src/shared/contracts/rbac.ts';
 import { filterAuditLogs, type AuditLogRow } from '../../src/web/lib/api.ts';
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 
 describe('M0 & M3 Foundation — Config Safety, WCAG Contrast, Boundaries & RBAC Matrix', () => {
   it('parseEnvConfig refuses to boot when NODE_ENV=production and OTP_DEV_ECHO=true', () => {
@@ -31,6 +33,33 @@ describe('M0 & M3 Foundation — Config Safety, WCAG Contrast, Boundaries & RBAC
         }),
       /JWT_ACCESS_SECRET must be at least 32 bytes/
     );
+  });
+
+  it('.env.example boots cleanly through parseEnvConfig() once blank secret placeholders are populated', () => {
+    const rawText = fs.readFileSync(path.resolve(process.cwd(), '.env.example'), 'utf8');
+    const envMap: Record<string, string> = {};
+    for (const line of rawText.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      const val = trimmed.slice(eq + 1).trim();
+      envMap[key] = val;
+    }
+    envMap.DATABASE_URL = 'postgresql://harbour_app:testpass@127.0.0.1:5432/harbouros';
+    envMap.DATABASE_PLATFORM_URL = 'postgresql://harbour_platform:testpass@127.0.0.1:5432/harbouros';
+    envMap.JWT_ACCESS_SECRET = crypto.randomBytes(32).toString('hex');
+    envMap.QR_HMAC_SECRET = crypto.randomBytes(32).toString('hex');
+    envMap.MSG91_AUTH_KEY = crypto.randomBytes(16).toString('hex');
+    envMap.MSG91_OTP_TEMPLATE_ID = '1207160000000000001';
+
+    const parsed = parseEnvConfig(envMap);
+    assert.equal(parsed.NODE_ENV, 'production');
+    assert.equal(parsed.DEMO_MODE, false);
+    assert.equal(parsed.OTP_DEV_ECHO, false);
+    assert.equal(parsed.SMS_PROVIDER, 'msg91');
+    assert.equal(parsed.WHATSAPP_PROVIDER, 'noop');
   });
 
   it('verifies all 17 §11.1 Navy-on-Off-White token pairs pass WCAG 2.1 AA contrast thresholds', () => {

@@ -151,6 +151,8 @@ jobs:
           REQUIRE_SCALE_ROWS: "true"
         run: |
           npx tsx scripts/scale-fixture.ts
+          # Refresh planner statistics as table owner (postgres); harbour_platform lacks table ownership in bypassrls mode
+          PGPASSWORD=postgrespassword psql -h 127.0.0.1 -p 5432 -U postgres -d harbouros_test -v ON_ERROR_STOP=1 -c "ANALYZE;"
           npx tsx scripts/check-plans.ts
 
       - name: 60s Multi-Instance Load Smoke Gate (2 Web Processes Behind PgBouncer)

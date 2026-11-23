@@ -15,7 +15,7 @@ COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/src/server ./src/server
 COPY --from=builder --chown=node:node /app/src/shared ./src/shared
 COPY --from=builder --chown=node:node /app/db/migrations ./db/migrations
-COPY --from=builder --chown=node:node /app/scripts/migrate.ts /app/scripts/seed-demo.ts ./scripts/
+COPY --from=builder --chown=node:node /app/scripts/migrate.ts /app/scripts/seed-demo.ts /app/scripts/verify-ledger.ts /app/scripts/anchor-ledger.ts /app/scripts/verify-rls.ts /app/scripts/export-data.ts ./scripts/
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \

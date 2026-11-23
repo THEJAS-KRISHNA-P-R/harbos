@@ -114,11 +114,15 @@ export async function seedScaleFixture(
       entriesCreated += existingEntries;
       auditLogsCreated += days * lotsPerTenantDay;
       outboxEventsCreated += days * lotsPerTenantDay;
-      payoutBatchesCreated += days;
+      payoutBatchesCreated += days * 4;
       continue;
     }
 
     await db.transaction(async (tx) => {
+      // Raise transaction-local statement_timeout so bulk 12.6k-row unnest inserts never trip
+      // harbour_platform's role-level 5000ms statement_timeout on slower CI runners.
+      await tx.query(`SELECT set_config('statement_timeout', '60000', true)`);
+
       // 1. Tenant + Policy + Society + Session + System Accounts
       await tx.query(
         `INSERT INTO core.tenants (
@@ -268,30 +272,46 @@ export async function seedScaleFixture(
         );
       }
 
-      for (let b = 1; b <= 10; b++) {
+      // 60 wholesale buyers per tenant (600+ total across 10 harbours) so harbour.buyers exceeds
+      // Postgres's tiny-table sequential-scan threshold (~8 pages) and exercises buyers_pkey index scans.
+      const buyerAccCodes: string[] = [];
+      const buyerAccNames: string[] = [];
+      const buyerNames: string[] = [];
+      const buyerPaddles: number[] = [];
+      const buyerGstins: string[] = [];
+
+      for (let b = 1; b <= 60; b++) {
         const bPad = String(b).padStart(2, '0');
         const buyerId = `BUY-${tenantId}-${bPad}`;
         const recvAcc = `ACC-BUY-REC-${tenantId}-${bPad}`;
         buyerIds.push(buyerId);
         buyerRecvAccs.push(recvAcc);
-
-        await tx.query(
-          `INSERT INTO ledger.accounts (account_id, tenant_id, kind, code, name_en, owner_entity_id, balance_paise)
-           VALUES ($1, $2, 'BUYER_RECEIVABLE', $3, $4, $5, 500000)
-           ON CONFLICT (account_id) DO NOTHING`,
-          [recvAcc, tenantId, `1200-BUY-${bPad}`, `Buyer ${bPad} Receivable`, buyerId]
-        );
-
-        await tx.query(
-          `INSERT INTO harbour.buyers (
-            buyer_id, tenant_id, buyer_name, paddle_no, gstin,
-            escrow_balance_paise, approved_credit_paise, unsettled_payables_paise,
-            active_holds_paise, receivable_account_id
-          ) VALUES ($1, $2, $3, $4, $5, 10000000, 50000000, 500000, 0, $6)
-          ON CONFLICT (buyer_id) DO NOTHING`,
-          [buyerId, tenantId, `Seafood Exporter ${tPad}-${bPad}`, b, `32AABCS${tPad}${bPad}K1Z5`, recvAcc]
-        );
+        buyerAccCodes.push(`1200-BUY-${bPad}`);
+        buyerAccNames.push(`Buyer ${bPad} Receivable`);
+        buyerNames.push(`Seafood Exporter ${tPad}-${bPad}`);
+        buyerPaddles.push(b);
+        buyerGstins.push(`32AABCS${tPad}${bPad}K1Z5`);
       }
+
+      await tx.query(
+        `INSERT INTO ledger.accounts (account_id, tenant_id, kind, code, name_en, owner_entity_id, balance_paise)
+         SELECT u.acc_id, $1, 'BUYER_RECEIVABLE', u.code, u.name_en, u.buyer_id, 500000
+         FROM unnest($2::text[], $3::text[], $4::text[], $5::text[]) AS u(acc_id, code, name_en, buyer_id)
+         ON CONFLICT (account_id) DO NOTHING`,
+        [tenantId, buyerRecvAccs, buyerAccCodes, buyerAccNames, buyerIds]
+      );
+
+      await tx.query(
+        `INSERT INTO harbour.buyers (
+           buyer_id, tenant_id, buyer_name, paddle_no, gstin,
+           escrow_balance_paise, approved_credit_paise, unsettled_payables_paise,
+           active_holds_paise, receivable_account_id
+         )
+         SELECT u.buyer_id, $1, u.buyer_name, u.paddle_no, u.gstin, 10000000, 50000000, 500000, 0, u.recv_acc
+         FROM unnest($2::text[], $3::text[], $4::int[], $5::text[], $6::text[]) AS u(buyer_id, buyer_name, paddle_no, gstin, recv_acc)
+         ON CONFLICT (buyer_id) DO NOTHING`,
+        [tenantId, buyerIds, buyerNames, buyerPaddles, buyerGstins, buyerRecvAccs]
+      );
 
       for (let s = 0; s < speciesTemplates.length; s++) {
         const sp = speciesTemplates[s]!;
@@ -560,60 +580,102 @@ export async function seedScaleFixture(
         [tenantId, outboxIds, lotFisherIds, outboxStatuses, outboxNextAttempts, lotCreatedAts]
       );
 
-      // Payout batches (1 per day = 30 batches, 10 items each = 300 items, + 30 buyer receipts per tenant)
+      // Bulk insert payout batches (4 sessions/day x 30 days = 120 batches/tenant, 1,200 total across 10 harbours
+      // so ledger.payout_batches exceeds Postgres's tiny-table Seq Scan threshold and exercises
+      // idx_payout_batches_tenant_created_desc), plus payout_batch_items (300/tenant) & buyer_receipts (30/tenant).
+      const pbIds: string[] = [];
+      const pbCodes: string[] = [];
+      const pbStatuses: string[] = [];
+      const pbUtrs: (string | null)[] = [];
+      const pbReconciledAts: (string | null)[] = [];
+      const pbCreatedAts: string[] = [];
+
+      const pbiIds: string[] = [];
+      const pbiBatchIds: string[] = [];
+      const pbiFisherIds: string[] = [];
+      const pbiAccIds: string[] = [];
+
+      const rcptIds: string[] = [];
+      const rcptBuyerIds: string[] = [];
+      const rcptPayRefs: string[] = [];
+      const rcptIdempKeys: string[] = [];
+      const rcptJournalIds: string[] = [];
+      const rcptCreatedAts: string[] = [];
+
       for (let d = 0; d < days; d++) {
         const dPad = String(d + 1).padStart(2, '0');
-        const batchId = `PB-${tenantId}-${dPad}`;
-        const batchCode = `PAY-${shortCode}-${dPad}`;
-        const createdAtIso = new Date(baseNowMs - d * msPerDay).toISOString();
-        const isReconciled = d > 1;
-        await tx.query(
-          `INSERT INTO ledger.payout_batches (
-            batch_id, tenant_id, batch_code, beneficiary_kind, total_amount_paise,
-            item_count, status, bank_utr, reconciled_at, created_at
-          ) VALUES ($1, $2, $3, 'FISHERMAN_NET_SETTLEMENT', 1000000, 10, $4, $5, $6, $7)
-          ON CONFLICT (batch_id) DO NOTHING`,
-          [
-            batchId,
-            tenantId,
-            batchCode,
-            isReconciled ? 'RECONCILED_UTR' : 'GENERATED_CSV',
-            isReconciled ? `UTR-${shortCode}-${dPad}` : null,
-            isReconciled ? createdAtIso : null,
-            createdAtIso,
-          ]
-        );
+        for (let slot = 1; slot <= 4; slot++) {
+          const bKey = `${dPad}-S${slot}`;
+          const batchId = `PB-${tenantId}-${bKey}`;
+          const batchCode = `PAY-${shortCode}-${bKey}`;
+          const createdAtIso = new Date(baseNowMs - d * msPerDay - slot * 3_600_000).toISOString();
+          const isReconciled = d > 1;
+          pbIds.push(batchId);
+          pbCodes.push(batchCode);
+          pbStatuses.push(isReconciled ? 'RECONCILED_UTR' : 'GENERATED_CSV');
+          pbUtrs.push(isReconciled ? `UTR-${shortCode}-${bKey}` : null);
+          pbReconciledAts.push(isReconciled ? createdAtIso : null);
+          pbCreatedAts.push(createdAtIso);
 
-        for (let f = 0; f < 10; f++) {
-          await tx.query(
-            `INSERT INTO ledger.payout_batch_items (
-              item_id, batch_id, tenant_id, fisherman_id, account_id, amount_paise
-            ) VALUES ($1, $2, $3, $4, $5, 100000)
-            ON CONFLICT (item_id) DO NOTHING`,
-            [`PBI-${batchId}-${f + 1}`, batchId, tenantId, fishermenIds[f]!, fisherPayableAccs[f]!]
-          );
+          if (slot === 1) {
+            for (let f = 0; f < 10; f++) {
+              pbiIds.push(`PBI-${batchId}-${f + 1}`);
+              pbiBatchIds.push(batchId);
+              pbiFisherIds.push(fishermenIds[f]!);
+              pbiAccIds.push(fisherPayableAccs[f]!);
+            }
+          }
         }
 
-        const recId = `RCPT-${tenantId}-${dPad}`;
+        const rcptCreatedIso = new Date(baseNowMs - d * msPerDay).toISOString();
         const buyerIdx = d % 10;
-        await tx.query(
-          `INSERT INTO ledger.buyer_receipts (
-            receipt_id, tenant_id, buyer_id, amount_paise, payment_reference,
-            idempotency_key, journal_id, recorded_by_user_id, created_at
-          ) VALUES ($1, $2, $3, 500000, $4, $5, $6, $7, $8)
-          ON CONFLICT (receipt_id) DO NOTHING`,
-          [
-            recId,
-            tenantId,
-            buyerIds[buyerIdx]!,
-            `NEFT-${shortCode}-${dPad}`,
-            `IDEMP-RCPT-${tenantId}-${dPad}`,
-            allocJournalIds[d]!,
-            auctUserId,
-            createdAtIso,
-          ]
-        );
+        rcptIds.push(`RCPT-${tenantId}-${dPad}`);
+        rcptBuyerIds.push(buyerIds[buyerIdx]!);
+        rcptPayRefs.push(`NEFT-${shortCode}-${dPad}`);
+        rcptIdempKeys.push(`IDEMP-RCPT-${tenantId}-${dPad}`);
+        rcptJournalIds.push(allocJournalIds[d]!);
+        rcptCreatedAts.push(rcptCreatedIso);
       }
+
+      await tx.query(
+        `INSERT INTO ledger.payout_batches (
+           batch_id, tenant_id, batch_code, beneficiary_kind, total_amount_paise,
+           item_count, status, bank_utr, reconciled_at, created_at
+         )
+         SELECT
+           u.batch_id, $1, u.batch_code, 'FISHERMAN_NET_SETTLEMENT', 1000000,
+           10, u.status, u.bank_utr, u.reconciled_at, u.created_at
+         FROM unnest(
+           $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]
+         ) AS u(batch_id, batch_code, status, bank_utr, reconciled_at, created_at)
+         ON CONFLICT (batch_id) DO NOTHING`,
+        [tenantId, pbIds, pbCodes, pbStatuses, pbUtrs, pbReconciledAts, pbCreatedAts]
+      );
+
+      await tx.query(
+        `INSERT INTO ledger.payout_batch_items (
+           item_id, batch_id, tenant_id, fisherman_id, account_id, amount_paise
+         )
+         SELECT u.item_id, u.batch_id, $1, u.fisherman_id, u.account_id, 100000
+         FROM unnest($2::text[], $3::text[], $4::text[], $5::text[]) AS u(item_id, batch_id, fisherman_id, account_id)
+         ON CONFLICT (item_id) DO NOTHING`,
+        [tenantId, pbiIds, pbiBatchIds, pbiFisherIds, pbiAccIds]
+      );
+
+      await tx.query(
+        `INSERT INTO ledger.buyer_receipts (
+           receipt_id, tenant_id, buyer_id, amount_paise, payment_reference,
+           idempotency_key, journal_id, recorded_by_user_id, created_at
+         )
+         SELECT
+           u.receipt_id, $1, u.buyer_id, 500000, u.pay_ref,
+           u.idemp_key, u.journal_id, $2, u.created_at::timestamptz
+         FROM unnest(
+           $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]
+         ) AS u(receipt_id, buyer_id, pay_ref, idemp_key, journal_id, created_at)
+         ON CONFLICT (receipt_id) DO NOTHING`,
+        [tenantId, auctUserId, rcptIds, rcptBuyerIds, rcptPayRefs, rcptIdempKeys, rcptJournalIds, rcptCreatedAts]
+      );
 
       lotsCreated += lotIds.length;
       allocationsCreated += allocIds.length;
@@ -621,7 +683,7 @@ export async function seedScaleFixture(
       entriesCreated += entrySeqs.length;
       auditLogsCreated += auditIds.length;
       outboxEventsCreated += outboxIds.length;
-      payoutBatchesCreated += days;
+      payoutBatchesCreated += pbIds.length;
     });
   }
 
