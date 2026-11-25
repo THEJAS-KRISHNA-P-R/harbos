@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
-import { Gavel, FileDown, Printer } from 'lucide-react';
+import { Gavel, FileDown, Printer, Minus, Plus } from 'lucide-react';
 import {
   Button,
   Card,
   Badge,
-  Metric,
   DataTable,
-  Input,
   Modal,
   Toast,
+  SpeciesGlyph,
   StatutoryLedgerWaterfallSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
@@ -61,6 +60,7 @@ export const BuyerWorkspace: React.FC<{
       }>(`/api/v1/lots/${lot.lot_id}/allocate`, {
         method: 'POST',
         token,
+        idempotencyKey: `buyer-${lot.lot_id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         body: {
           sessionId: 'SES-MUN-MORNING-01',
           auctionMode: 'HYBRID_REMOTE',
@@ -73,14 +73,14 @@ export const BuyerWorkspace: React.FC<{
       });
       setFeedback({
         tone: 'ok',
-        title: `Remote Bid Won: ${res.allocationId}`,
-        msg: `Clearing invoice ${formatInrFromPaise(res.buyerPayablePaise)} charged against available trading limit.`,
+        title: `Remote bid won · ${res.allocationId}`,
+        msg: `Invoice ${formatInrFromPaise(res.buyerPayablePaise)} charged against your trading limit.`,
       });
       await onRefresh();
     } catch (err) {
       setFeedback({
         tone: 'danger',
-        title: 'Remote Bid Rejected',
+        title: 'Remote bid rejected',
         msg: err instanceof Error ? err.message : 'Bid failed',
       });
     } finally {
@@ -93,7 +93,7 @@ export const BuyerWorkspace: React.FC<{
     const vessel = data.vessels.find((v) => v.vessel_id === lot?.vessel_id);
     const species = data.species.find((s) => s.species_id === lot?.species_id);
     const dossier = {
-      status: 'DRAFT_TEMPLATE_UNVERIFIED (OPEN-05)',
+      status: 'DRAFT_TEMPLATE_UNVERIFIED',
       generatedAt: new Date().toISOString(),
       harbour: data.tenant?.name_en,
       statutoryBasis: `${ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE} Quality & Traceability Record`,
@@ -131,17 +131,18 @@ export const BuyerWorkspace: React.FC<{
   const lotColumns: ReadonlyArray<DataTableColumn<LotRow>> = [
     {
       key: 'code',
-      header: 'Lot Code',
+      header: 'Lot',
       mono: true,
       render: (r) => <span className="font-semibold">{r.lot_code}</span>,
     },
     {
       key: 'species',
-      header: 'Species & Grade',
+      header: 'Species & grade',
       render: (r) => {
         const sp = data.species.find((s) => s.species_id === r.species_id);
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <SpeciesGlyph code={`${sp?.code ?? ''} ${sp?.name_en ?? ''}`} size={20} />
             <div>
               <div className="font-medium">{sp?.name_en}</div>
               <div lang="ml" className="text-xs text-[var(--text-secondary)]">
@@ -149,8 +150,14 @@ export const BuyerWorkspace: React.FC<{
               </div>
             </div>
             <Badge
-              tone={r.inspection_grade === 'REJECTED_UNFIT' ? 'danger' : 'ok'}
-              label={r.inspection_grade}
+              tone={
+                !r.inspection_grade
+                  ? 'neutral'
+                  : r.inspection_grade === 'REJECTED_UNFIT'
+                  ? 'danger'
+                  : 'ok'
+              }
+              label={r.inspection_grade ?? 'Pending'}
             />
           </div>
         );
@@ -158,14 +165,14 @@ export const BuyerWorkspace: React.FC<{
     },
     {
       key: 'avail',
-      header: 'Available Boxes / Weight',
+      header: 'Available',
       align: 'right',
       mono: true,
       render: (r) => `${r.available_boxes} boxes (${formatKgFromGrams(r.available_grams)})`,
     },
     {
       key: 'floor',
-      header: 's.19 Floor Price',
+      header: 'Floor price',
       align: 'right',
       mono: true,
       render: (r) => {
@@ -175,7 +182,7 @@ export const BuyerWorkspace: React.FC<{
     },
     {
       key: 'action',
-      header: 'Remote Bid / Stop Clock',
+      header: 'Remote bid',
       align: 'right',
       render: (r) =>
         r.available_boxes > 0 && r.inspection_grade !== 'REJECTED_UNFIT' ? (
@@ -197,7 +204,7 @@ export const BuyerWorkspace: React.FC<{
   const purchaseColumns: ReadonlyArray<DataTableColumn<AllocationRow>> = [
     {
       key: 'alloc',
-      header: 'Invoice / Allocation',
+      header: 'Invoice',
       mono: true,
       render: (r) => <span className="font-semibold">{r.allocation_id}</span>,
     },
@@ -210,21 +217,21 @@ export const BuyerWorkspace: React.FC<{
     },
     {
       key: 'hammer',
-      header: 'Hammer Value',
+      header: 'Sale value',
       align: 'right',
       mono: true,
       render: (r) => formatInrFromPaise(r.hammer_paise),
     },
     {
       key: 'payable',
-      header: 'Total Payable',
+      header: 'Total payable',
       align: 'right',
       mono: true,
       render: (r) => <span className="font-bold">{formatInrFromPaise(r.buyer_payable_paise)}</span>,
     },
     {
       key: 'dossier',
-      header: 'Sale Slip & Export Dossier',
+      header: 'Documents',
       align: 'right',
       render: (r) => (
         <div className="flex items-center justify-end gap-2">
@@ -250,24 +257,24 @@ export const BuyerWorkspace: React.FC<{
   ];
 
   return (
-    <div className="flex flex-col gap-3.5 sm:gap-5">
-      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+    <div className="flex flex-col gap-4 sm:gap-5">
+      <div className="p-3.5 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:block shrink-0">
             <StatutoryLedgerWaterfallSvgDecor size={36} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
               {t('workspaces.buyerTitle')}
             </h1>
-            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
-              {buyer?.buyer_name} · Paddle #{buyer?.paddle_no} · GSTIN: {buyer?.gstin}
+            <p className="text-xs text-[var(--text-secondary)] truncate">
+              {buyer?.buyer_name} · Paddle #{buyer?.paddle_no} · GSTIN {buyer?.gstin}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
-          <Badge tone="ok" label="CREDIT LINE ACTIVE" code={`PADDLE #${buyer?.paddle_no ?? 101}`} />
-        </div>
+        <span className="text-xs font-mono-code font-bold text-[var(--brand)] shrink-0">
+          Paddle #{buyer?.paddle_no ?? 101}
+        </span>
       </div>
 
       {feedback && (
@@ -279,51 +286,112 @@ export const BuyerWorkspace: React.FC<{
         />
       )}
 
-      {/* Buyer Credit Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
-        <div className="col-span-2 sm:col-span-1">
-          <Metric
-            featured
-            label="Available Trading Limit"
-            value={formatInrFromPaise(availablePaise)}
-            status={{ tone: 'ok', label: 'LOCKED' }}
-          />
-        </div>
-        <Metric
-          label="Escrow + Credit"
-          value={formatInrFromPaise(escrowPaise + creditPaise)}
-          sublabel={`Escrow: ${formatInrFromPaise(escrowPaise)}`}
-          status={{ tone: 'info', label: 'LIMIT' }}
-        />
-        <Metric
-          label="Unsettled Payables"
-          value={formatInrFromPaise(payablesPaise)}
-          status={{ tone: 'neutral', label: 'DUE TODAY' }}
-        />
-      </div>
+      {/* Hero: Buyer Available Trading Limit */}
+      <section
+        aria-label={t('workspaces.buyerLimitHero')}
+        className="rounded-[var(--radius-card)] bg-[var(--decor-aqua-soft)] border border-[var(--border-hair)] p-5 sm:p-6"
+      >
+        <p className="text-sm font-semibold text-[var(--decor-ink)]">
+          {t('workspaces.buyerLimitHero')}
+        </p>
+        <p
+          data-testid="buyer-limit-amount"
+          className="mt-1 text-[38px] sm:text-5xl leading-none font-bold font-mono-code tabular-nums text-[var(--decor-ink)]"
+        >
+          {formatInrFromPaise(availablePaise)}
+        </p>
+        <p className="mt-2 text-sm text-[var(--text-secondary)]">
+          {t('workspaces.buyerLimitSub')}
+        </p>
+        <dl className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 border-t border-[var(--border-hair)] pt-4">
+          <div>
+            <dt className="text-xs text-[var(--text-secondary)]">Escrow balance</dt>
+            <dd className="mt-0.5 text-base font-bold font-mono-code tabular-nums">
+              {formatInrFromPaise(escrowPaise)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--text-secondary)]">Approved credit</dt>
+            <dd className="mt-0.5 text-base font-bold font-mono-code tabular-nums">
+              {formatInrFromPaise(creditPaise)}
+            </dd>
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <dt className="text-xs text-[var(--text-secondary)]">Due today</dt>
+            <dd className="mt-0.5 text-base font-bold font-mono-code tabular-nums text-[var(--brand)]">
+              {formatInrFromPaise(payablesPaise)}
+            </dd>
+          </div>
+        </dl>
+      </section>
 
-      {/* Live Watchlist & Remote Bidding */}
-      <Card
-        title={t('workspaces.buyerWatchlistTitle')}
-        actions={
-          <div className="w-full sm:w-auto grid grid-cols-2 sm:flex items-center gap-2 sm:gap-3">
-            <Input
-              label="Remote Bid (₹/kg)"
+      {/* Live Watchlist & Quick Remote Bid Controls */}
+      <Card title={t('workspaces.buyerWatchlistTitle')}>
+        <div className="mb-4 p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-[var(--text-secondary)]">Bid ₹/kg</span>
+            <button
+              type="button"
+              aria-label="Decrease remote bid by 10 rupees"
+              onClick={() =>
+                setBidPriceRupees((prev) => String(Math.max(50, (Number(prev) || 500) - 10)))
+              }
+              className="w-10 h-10 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] border border-[var(--border-strong)] inline-flex items-center justify-center cursor-pointer"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+            <input
               type="number"
-              mono
+              aria-label="Remote bid rupees per kg"
               value={bidPriceRupees}
               onChange={(e) => setBidPriceRupees(e.target.value)}
+              className="w-24 h-10 text-center font-mono-code text-sm font-bold tabular-nums rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-strong)] text-[var(--text-primary)]"
             />
-            <Input
-              label="Boxes"
+            <button
+              type="button"
+              aria-label="Increase remote bid by 10 rupees"
+              onClick={() =>
+                setBidPriceRupees((prev) => String((Number(prev) || 500) + 10))
+              }
+              className="w-10 h-10 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] border border-[var(--border-strong)] inline-flex items-center justify-center cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-[var(--text-secondary)]">Boxes</span>
+            <button
+              type="button"
+              aria-label="Decrease remote bid boxes"
+              onClick={() =>
+                setBidBoxes((prev) => String(Math.max(1, (Number(prev) || 1) - 1)))
+              }
+              className="w-10 h-10 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] border border-[var(--border-strong)] inline-flex items-center justify-center cursor-pointer"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+            <input
               type="number"
-              mono
+              aria-label="Remote bid boxes"
+              min={1}
               value={bidBoxes}
               onChange={(e) => setBidBoxes(e.target.value)}
+              className="w-16 h-10 text-center font-mono-code text-sm font-bold tabular-nums rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-strong)] text-[var(--text-primary)]"
             />
+            <button
+              type="button"
+              aria-label="Increase remote bid boxes"
+              onClick={() =>
+                setBidBoxes((prev) => String((Number(prev) || 1) + 1))
+              }
+              className="w-10 h-10 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] border border-[var(--border-strong)] inline-flex items-center justify-center cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
           </div>
-        }
-      >
+        </div>
+
         <DataTable
           caption="Live Harbour Lot Watchlist"
           columns={lotColumns}
@@ -362,49 +430,72 @@ export const BuyerWorkspace: React.FC<{
           </>
         }
       >
-        {slipAlloc && (() => {
-          const lot = data.lots.find((l) => l.lot_id === slipAlloc.lot_id);
-          const sp = data.species.find((s) => s.species_id === lot?.species_id);
-          return (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-1.5 print:hidden">
-                <Button
-                  size="sm"
-                  variant={slipFormat === '80mm' ? 'primary' : 'outline'}
-                  onClick={() => setSlipFormat('80mm')}
-                >
-                  80mm
-                </Button>
-                <Button
-                  size="sm"
-                  variant={slipFormat === 'A4' ? 'primary' : 'outline'}
-                  onClick={() => setSlipFormat('A4')}
-                >
-                  A4
-                </Button>
+        {slipAlloc &&
+          (() => {
+            const lot = data.lots.find((l) => l.lot_id === slipAlloc.lot_id);
+            const sp = data.species.find((s) => s.species_id === lot?.species_id);
+            return (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-1.5 print:hidden">
+                  <Button
+                    size="sm"
+                    variant={slipFormat === '80mm' ? 'primary' : 'outline'}
+                    onClick={() => setSlipFormat('80mm')}
+                  >
+                    80mm
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={slipFormat === 'A4' ? 'primary' : 'outline'}
+                    onClick={() => setSlipFormat('A4')}
+                  >
+                    A4
+                  </Button>
+                </div>
+                <DocksidePrintSlip
+                  slipType="BUYER_SALE_SLIP"
+                  printFormat={slipFormat}
+                  harbourName={data.tenant?.name_en ?? 'Munambam Harbour'}
+                  referenceNo={slipAlloc.allocation_id}
+                  timestampIso={slipAlloc.created_at}
+                  items={[
+                    {
+                      label: t('dockside.lotCode'),
+                      value: lot?.lot_code ?? slipAlloc.lot_id,
+                      highlight: true,
+                    },
+                    {
+                      label: t('dockside.species'),
+                      value: sp ? `${sp.name_en} / ${sp.name_ml}` : 'Catch',
+                    },
+                    {
+                      label: t('dockside.buyerPaddle'),
+                      value: `#${buyer?.paddle_no ?? '—'} ${buyer?.buyer_name ?? ''}`,
+                    },
+                    { label: 'GSTIN', value: buyer?.gstin ?? '—' },
+                    {
+                      label: t('dockside.boxes'),
+                      value: `${slipAlloc.boxes_allocated} boxes (${formatKgFromGrams(
+                        slipAlloc.grams_allocated
+                      )})`,
+                    },
+                  ]}
+                  summaryRows={[
+                    {
+                      label: t('dockside.hammerAmount'),
+                      value: formatInrFromPaise(slipAlloc.hammer_paise),
+                    },
+                    {
+                      label: 'Total Payable',
+                      value: formatInrFromPaise(slipAlloc.buyer_payable_paise),
+                      bold: true,
+                    },
+                  ]}
+                  qrPayload={`HARBOUROS|BUYER|${slipAlloc.allocation_id}|${slipAlloc.journal_id}`}
+                />
               </div>
-              <DocksidePrintSlip
-                slipType="BUYER_SALE_SLIP"
-                printFormat={slipFormat}
-                harbourName={data.tenant?.name_en ?? 'Munambam Harbour (HMS)'}
-                referenceNo={slipAlloc.allocation_id}
-                timestampIso={slipAlloc.created_at}
-                items={[
-                  { label: t('dockside.lotCode'), value: lot?.lot_code ?? slipAlloc.lot_id, highlight: true },
-                  { label: t('dockside.species'), value: sp ? `${sp.name_en} / ${sp.name_ml}` : 'Catch' },
-                  { label: t('dockside.buyerPaddle'), value: `#${buyer?.paddle_no ?? '—'} ${buyer?.buyer_name ?? ''}` },
-                  { label: 'GSTIN', value: buyer?.gstin ?? '—' },
-                  { label: t('dockside.boxes'), value: `${slipAlloc.boxes_allocated} boxes (${formatKgFromGrams(slipAlloc.grams_allocated)})` },
-                ]}
-                summaryRows={[
-                  { label: t('dockside.hammerAmount'), value: formatInrFromPaise(slipAlloc.hammer_paise) },
-                  { label: 'Total Payable', value: formatInrFromPaise(slipAlloc.buyer_payable_paise), bold: true },
-                ]}
-                qrPayload={`HARBOUROS|BUYER|${slipAlloc.allocation_id}|${slipAlloc.journal_id}`}
-              />
-            </div>
-          );
-        })()}
+            );
+          })()}
       </Modal>
     </div>
   );

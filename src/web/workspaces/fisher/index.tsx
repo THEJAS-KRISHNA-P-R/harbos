@@ -3,7 +3,6 @@ import { Volume2, FileDown, CheckCircle2, Anchor, Printer } from 'lucide-react';
 import {
   Button,
   Card,
-  Metric,
   DataTable,
   Modal,
   Toast,
@@ -210,85 +209,117 @@ export const FisherWorkspace: React.FC<{
         />
       )}
 
-      {/* Passbook Top Balances */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
-        <div className="col-span-2 sm:col-span-1">
-          <Metric
-            featured
-            label="Net Payout (95%)"
-            value={formatInrFromPaise(payableAccount?.balance_paise ?? totalNetPaise)}
-            status={{ tone: 'ok', label: 'SETTLED' }}
-          />
+      {/* Hero: the one number a fisher cares about */}
+      <section
+        aria-label={t('workspaces.fisherHeroLabel')}
+        className="rounded-[var(--radius-card)] bg-[var(--decor-aqua-soft)] border border-[var(--border-hair)] p-5 sm:p-6"
+      >
+        <p className="text-sm font-semibold text-[var(--decor-ink)]">
+          {t('workspaces.fisherHeroLabel')}
+        </p>
+        <p
+          data-testid="fisher-hero-amount"
+          className="mt-1 text-[40px] sm:text-5xl leading-none font-bold font-mono-code tabular-nums text-[var(--decor-ink)]"
+        >
+          {formatInrFromPaise(payableAccount?.balance_paise ?? totalNetPaise)}
+        </p>
+        <p className="mt-2 text-sm text-[var(--text-secondary)]">
+          {t('workspaces.fisherHeroSub')}
+        </p>
+        <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--border-hair)] pt-4">
+          <div>
+            <dt className="text-xs text-[var(--text-secondary)]">{t('workspaces.fisherGross')}</dt>
+            <dd className="mt-0.5 text-base font-bold font-mono-code tabular-nums">
+              {formatInrFromPaise(totalHammerPaise)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--text-secondary)]">{t('workspaces.splitBonus')}</dt>
+            <dd className="mt-0.5 text-base font-bold font-mono-code tabular-nums text-[var(--brand)]">
+              {formatInrFromPaise(bonusEscrowAccount?.balance_paise ?? totalBonusPaise)}
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      {/* Where each sale goes: plain-language split, no statute references */}
+      <Card title={t('workspaces.splitTitle')}>
+        <p className="text-sm text-[var(--text-secondary)] mb-3">
+          {t('workspaces.splitSubtitle')}
+        </p>
+        <div
+          role="img"
+          aria-label="95 rupees to you, 2 rupees bonus saved for you, 1 rupee each to auctioneer, harbour office and co-operative society"
+          className="flex h-4 w-full overflow-hidden rounded-[var(--radius-pill)] bg-[var(--bg-sunken)]"
+        >
+          {[
+            { w: 95, c: 'var(--brand)' },
+            { w: 2, c: 'var(--decor-aqua)' },
+            { w: 1, c: 'var(--decor-sun)' },
+            { w: 1, c: 'var(--decor-ink)' },
+            { w: 1, c: 'var(--decor-sand)' },
+          ].map((seg, i) => (
+            <span
+              key={i}
+              style={{ flexBasis: `${seg.w}%`, background: seg.c }}
+              className="min-w-[6px] h-full"
+            />
+          ))}
         </div>
-        <Metric
-          label="Bonus Escrow (40%)"
-          value={formatInrFromPaise(bonusEscrowAccount?.balance_paise ?? totalBonusPaise)}
-          status={{ tone: 'info', label: 'ESCROW' }}
-        />
-        <Metric
-          label="Gross Hammer Value"
-          value={formatInrFromPaise(totalHammerPaise)}
-          status={{ tone: 'neutral', label: '100% GTV' }}
-        />
-      </div>
-
-      {/* Transparent 5% Statutory Deduction Breakdown Card */}
-      <Card title={t('workspaces.fisherBreakdownTitle')}>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
-          <div className="col-span-2 lg:col-span-1 p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--brand-soft)] border border-[var(--navy-200)]">
-            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--brand-soft-fg)]">
-              1. Your Net Payout (95%)
-            </div>
-            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
-              {formatInrFromPaise(totalNetPaise)}
-            </div>
-            <div className="text-[11px] sm:text-xs text-[var(--text-secondary)] mt-0.5 sm:mt-1">
-              Credited directly to vessel owner
-            </div>
-          </div>
-
-          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
-            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
-              2. Bonus Escrow (40%)
-            </div>
-            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--brand)] mt-1">
-              {formatInrFromPaise(totalBonusPaise)}
-            </div>
-            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">
-              2.00% GTV annual return
-            </div>
-          </div>
-
-          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
-            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
-              3. Auctioneer (20%)
-            </div>
-            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
-              {formatInrFromPaise(totalCommissionPaise / 5n)}
-            </div>
-            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">1.00% GTV (Act s.4(5))</div>
-          </div>
-
-          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
-            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
-              4. Harbour HMS (20%)
-            </div>
-            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
-              {formatInrFromPaise(totalCommissionPaise / 5n)}
-            </div>
-            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">1.00% GTV (Act s.4(5))</div>
-          </div>
-
-          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
-            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
-              5. Primary Co-op (20%)
-            </div>
-            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
-              {formatInrFromPaise(totalCommissionPaise / 5n)}
-            </div>
-            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">1.00% GTV (Act s.4(5))</div>
-          </div>
-        </div>
+        <ul className="mt-4 flex flex-col divide-y divide-[var(--border-hair)]">
+          {[
+            {
+              label: t('workspaces.splitYou'),
+              rupees: '₹95',
+              c: 'var(--brand)',
+              amt: totalNetPaise,
+              strong: true,
+            },
+            {
+              label: t('workspaces.splitBonus'),
+              rupees: '₹2',
+              c: 'var(--decor-aqua)',
+              amt: totalBonusPaise,
+            },
+            {
+              label: t('workspaces.splitAuctioneer'),
+              rupees: '₹1',
+              c: 'var(--decor-sun)',
+              amt: totalCommissionPaise / 5n,
+            },
+            {
+              label: t('workspaces.splitHarbour'),
+              rupees: '₹1',
+              c: 'var(--decor-ink)',
+              amt: totalCommissionPaise / 5n,
+            },
+            {
+              label: t('workspaces.splitCoop'),
+              rupees: '₹1',
+              c: 'var(--decor-sand)',
+              amt: totalCommissionPaise / 5n,
+            },
+          ].map((row) => (
+            <li key={row.label} className="flex items-center gap-3 py-3 min-h-[52px]">
+              <span
+                aria-hidden="true"
+                className="h-3 w-3 shrink-0 rounded-full"
+                style={{ background: row.c }}
+              />
+              <span className="flex-1 min-w-0 text-sm text-[var(--text-primary)]">
+                {row.label}
+              </span>
+              <span className="text-xs text-[var(--text-muted)] tabular-nums">{row.rupees}</span>
+              <span
+                className={`w-28 text-right font-mono-code tabular-nums ${
+                  row.strong ? 'font-bold text-base' : 'text-sm'
+                }`}
+              >
+                {formatInrFromPaise(row.amt)}
+              </span>
+            </li>
+          ))}
+        </ul>
       </Card>
 
       {/* Today's Catch Sales Table */}

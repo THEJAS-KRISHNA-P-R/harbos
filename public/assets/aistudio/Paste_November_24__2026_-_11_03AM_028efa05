@@ -1,0 +1,648 @@
+From 1c27e88214978e74fd360fd203db3effac53a12b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 24 Nov 2026 05:02:19 +0000
+Subject: [PATCH] feat(web): mobile app shell and phone-first login
+
+- shell: bottom tab bar (>=56px targets, safe-area aware) replaces the chip row; shown only for roles with 2+ workspaces
+- shell: compact header (brand mark + title), desktop-only command search, icon-only Ledger on phones
+- login: one-screen, two-step (number then code), bilingual, no implementation details shown to users;
+  dev role switcher collapsed and dev-only
+- i18n: login.* keys in en/ml
+---
+ src/web/app/App.tsx                          |   7 +-
+ src/web/app/components/LoginPortalScreen.tsx | 376 ++++++++-----------
+ src/web/i18n/en.json                         |  16 +
+ src/web/i18n/ml.json                         |  16 +
+ src/web/ui/index.tsx                         | 105 ++++--
+ 5 files changed, 266 insertions(+), 254 deletions(-)
+
+diff --git a/src/web/app/App.tsx b/src/web/app/App.tsx
+index 4869cf0..99f1d37 100644
+--- a/src/web/app/App.tsx
++++ b/src/web/app/App.tsx
+@@ -535,7 +535,7 @@ export const App: React.FC = () => {
+         onClick={() => setCommandPaletteOpen(true)}
+         aria-label="Open Command Palette"
+         title="Command Palette (⌘K)"
+-        className="h-8 w-8 sm:w-auto sm:h-9 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-tint)] inline-flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
++        className="hidden sm:inline-flex sm:h-9 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-tint)] items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
+       >
+         <Search className="w-3.5 h-3.5" />
+         <span className="hidden sm:inline">⌘K</span>
+@@ -570,10 +570,11 @@ export const App: React.FC = () => {
+         <Button
+           variant="primary"
+           size="sm"
+-          icon={<BookOpen className="w-3.5 h-3.5" />}
++          icon={<BookOpen className="w-4 h-4" />}
+           onClick={() => setLedgerDrawerOpen(true)}
++          aria-label="Open Ledger Inspector"
+         >
+-          Ledger
++          <span className="hidden sm:inline">Ledger</span>
+         </Button>
+       )}
+ 
+diff --git a/src/web/app/components/LoginPortalScreen.tsx b/src/web/app/components/LoginPortalScreen.tsx
+index c524405..e236c5f 100644
+--- a/src/web/app/components/LoginPortalScreen.tsx
++++ b/src/web/app/components/LoginPortalScreen.tsx
+@@ -1,20 +1,13 @@
+ import React, { useEffect, useState } from 'react';
+-import {
+-  UserCheck,
+-  ArrowRight,
+-  KeyRound,
+-  ShieldCheck,
+-} from 'lucide-react';
++import { ArrowLeft, ArrowRight, MessageSquareText, ShieldCheck } from 'lucide-react';
+ import {
+   Button,
+-  Card,
+-  Badge,
+   Input,
+-  Select,
+   Toast,
+   MaritimeCrestSvgEmblem,
+   DawnHarbourHeroScene,
+ } from '@web/ui/index.tsx';
++import { useI18n } from '@web/i18n/index.tsx';
+ import {
+   apiRequest,
+   formatOperatorInitials,
+@@ -62,6 +55,9 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
+   onOpenActiveProfile,
+ }) => {
+   const isDevSandbox = !import.meta.env.PROD;
++  const { locale, setLocale, t } = useI18n();
++  const [editingNumber, setEditingNumber] = useState(false);
++  const otpStep = (Boolean(authSuccess) || Boolean(devEchoOtp)) && !editingNumber;
+   const [fetchedDemoOperators, setFetchedDemoOperators] = useState<ReadonlyArray<OperatorRow>>([]);
+ 
+   useEffect(() => {
+@@ -102,223 +98,173 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
+     displayedOperators.length > 0 ? displayedOperators : fetchedDemoOperators;
+ 
+   return (
+-    <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] py-4 sm:py-8 px-3 sm:px-6 lg:px-10 flex flex-col items-center justify-center">
+-      <div className="w-full max-w-[1160px] flex flex-col gap-4 sm:gap-6">
+-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-[var(--border-hair)]">
+-          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+-            <MaritimeCrestSvgEmblem size={36} className="shrink-0" />
+-            <div className="min-w-0">
+-              <div className="flex flex-wrap items-center gap-2">
+-                <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight">
+-                  HarbourOS Operator Identity &amp; Sign-In Portal
+-                </h1>
+-                <Badge tone="ok" label="HS256 JWT + RLS" />
+-              </div>
+-              <p className="text-[11px] sm:text-xs text-[var(--text-secondary)]">
+-                Kerala Fish Auctioning, Marketing and Maintenance of Quality Act, 2021 (Act 16 of 2021) · Node.js 22 + PostgreSQL 16
+-              </p>
+-            </div>
+-          </div>
+-          <div className="flex flex-wrap items-center gap-2">
+-            {user && (
+-              <Button
+-                variant="secondary"
+-                size="sm"
+-                icon={<UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+-                onClick={onOpenActiveProfile}
+-              >
+-                Active: {user.fullName}
+-              </Button>
+-            )}
+-            <Button
+-              variant="primary"
+-              size="sm"
+-              icon={<ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+-              onClick={onBackToWorkspace}
+-            >
+-              Back to Workspace
+-            </Button>
++    <div className="min-h-screen flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)]">
++      {/* Hero: brand, language toggle, illustration, promise */}
++      <header className="bg-[var(--decor-aqua-soft)] rounded-b-[32px] px-5 pt-[calc(16px+env(safe-area-inset-top))] pb-14 sm:pb-16 flex flex-col items-center">
++        <div className="w-full max-w-[460px] flex items-center justify-between">
++          <div className="flex items-center gap-2.5">
++            <MaritimeCrestSvgEmblem size={34} />
++            <span className="text-lg font-bold tracking-tight text-[var(--text-primary)]">HarbourOS</span>
+           </div>
++          <Button
++            variant="outline"
++            size="sm"
++            onClick={() => setLocale(locale === 'en' ? 'ml' : 'en')}
++            aria-label={locale === 'en' ? 'Switch to Malayalam' : 'Switch to English'}
++          >
++            {t('login.language')}
++          </Button>
+         </div>
++        <DawnHarbourHeroScene className="mt-5 w-[min(300px,78vw)]" />
++        <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--brand)]">
++          {t('login.harbour')}
++        </p>
++        <p lang={locale} className="mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-[var(--text-secondary)]">
++          {t('login.tagline')}
++        </p>
++      </header>
+ 
+-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+-          <div className={isDevSandbox && operators.length > 0 ? 'lg:col-span-6 flex flex-col gap-3.5 sm:gap-5' : 'lg:col-span-8 lg:col-start-3 flex flex-col gap-3.5 sm:gap-5'}>
+-            <div className="p-3 sm:p-4 rounded-[var(--radius-card)] border border-[var(--border-hair)] bg-[var(--bg-surface)] bg-pattern-isobath flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+-              <DawnHarbourHeroScene className="w-[140px] sm:w-[200px] shrink-0" />
+-              <div className="flex flex-col gap-1 min-w-0">
+-                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--brand)]">
+-                  Munambam Fishing Harbour (HMS)
+-                </div>
+-                <div className="text-sm font-bold text-[var(--text-primary)]">
+-                  Passwordless Mobile OTP &amp; Role-Scoped Access
+-                </div>
+-                <p className="text-xs text-[var(--text-secondary)]">
+-                  Every operator token carries cryptographically signed <code>tenantId</code>, <code>role</code>, and <code>entityRefId</code> claims enforced by PostgreSQL Row-Level Security.
+-                </p>
+-              </div>
+-            </div>
+-
+-            {authError && (
+-              <Toast
+-                tone="danger"
+-                title="Authentication Error"
+-                message={authError}
+-                onDismiss={onDismissAuthError}
+-              />
+-            )}
++      {/* Sign-in sheet overlaps the hero */}
++      <main className="flex-1 w-full max-w-[460px] mx-auto -mt-8 px-4 pb-[calc(24px+env(safe-area-inset-bottom))] flex flex-col gap-4">
++        <section
++          aria-labelledby="login-title"
++          className="rounded-[28px] bg-[var(--bg-surface)] border border-[var(--border-hair)] shadow-[var(--shadow-overlay)] p-5 sm:p-6 flex flex-col gap-5"
++        >
++          <div>
++            <h1 id="login-title" lang={locale} className="text-2xl font-bold tracking-tight">
++              {t('login.welcome')}
++            </h1>
++            <p lang={locale} className="mt-1 text-sm text-[var(--text-secondary)]">
++              {t('login.subtitle')}
++            </p>
++          </div>
+ 
+-            {authSuccess && (
+-              <Toast
+-                tone="ok"
+-                title="OTP Challenge Issued"
+-                message={authSuccess}
+-                onDismiss={onDismissAuthSuccess}
+-              />
+-            )}
++          {authError && (
++            <Toast
++              tone="danger"
++              title="Couldn't sign you in"
++              message={authError}
++              onDismiss={onDismissAuthError}
++            />
++          )}
+ 
+-            <Card
+-              stepBadge="ADR-003"
+-              kicker="Passwordless Operator Authentication"
+-              title="Sign In via Registered Mobile OTP"
+-              subtitle="Enter your registered E.164 mobile number to receive a single-use 6-digit OTP challenge"
+-              icon={<KeyRound className="w-5 h-5" />}
++          {!otpStep ? (
++            <form
++              onSubmit={(e) => {
++                setEditingNumber(false);
++                void onRequestOtp(e);
++              }}
++              className="flex flex-col gap-4"
+             >
+-              <div className="flex flex-col gap-5">
+-                <form onSubmit={(e) => void onRequestOtp(e)} className="flex flex-col gap-3.5">
+-                  {isDevSandbox && operators.length > 0 && (
+-                    <Select
+-                      label="Step 1: Select Sandbox Harbour Operator Phone"
+-                      value={phoneInput}
+-                      onChange={(e) => onChangePhoneInput(e.target.value)}
+-                      options={operators.map((op) => ({
+-                        value: op.phone_e164,
+-                        label: `${op.phone_e164} — ${op.full_name} (${op.role})`,
+-                      }))}
+-                    />
+-                  )}
+-                  <Input
+-                    label="Registered E.164 Mobile Number"
+-                    mono
+-                    value={phoneInput}
+-                    onChange={(e) => onChangePhoneInput(e.target.value)}
+-                    hint="Format: +91XXXXXXXXXX (verified against core.otp_challenges)"
+-                  />
+-                  <Button type="submit" variant="secondary" className="w-full">
+-                    1. Request 6-Digit OTP Challenge
+-                  </Button>
+-                </form>
+-
+-                {devEchoOtp && isDevSandbox && (
+-                  <div className="p-4 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 flex flex-col gap-2">
+-                    <div className="flex items-center justify-between">
+-                      <span className="text-xs font-bold uppercase text-[var(--info)]">
+-                        OTP_DEV_ECHO Active (Sandbox Mode)
+-                      </span>
+-                      <Badge tone="info" label={`CODE: ${devEchoOtp}`} />
+-                    </div>
+-                    <p className="text-xs text-[var(--text-secondary)]">
+-                      Single-use CSPRNG 6-digit OTP code auto-filled below. Production builds refuse to boot if <code>OTP_DEV_ECHO=true</code>.
+-                    </p>
+-                  </div>
+-                )}
+-
+-                <form
+-                  onSubmit={(e) => void onVerifyOtp(e)}
+-                  className="flex flex-col gap-3.5 pt-4 border-t border-[var(--border-hair)]"
++              <Input
++                label={t('login.phoneLabel')}
++                dockSize
++                mono
++                type="tel"
++                inputMode="tel"
++                autoComplete="tel"
++                placeholder="+91 98765 43210"
++                value={phoneInput}
++                onChange={(e) => onChangePhoneInput(e.target.value)}
++                hint={t('login.phoneHint')}
++              />
++              <Button type="submit" variant="primary" size="dock" className="w-full min-h-[56px]" icon={<MessageSquareText className="w-5 h-5" />}>
++                {t('login.sendCode')}
++              </Button>
++            </form>
++          ) : (
++            <form onSubmit={(e) => void onVerifyOtp(e)} className="flex flex-col gap-4">
++              <div className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] bg-[var(--bg-tint)] px-3.5 py-3">
++                <div className="min-w-0">
++                  <div lang={locale} className="text-xs text-[var(--text-secondary)]">{t('login.codeSentTo')}</div>
++                  <div className="font-mono-code text-sm font-bold truncate">{phoneInput}</div>
++                </div>
++                <button
++                  type="button"
++                  onClick={() => {
++                    setEditingNumber(true);
++                    onDismissAuthSuccess();
++                    onChangeOtpInput('');
++                  }}
++                  className="shrink-0 min-h-[44px] px-2 text-sm font-semibold text-[var(--brand)] cursor-pointer"
+                 >
+-                  <Input
+-                    label="Step 2: Enter 6-Digit OTP Code"
+-                    mono
+-                    placeholder="Enter 6-digit OTP"
+-                    value={otpInput}
+-                    onChange={(e) => onChangeOtpInput(e.target.value)}
+-                  />
+-                  <Button type="submit" variant="primary" className="w-full">
+-                    2. Verify OTP &amp; Sign In with HS256 JWT
+-                  </Button>
+-                </form>
++                  {t('login.changeNumber')}
++                </button>
+               </div>
+-            </Card>
+-          </div>
++              <Input
++                label={t('login.otpLabel')}
++                dockSize
++                mono
++                inputMode="numeric"
++                autoComplete="one-time-code"
++                maxLength={6}
++                placeholder="••••••"
++                value={otpInput}
++                onChange={(e) => onChangeOtpInput(e.target.value.replace(/\D/g, ''))}
++              />
++              {devEchoOtp && isDevSandbox && (
++                <p className="text-xs rounded-[var(--radius-control)] bg-[var(--info-bg)] text-[var(--info)] px-3 py-2">
++                  Dev sandbox code: <span className="font-mono-code font-bold">{devEchoOtp}</span>
++                </p>
++              )}
++              <Button type="submit" variant="primary" size="dock" className="w-full min-h-[56px]" icon={<ArrowRight className="w-5 h-5" />}>
++                {t('login.verify')}
++              </Button>
++            </form>
++          )}
+ 
+-          {isDevSandbox && operators.length > 0 && (
+-            <div className="lg:col-span-6 flex flex-col gap-4">
+-              <Card
+-                stepBadge="SANDBOX PERSONAS"
+-                kicker="Development Demo Mode"
+-                title="Statutory Harbour Operator Personas"
+-                subtitle="Switch between the 8 statutory Act 16 roles in development mode or pre-fill their phone for OTP verification"
+-                icon={<ShieldCheck className="w-5 h-5" />}
+-              >
+-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+-                  {operators.map((op) => {
+-                    const meta = getRoleDisplayMeta(op.role);
+-                    const isCurrent = user?.userId === op.user_id || user?.role === op.role;
+-                    return (
+-                      <div
+-                        key={op.user_id}
+-                        className={`p-4 rounded-[var(--radius-card)] border flex flex-col justify-between gap-3 transition-all ${
+-                          isCurrent
+-                            ? 'bg-[var(--brand-soft)] border-[var(--brand)]'
+-                            : 'bg-[var(--bg-sunken)]/70 border-[var(--border-hair)] hover:border-[var(--border-strong)]'
+-                        }`}
+-                      >
+-                        <div className="flex items-start justify-between gap-2">
+-                          <div className="flex items-center gap-2.5 min-w-0">
+-                            <span className="w-9 h-9 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-xs font-bold font-mono-code inline-flex items-center justify-center shrink-0">
+-                              {formatOperatorInitials(op.full_name)}
+-                            </span>
+-                            <div className="min-w-0">
+-                              <div className="text-sm font-bold text-[var(--text-primary)] truncate">
+-                                {op.full_name}
+-                              </div>
+-                              <div className="text-xs font-mono-code text-[var(--text-secondary)]">
+-                                {op.phone_e164}
+-                              </div>
+-                            </div>
+-                          </div>
+-                          <span className="px-2 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] border border-[var(--border-hair)] text-[10px] font-bold font-mono-code text-[var(--brand)] whitespace-nowrap shrink-0 leading-none">
+-                            {meta.shortBadge}
+-                          </span>
+-                        </div>
++          <p lang={locale} className="flex items-start gap-2 text-xs text-[var(--text-muted)]">
++            <ShieldCheck className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
++            <span>{t('login.help')}</span>
++          </p>
++        </section>
+ 
+-                        <div className="text-xs text-[var(--text-secondary)]">
+-                          <div className="font-semibold text-[var(--text-primary)]">
+-                            {op.entity_summary ?? meta.statutoryRef}
+-                          </div>
+-                          <div className="text-[11px] text-[var(--text-muted)] mt-0.5 line-clamp-2">
+-                            {meta.description}
+-                          </div>
+-                        </div>
++        {user && (
++          <button
++            type="button"
++            onClick={onBackToWorkspace}
++            className="self-center min-h-[44px] inline-flex items-center gap-1.5 px-3 text-sm font-semibold text-[var(--text-secondary)] cursor-pointer"
++          >
++            <ArrowLeft className="w-4 h-4" /> {t('login.backToWorkspace')}
++          </button>
++        )}
+ 
+-                        <div className="flex items-center gap-2 pt-1">
+-                          <Button
+-                            variant="primary"
+-                            size="sm"
+-                            onClick={() => void onPersonaSwitch(op.role)}
+-                            className="flex-1"
+-                          >
+-                            Switch Role
+-                          </Button>
+-                          <Button
+-                            variant="outline"
+-                            size="sm"
+-                            onClick={() => {
+-                              onChangePhoneInput(op.phone_e164);
+-                            }}
+-                          >
+-                            Use Phone
+-                          </Button>
+-                        </div>
+-                      </div>
+-                    );
+-                  })}
+-                </div>
+-              </Card>
+-            </div>
+-          )}
+-        </div>
+-      </div>
++        {isDevSandbox && operators.length > 0 && (
++          <details className="rounded-[var(--radius-card)] border border-dashed border-[var(--border-strong)] bg-[var(--bg-surface)] p-4">
++            <summary className="cursor-pointer text-sm font-semibold text-[var(--text-secondary)] min-h-[44px] flex items-center">
++              Developer sandbox: switch role (dev builds only)
++            </summary>
++            <ul className="mt-3 flex flex-col gap-2.5">
++              {operators.map((op) => {
++                const meta = getRoleDisplayMeta(op.role);
++                const isCurrent = user?.userId === op.user_id || user?.role === op.role;
++                return (
++                  <li
++                    key={op.user_id}
++                    className={`rounded-[var(--radius-control)] border p-3 flex items-center gap-3 ${
++                      isCurrent ? 'bg-[var(--brand-soft)] border-[var(--brand)]' : 'bg-[var(--bg-sunken)] border-[var(--border-hair)]'
++                    }`}
++                  >
++                    <span className="w-9 h-9 shrink-0 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-xs font-bold font-mono-code inline-flex items-center justify-center">
++                      {formatOperatorInitials(op.full_name)}
++                    </span>
++                    <div className="min-w-0 flex-1">
++                      <div className="text-sm font-bold truncate">{op.full_name}</div>
++                      <div className="text-xs text-[var(--text-secondary)] truncate">{meta.shortBadge}</div>
++                    </div>
++                    <Button variant="primary" size="sm" onClick={() => void onPersonaSwitch(op.role)}>
++                      Switch
++                    </Button>
++                    <Button variant="outline" size="sm" onClick={() => onChangePhoneInput(op.phone_e164)}>
++                      Use phone
++                    </Button>
++                  </li>
++                );
++              })}
++            </ul>
++          </details>
++        )}
++      </main>
+     </div>
+   );
+ };
+diff --git a/src/web/i18n/en.json b/src/web/i18n/en.json
+index 7c59ebb..97dc861 100644
+--- a/src/web/i18n/en.json
++++ b/src/web/i18n/en.json
+@@ -88,5 +88,21 @@
+     "harbourTabAccounting": "Accounting",
+     "harbourTabReports": "Reports",
+     "harbourTabAudit": "Audit"
++  },
++  "login": {
++    "harbour": "Munambam Fishing Harbour",
++    "tagline": "Fair prices. Instant settlement. Every kilo on record.",
++    "welcome": "Welcome back",
++    "subtitle": "Sign in with your registered mobile number",
++    "phoneLabel": "Mobile number",
++    "phoneHint": "We will send a 6-digit code by SMS",
++    "sendCode": "Send code",
++    "codeSentTo": "Code sent to",
++    "otpLabel": "Enter the 6-digit code",
++    "verify": "Verify and sign in",
++    "changeNumber": "Change number",
++    "help": "Trouble signing in? Ask your harbour office to confirm your number is registered.",
++    "backToWorkspace": "Back to workspace",
++    "language": "മലയാളം"
+   }
+ }
+diff --git a/src/web/i18n/ml.json b/src/web/i18n/ml.json
+index 50c8295..fde95f4 100644
+--- a/src/web/i18n/ml.json
++++ b/src/web/i18n/ml.json
+@@ -89,5 +89,21 @@
+     "harbourTabAccounting": "അക്കൗണ്ടിംഗ്",
+     "harbourTabReports": "റിപ്പോർട്ടുകൾ",
+     "harbourTabAudit": "ഓഡിറ്റ്"
++  },
++  "login": {
++    "harbour": "മുനമ്പം ഫിഷിംഗ് ഹാർബർ",
++    "tagline": "ന്യായമായ വില. ഉടൻ പണം. ഓരോ കിലോയ്ക്കും രേഖ.",
++    "welcome": "സ്വാഗതം",
++    "subtitle": "രജിസ്റ്റർ ചെയ്ത മൊബൈൽ നമ്പർ ഉപയോഗിച്ച് സൈൻ ഇൻ ചെയ്യുക",
++    "phoneLabel": "മൊബൈൽ നമ്പർ",
++    "phoneHint": "SMS വഴി 6 അക്ക കോഡ് അയയ്ക്കും",
++    "sendCode": "കോഡ് അയയ്ക്കുക",
++    "codeSentTo": "കോഡ് അയച്ചത്",
++    "otpLabel": "6 അക്ക കോഡ് നൽകുക",
++    "verify": "പരിശോധിച്ച് സൈൻ ഇൻ ചെയ്യുക",
++    "changeNumber": "നമ്പർ മാറ്റുക",
++    "help": "സൈൻ ഇൻ ചെയ്യാൻ പ്രശ്നമുണ്ടോ? നിങ്ങളുടെ നമ്പർ രജിസ്റ്റർ ചെയ്തിട്ടുണ്ടെന്ന് ഹാർബർ ഓഫീസിൽ ഉറപ്പാക്കുക.",
++    "backToWorkspace": "വർക്ക്‌സ്പേസിലേക്ക് മടങ്ങുക",
++    "language": "English"
+   }
+ }
+diff --git a/src/web/ui/index.tsx b/src/web/ui/index.tsx
+index f3a34e6..aef2483 100644
+--- a/src/web/ui/index.tsx
++++ b/src/web/ui/index.tsx
+@@ -1232,6 +1232,7 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
+   ];
+ 
+   const activeItem = navItems.find((n) => n.id === activeNavId);
++  const showBottomNav = navItems.length > 1;
+ 
+   return (
+     <div className="min-h-screen flex flex-col md:flex-row bg-[var(--bg-app)] text-[var(--text-primary)] overflow-x-hidden">
+@@ -1494,15 +1495,10 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
+       <div className="flex-1 flex flex-col min-w-0">
+         <header className="sticky top-0 z-30 min-h-[48px] sm:min-h-[54px] px-2.5 sm:px-6 lg:px-8 py-1.5 sm:py-2 bg-[var(--bg-surface)]/95 backdrop-blur-sm border-b border-[var(--border-hair)] flex items-center justify-between gap-2 sm:gap-4 no-print">
+           <div className="flex items-center gap-2 min-w-0 flex-1">
+-            <button
+-              type="button"
+-              onClick={() => setMobileNavOpen(true)}
+-              aria-label="Open mobile navigation menu"
+-              className="md:hidden w-8 h-8 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-[var(--text-primary)] inline-flex items-center justify-center shrink-0 cursor-pointer"
+-            >
+-              <Menu className="w-4 h-4" />
+-            </button>
+-            <span className="text-[13px] sm:text-sm font-bold text-[var(--text-primary)] truncate">
++            <span className="md:hidden shrink-0" aria-hidden="true">
++              <MaritimeCrestSvgEmblem size={30} />
++            </span>
++            <span className="text-base sm:text-sm font-bold text-[var(--text-primary)] truncate">
+               {activeItem?.labelEn ?? 'Workspace'}
+             </span>
+             <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-[11px] font-mono-code text-[var(--text-muted)] whitespace-nowrap">
+@@ -1514,35 +1510,72 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
+           </div>
+         </header>
+ 
+-        {/* Mobile Horizontal Pill Navigation (< 768px) */}
+-        <nav
+-          aria-label="Mobile Workspace Navigation"
+-          className="md:hidden px-2.5 py-1.5 bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] flex items-center gap-1.5 overflow-x-auto no-scrollbar no-print"
+-        >
+-          {navItems.map((item) => {
+-            const active = item.id === activeNavId;
+-            return (
+-              <button
+-                key={item.id}
+-                type="button"
+-                onClick={() => onSelectNav(item.id)}
+-                className={`h-7 px-2.5 rounded-[var(--radius-pill)] inline-flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+-                  active
+-                    ? 'bg-[var(--brand)] text-[var(--brand-fg)]'
+-                    : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-hair)]'
+-                }`}
+-              >
+-                <span className="shrink-0 scale-90">{item.icon}</span>
+-                <span lang={lang === 'ml' ? 'ml' : 'en'} className="whitespace-nowrap">
+-                  {lang === 'ml' ? item.labelMl : item.labelEn}
+-                </span>
+-              </button>
+-            );
+-          })}
+-        </nav>
++        {/* Mobile Bottom Tab Bar (< 768px): primary nav, >=56px touch targets, safe-area aware */}
++        {showBottomNav && (
++          <nav
++            aria-label="Mobile Workspace Navigation"
++            data-testid="mobile-bottom-nav"
++            className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--bg-surface)] border-t border-[var(--border-hair)] shadow-[var(--shadow-overlay)] pb-[env(safe-area-inset-bottom)]"
++          >
++            <ul className="flex items-stretch justify-around px-1.5 pt-1.5 pb-1.5 gap-1">
++              {(navItems.length > 5 ? navItems.slice(0, 4) : navItems).map((item) => {
++                const active = item.id === activeNavId;
++                const labelText = lang === 'ml' ? item.labelMl : item.labelEn;
++                return (
++                  <li key={item.id} className="flex-1 min-w-0">
++                    <button
++                      type="button"
++                      onClick={() => onSelectNav(item.id)}
++                      aria-current={active ? 'page' : undefined}
++                      aria-label={labelText}
++                      className="w-full min-h-[56px] flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-[0.97] transition-transform"
++                    >
++                      <span
++                        className={`h-8 w-14 rounded-[var(--radius-pill)] inline-flex items-center justify-center transition-colors ${
++                          active
++                            ? 'bg-[var(--brand-soft)] text-[var(--brand)]'
++                            : 'text-[var(--text-secondary)]'
++                        }`}
++                      >
++                        {item.icon}
++                      </span>
++                      <span
++                        lang={lang === 'ml' ? 'ml' : 'en'}
++                        className={`max-w-full truncate px-0.5 text-[11px] leading-none ${
++                          active
++                            ? 'font-bold text-[var(--brand)]'
++                            : 'font-medium text-[var(--text-secondary)]'
++                        }`}
++                      >
++                        {labelText}
++                      </span>
++                    </button>
++                  </li>
++                );
++              })}
++              {navItems.length > 5 && (
++                <li className="flex-1 min-w-0">
++                  <button
++                    type="button"
++                    onClick={() => setMobileNavOpen(true)}
++                    aria-label="More workspaces"
++                    className="w-full min-h-[56px] flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-[0.97] transition-transform"
++                  >
++                    <span className="h-8 w-14 rounded-[var(--radius-pill)] inline-flex items-center justify-center text-[var(--text-secondary)]">
++                      <Menu className="w-5 h-5" />
++                    </span>
++                    <span className="text-[11px] leading-none font-medium text-[var(--text-secondary)]">
++                      More
++                    </span>
++                  </button>
++                </li>
++              )}
++            </ul>
++          </nav>
++        )}
+ 
+         {/* Responsive Content Container: Compact on Mobile (360-639px), Airy on Desktop */}
+-        <main className="flex-1 w-full max-w-[1440px] mx-auto px-2.5 sm:px-6 lg:px-8 xl:px-10 py-3 sm:py-6 flex flex-col gap-3.5 sm:gap-6">
++        <main className={`flex-1 w-full max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 pt-3 ${showBottomNav ? 'pb-[calc(88px+env(safe-area-inset-bottom))]' : 'pb-6'} md:pb-6 sm:pt-6 flex flex-col gap-4 sm:gap-6`}>
+           {children}
+         </main>
+       </div>
+-- 
+2.43.0

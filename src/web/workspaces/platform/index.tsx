@@ -223,7 +223,7 @@ export const PlatformWorkspace: React.FC<{
     },
     {
       key: 'floor',
-      header: 's.19 Floor Mode',
+      header: 'Floor Mode',
       render: (r) => <Badge tone="ok" label={r.floor_enforcement} />,
     },
     { key: 'pol', header: 'Active Policy', mono: true, render: (r) => r.active_policy_id },
@@ -239,7 +239,7 @@ export const PlatformWorkspace: React.FC<{
     { key: 'ver', header: 'Ver', mono: true, render: (r) => `v${r.version_num}` },
     {
       key: 'mode',
-      header: 'Commercial Mode (C7)',
+      header: 'Commercial Mode',
       render: (r) => <Badge tone="info" label={r.commercial_mode} />,
     },
     {
@@ -251,7 +251,7 @@ export const PlatformWorkspace: React.FC<{
     },
     {
       key: 'signoff',
-      header: 'Legal Sign-Off (OPEN-02)',
+      header: 'Legal Sign-Off',
       mono: true,
       render: (r) =>
         r.legal_signoff_ref
@@ -399,7 +399,7 @@ export const PlatformWorkspace: React.FC<{
     },
     {
       key: 'floor',
-      header: 's.21 Floor Compliance',
+      header: 'Floor Compliance',
       align: 'right',
       mono: true,
       render: (r) => <Badge tone="ok" label={`${r.floorCompliancePct.toFixed(1)}%`} />,
@@ -591,8 +591,8 @@ export const PlatformWorkspace: React.FC<{
       {activeTab === 'sql-migrations' && (
         <div className="flex flex-col gap-6">
           <Card
-            title="PostgreSQL Applied Schema Migrations (`core.schema_migrations`)"
-            subtitle="Checksum-verified migrations 001–009 enforcing fail-closed RLS, statutory caps & deferred journal balance"
+            title="Applied Schema Migrations"
+            subtitle="Checksum-verified migrations enforcing fail-closed RLS, statutory caps & deferred journal balance"
             actions={
               <Button
                 variant="secondary"
@@ -613,7 +613,7 @@ export const PlatformWorkspace: React.FC<{
           </Card>
 
           <Card
-            title="Double-Entry Journal Balance Audit View (`ledger.v_journal_balance_audit`)"
+            title="Double-Entry Journal Balance Audit"
             subtitle="Verifies SUM(debit_paise) = SUM(credit_paise) across all statutory journals"
           >
             <DataTable
@@ -643,23 +643,23 @@ export const PlatformWorkspace: React.FC<{
                     onChange={(e) => setNewSlug(e.target.value)}
                   />
                   <Select
-                    label="Statutory Regime Preset (§12 M4)"
+                    label="Statutory Regime Preset"
                     value={newPreset}
                     onChange={(e) => setNewPreset(e.target.value as CentreType)}
                     options={[
                       {
                         value: 'KERALA_HARBOUR',
-                        label: 'KERALA_HARBOUR (s.10(1) 20/20/40/20)',
+                        label: 'Kerala Harbour (20/20/40/20 split)',
                       },
                       {
                         value: 'KERALA_LANDING_CENTRE',
-                        label: 'KERALA_LANDING_CENTRE (20/20/40/20)',
+                        label: 'Kerala Landing Centre (20/20/40/20 split)',
                       },
                       {
                         value: 'KERALA_MARKET',
-                        label: 'KERALA_MARKET (s.14(1) 20/20/30/30)',
+                        label: 'Kerala Fish Market (20/20/30/30 split)',
                       },
-                      { value: 'INDIA_COOP', label: 'INDIA_COOP (Co-op Federation Preset)' },
+                      { value: 'INDIA_COOP', label: 'India Co-op Federation Preset' },
                     ]}
                   />
                 </div>
@@ -687,27 +687,27 @@ export const PlatformWorkspace: React.FC<{
             </Card>
 
             <Card
-              title="New Commission Policy Version (Conflict C7 Gate)"
-              subtitle="Modes B & C are blocked by server & PostgreSQL CHECK unless Legal Sign-Off Ref and Date are supplied"
+              title="New Commission Policy Version"
+              subtitle="Modes B & C require a Legal Sign-Off reference and date before activation"
             >
               <form onSubmit={handleSavePolicyVersion} className="flex flex-col gap-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select
-                    label="Commercial Monetization Mode (§2 C7)"
+                    label="Commercial Monetization Mode"
                     value={policyMode}
                     onChange={(e) => setPolicyMode(e.target.value as CommercialMode)}
                     options={[
                       {
                         value: 'FIXED_SAAS_ONLY',
-                        label: 'Mode A: FIXED_SAAS_ONLY (Default Safe)',
+                        label: 'Mode A: Fixed SaaS only (Default safe)',
                       },
                       {
                         value: 'INSTITUTIONAL_TECH_SHARE',
-                        label: 'Mode B: INSTITUTIONAL_TECH_SHARE (40 bps)',
+                        label: 'Mode B: Institutional tech share (40 bps)',
                       },
                       {
                         value: 'HYBRID',
-                        label: 'Mode C: HYBRID (40 bps + 100 bps Buyer Fee + GST)',
+                        label: 'Mode C: Hybrid (40 bps + 100 bps buyer fee + GST)',
                       },
                     ]}
                   />
@@ -750,8 +750,8 @@ export const PlatformWorkspace: React.FC<{
           </div>
 
           <Card
-            title="Provisioned Multi-Tenant Registry (`core.tenants`)"
-            subtitle="All tenants isolated by PostgreSQL FORCE ROW LEVEL SECURITY"
+            title="Provisioned Multi-Tenant Registry"
+            subtitle="All tenants isolated by database Row-Level Security"
           >
             <DataTable
               caption="Provisioned Harbour & Market Tenants"
@@ -762,8 +762,8 @@ export const PlatformWorkspace: React.FC<{
           </Card>
 
           <Card
-            title="Immutable Commission Policy History (`core.commission_policies`)"
-            subtitle="Historical sales remain bound to their exact policy_id"
+            title="Immutable Commission Policy History"
+            subtitle="Historical sales remain bound to their exact policy version"
           >
             <DataTable
               caption="Versioned Statutory Commission Policies"
@@ -774,8 +774,8 @@ export const PlatformWorkspace: React.FC<{
           </Card>
 
           <Card
-            title="Append-Only Double-Entry Ledger Chain (`ledger.entries`)"
-            subtitle="Protected by PostgreSQL BEFORE UPDATE OR DELETE trigger & SHA-256 hash chain"
+            title="Append-Only Double-Entry Ledger Chain"
+            subtitle="Protected by immutable triggers and SHA-256 hash chain"
             actions={
               <div className="flex items-center gap-2">
                 <HarbourLedgerVaultIcon size={20} />

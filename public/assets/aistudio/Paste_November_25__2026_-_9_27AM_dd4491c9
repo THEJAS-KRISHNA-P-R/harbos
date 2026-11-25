@@ -1,0 +1,1466 @@
+From ede6c6302fb57c35c8a9135059c02520b6236490 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 24 Nov 2026 05:02:19 +0000
+Subject: [PATCH 1/3] feat(web): mobile app shell and phone-first login
+
+- shell: bottom tab bar (>=56px targets, safe-area aware) replaces the chip row; shown only for roles with 2+ workspaces
+- shell: compact header (brand mark + title), desktop-only command search, icon-only Ledger on phones
+- login: one-screen, two-step (number then code), bilingual, no implementation details shown to users;
+  dev role switcher collapsed and dev-only
+- i18n: login.* keys in en/ml
+---
+ src/web/app/App.tsx                          |   7 +-
+ src/web/app/components/LoginPortalScreen.tsx | 376 ++++++++-----------
+ src/web/i18n/en.json                         |  16 +
+ src/web/i18n/ml.json                         |  16 +
+ src/web/ui/index.tsx                         | 105 ++++--
+ 5 files changed, 266 insertions(+), 254 deletions(-)
+
+diff --git a/src/web/app/App.tsx b/src/web/app/App.tsx
+index 4869cf0..99f1d37 100644
+--- a/src/web/app/App.tsx
++++ b/src/web/app/App.tsx
+@@ -535,7 +535,7 @@ export const App: React.FC = () => {
+         onClick={() => setCommandPaletteOpen(true)}
+         aria-label="Open Command Palette"
+         title="Command Palette (⌘K)"
+-        className="h-8 w-8 sm:w-auto sm:h-9 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-tint)] inline-flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
++        className="hidden sm:inline-flex sm:h-9 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-tint)] items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
+       >
+         <Search className="w-3.5 h-3.5" />
+         <span className="hidden sm:inline">⌘K</span>
+@@ -570,10 +570,11 @@ export const App: React.FC = () => {
+         <Button
+           variant="primary"
+           size="sm"
+-          icon={<BookOpen className="w-3.5 h-3.5" />}
++          icon={<BookOpen className="w-4 h-4" />}
+           onClick={() => setLedgerDrawerOpen(true)}
++          aria-label="Open Ledger Inspector"
+         >
+-          Ledger
++          <span className="hidden sm:inline">Ledger</span>
+         </Button>
+       )}
+ 
+diff --git a/src/web/app/components/LoginPortalScreen.tsx b/src/web/app/components/LoginPortalScreen.tsx
+index c524405..e236c5f 100644
+--- a/src/web/app/components/LoginPortalScreen.tsx
++++ b/src/web/app/components/LoginPortalScreen.tsx
+@@ -1,20 +1,13 @@
+ import React, { useEffect, useState } from 'react';
+-import {
+-  UserCheck,
+-  ArrowRight,
+-  KeyRound,
+-  ShieldCheck,
+-} from 'lucide-react';
++import { ArrowLeft, ArrowRight, MessageSquareText, ShieldCheck } from 'lucide-react';
+ import {
+   Button,
+-  Card,
+-  Badge,
+   Input,
+-  Select,
+   Toast,
+   MaritimeCrestSvgEmblem,
+   DawnHarbourHeroScene,
+ } from '@web/ui/index.tsx';
++import { useI18n } from '@web/i18n/index.tsx';
+ import {
+   apiRequest,
+   formatOperatorInitials,
+@@ -62,6 +55,9 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
+   onOpenActiveProfile,
+ }) => {
+   const isDevSandbox = !import.meta.env.PROD;
++  const { locale, setLocale, t } = useI18n();
++  const [editingNumber, setEditingNumber] = useState(false);
++  const otpStep = (Boolean(authSuccess) || Boolean(devEchoOtp)) && !editingNumber;
+   const [fetchedDemoOperators, setFetchedDemoOperators] = useState<ReadonlyArray<OperatorRow>>([]);
+ 
+   useEffect(() => {
+@@ -102,223 +98,173 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
+     displayedOperators.length > 0 ? displayedOperators : fetchedDemoOperators;
+ 
+   return (
+-    <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] py-4 sm:py-8 px-3 sm:px-6 lg:px-10 flex flex-col items-center justify-center">
+-      <div className="w-full max-w-[1160px] flex flex-col gap-4 sm:gap-6">
+-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-[var(--border-hair)]">
+-          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+-            <MaritimeCrestSvgEmblem size={36} className="shrink-0" />
+-            <div className="min-w-0">
+-              <div className="flex flex-wrap items-center gap-2">
+-                <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight">
+-                  HarbourOS Operator Identity &amp; Sign-In Portal
+-                </h1>
+-                <Badge tone="ok" label="HS256 JWT + RLS" />
+-              </div>
+-              <p className="text-[11px] sm:text-xs text-[var(--text-secondary)]">
+-                Kerala Fish Auctioning, Marketing and Maintenance of Quality Act, 2021 (Act 16 of 2021) · Node.js 22 + PostgreSQL 16
+-              </p>
+-            </div>
+-          </div>
+-          <div className="flex flex-wrap items-center gap-2">
+-            {user && (
+-              <Button
+-                variant="secondary"
+-                size="sm"
+-                icon={<UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+-                onClick={onOpenActiveProfile}
+-              >
+-                Active: {user.fullName}
+-              </Button>
+-            )}
+-            <Button
+-              variant="primary"
+-              size="sm"
+-              icon={<ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+-              onClick={onBackToWorkspace}
+-            >
+-              Back to Workspace
+-            </Button>
++    <div className="min-h-screen flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)]">
++      {/* Hero: brand, language toggle, illustration, promise */}
++      <header className="bg-[var(--decor-aqua-soft)] rounded-b-[32px] px-5 pt-[calc(16px+env(safe-area-inset-top))] pb-14 sm:pb-16 flex flex-col items-center">
++        <div className="w-full max-w-[460px] flex items-center justify-between">
++          <div className="flex items-center gap-2.5">
++            <MaritimeCrestSvgEmblem size={34} />
++            <span className="text-lg font-bold tracking-tight text-[var(--text-primary)]">HarbourOS</span>
+           </div>
++          <Button
++            variant="outline"
++            size="sm"
++            onClick={() => setLocale(locale === 'en' ? 'ml' : 'en')}
++            aria-label={locale === 'en' ? 'Switch to Malayalam' : 'Switch to English'}
++          >
++            {t('login.language')}
++          </Button>
+         </div>
++        <DawnHarbourHeroScene className="mt-5 w-[min(300px,78vw)]" />
++        <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--brand)]">
++          {t('login.harbour')}
++        </p>
++        <p lang={locale} className="mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-[var(--text-secondary)]">
++          {t('login.tagline')}
++        </p>
++      </header>
+ 
+-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+-          <div className={isDevSandbox && operators.length > 0 ? 'lg:col-span-6 flex flex-col gap-3.5 sm:gap-5' : 'lg:col-span-8 lg:col-start-3 flex flex-col gap-3.5 sm:gap-5'}>
+-            <div className="p-3 sm:p-4 rounded-[var(--radius-card)] border border-[var(--border-hair)] bg-[var(--bg-surface)] bg-pattern-isobath flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+-              <DawnHarbourHeroScene className="w-[140px] sm:w-[200px] shrink-0" />
+-              <div className="flex flex-col gap-1 min-w-0">
+-                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--brand)]">
+-                  Munambam Fishing Harbour (HMS)
+-                </div>
+-                <div className="text-sm font-bold text-[var(--text-primary)]">
+-                  Passwordless Mobile OTP &amp; Role-Scoped Access
+-                </div>
+-                <p className="text-xs text-[var(--text-secondary)]">
+-                  Every operator token carries cryptographically signed <code>tenantId</code>, <code>role</code>, and <code>entityRefId</code> claims enforced by PostgreSQL Row-Level Security.
+-                </p>
+-              </div>
+-            </div>
+-
+-            {authError && (
+-              <Toast
+-                tone="danger"
+-                title="Authentication Error"
+-                message={authError}
+-                onDismiss={onDismissAuthError}
+-              />
+-            )}
++      {/* Sign-in sheet overlaps the hero */}
++      <main className="flex-1 w-full max-w-[460px] mx-auto -mt-8 px-4 pb-[calc(24px+env(safe-area-inset-bottom))] flex flex-col gap-4">
++        <section
++          aria-labelledby="login-title"
++          className="rounded-[28px] bg-[var(--bg-surface)] border border-[var(--border-hair)] shadow-[var(--shadow-overlay)] p-5 sm:p-6 flex flex-col gap-5"
++        >
++          <div>
++            <h1 id="login-title" lang={locale} className="text-2xl font-bold tracking-tight">
++              {t('login.welcome')}
++            </h1>
++            <p lang={locale} className="mt-1 text-sm text-[var(--text-secondary)]">
++              {t('login.subtitle')}
++            </p>
++          </div>
+ 
+-            {authSuccess && (
+-              <Toast
+-                tone="ok"
+-                title="OTP Challenge Issued"
+-                message={authSuccess}
+-                onDismiss={onDismissAuthSuccess}
+-              />
+-            )}
++          {authError && (
++            <Toast
++              tone="danger"
++              title="Couldn't sign you in"
++              message={authError}
++              onDismiss={onDismissAuthError}
++            />
++          )}
+ 
+-            <Card
+-              stepBadge="ADR-003"
+-              kicker="Passwordless Operator Authentication"
+-              title="Sign In via Registered Mobile OTP"
+-              subtitle="Enter your registered E.164 mobile number to receive a single-use 6-digit OTP challenge"
+-              icon={<KeyRound className="w-5 h-5" />}
++          {!otpStep ? (
++            <form
++              onSubmit={(e) => {
++                setEditingNumber(false);
++                void onRequestOtp(e);
++              }}
++              className="flex flex-col gap-4"
+             >
+-              <div className="flex flex-col gap-5">
+-                <form onSubmit={(e) => void onRequestOtp(e)} className="flex flex-col gap-3.5">
+-                  {isDevSandbox && operators.length > 0 && (
+-                    <Select
+-                      label="Step 1: Select Sandbox Harbour Operator Phone"
+-                      value={phoneInput}
+-                      onChange={(e) => onChangePhoneInput(e.target.value)}
+-                      options={operators.map((op) => ({
+-                        value: op.phone_e164,
+-                        label: `${op.phone_e164} — ${op.full_name} (${op.role})`,
+-                      }))}
+-                    />
+-                  )}
+-                  <Input
+-                    label="Registered E.164 Mobile Number"
+-                    mono
+-                    value={phoneInput}
+-                    onChange={(e) => onChangePhoneInput(e.target.value)}
+-                    hint="Format: +91XXXXXXXXXX (verified against core.otp_challenges)"
+-                  />
+-                  <Button type="submit" variant="secondary" className="w-full">
+-                    1. Request 6-Digit OTP Challenge
+-                  </Button>
+-                </form>
+-
+-                {devEchoOtp && isDevSandbox && (
+-                  <div className="p-4 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 flex flex-col gap-2">
+-                    <div className="flex items-center justify-between">
+-                      <span className="text-xs font-bold uppercase text-[var(--info)]">
+-                        OTP_DEV_ECHO Active (Sandbox Mode)
+-                      </span>
+-                      <Badge tone="info" label={`CODE: ${devEchoOtp}`} />
+-                    </div>
+-                    <p className="text-xs text-[var(--text-secondary)]">
+-                      Single-use CSPRNG 6-digit OTP code auto-filled below. Production builds refuse to boot if <code>OTP_DEV_ECHO=true</code>.
+-                    </p>
+-                  </div>
+-                )}
+-
+-                <form
+-                  onSubmit={(e) => void onVerifyOtp(e)}
+-                  className="flex flex-col gap-3.5 pt-4 border-t border-[var(--border-hair)]"
++              <Input
++                label={t('login.phoneLabel')}
++                dockSize
++                mono
++                type="tel"
++                inputMode="tel"
++                autoComplete="tel"
++                placeholder="+91 98765 43210"
++                value={phoneInput}
++                onChange={(e) => onChangePhoneInput(e.target.value)}
++                hint={t('login.phoneHint')}
++              />
++              <Button type="submit" variant="primary" size="dock" className="w-full min-h-[56px]" icon={<MessageSquareText className="w-5 h-5" />}>
++                {t('login.sendCode')}
++              </Button>
++            </form>
++          ) : (
++            <form onSubmit={(e) => void onVerifyOtp(e)} className="flex flex-col gap-4">
++              <div className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] bg-[var(--bg-tint)] px-3.5 py-3">
++                <div className="min-w-0">
++                  <div lang={locale} className="text-xs text-[var(--text-secondary)]">{t('login.codeSentTo')}</div>
++                  <div className="font-mono-code text-sm font-bold truncate">{phoneInput}</div>
++                </div>
++                <button
++                  type="button"
++                  onClick={() => {
++                    setEditingNumber(true);
++                    onDismissAuthSuccess();
++                    onChangeOtpInput('');
++                  }}
++                  className="shrink-0 min-h-[44px] px-2 text-sm font-semibold text-[var(--brand)] cursor-pointer"
+                 >
+-                  <Input
+-                    label="Step 2: Enter 6-Digit OTP Code"
+-                    mono
+-                    placeholder="Enter 6-digit OTP"
+-                    value={otpInput}
+-                    onChange={(e) => onChangeOtpInput(e.target.value)}
+-                  />
+-                  <Button type="submit" variant="primary" className="w-full">
+-                    2. Verify OTP &amp; Sign In with HS256 JWT
+-                  </Button>
+-                </form>
++                  {t('login.changeNumber')}
++                </button>
+               </div>
+-            </Card>
+-          </div>
++              <Input
++                label={t('login.otpLabel')}
++                dockSize
++                mono
++                inputMode="numeric"
++                autoComplete="one-time-code"
++                maxLength={6}
++                placeholder="••••••"
++                value={otpInput}
++                onChange={(e) => onChangeOtpInput(e.target.value.replace(/\D/g, ''))}
++              />
++              {devEchoOtp && isDevSandbox && (
++                <p className="text-xs rounded-[var(--radius-control)] bg-[var(--info-bg)] text-[var(--info)] px-3 py-2">
++                  Dev sandbox code: <span className="font-mono-code font-bold">{devEchoOtp}</span>
++                </p>
++              )}
++              <Button type="submit" variant="primary" size="dock" className="w-full min-h-[56px]" icon={<ArrowRight className="w-5 h-5" />}>
++                {t('login.verify')}
++              </Button>
++            </form>
++          )}
+ 
+-          {isDevSandbox && operators.length > 0 && (
+-            <div className="lg:col-span-6 flex flex-col gap-4">
+-              <Card
+-                stepBadge="SANDBOX PERSONAS"
+-                kicker="Development Demo Mode"
+-                title="Statutory Harbour Operator Personas"
+-                subtitle="Switch between the 8 statutory Act 16 roles in development mode or pre-fill their phone for OTP verification"
+-                icon={<ShieldCheck className="w-5 h-5" />}
+-              >
+-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+-                  {operators.map((op) => {
+-                    const meta = getRoleDisplayMeta(op.role);
+-                    const isCurrent = user?.userId === op.user_id || user?.role === op.role;
+-                    return (
+-                      <div
+-                        key={op.user_id}
+-                        className={`p-4 rounded-[var(--radius-card)] border flex flex-col justify-between gap-3 transition-all ${
+-                          isCurrent
+-                            ? 'bg-[var(--brand-soft)] border-[var(--brand)]'
+-                            : 'bg-[var(--bg-sunken)]/70 border-[var(--border-hair)] hover:border-[var(--border-strong)]'
+-                        }`}
+-                      >
+-                        <div className="flex items-start justify-between gap-2">
+-                          <div className="flex items-center gap-2.5 min-w-0">
+-                            <span className="w-9 h-9 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-xs font-bold font-mono-code inline-flex items-center justify-center shrink-0">
+-                              {formatOperatorInitials(op.full_name)}
+-                            </span>
+-                            <div className="min-w-0">
+-                              <div className="text-sm font-bold text-[var(--text-primary)] truncate">
+-                                {op.full_name}
+-                              </div>
+-                              <div className="text-xs font-mono-code text-[var(--text-secondary)]">
+-                                {op.phone_e164}
+-                              </div>
+-                            </div>
+-                          </div>
+-                          <span className="px-2 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] border border-[var(--border-hair)] text-[10px] font-bold font-mono-code text-[var(--brand)] whitespace-nowrap shrink-0 leading-none">
+-                            {meta.shortBadge}
+-                          </span>
+-                        </div>
++          <p lang={locale} className="flex items-start gap-2 text-xs text-[var(--text-muted)]">
++            <ShieldCheck className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
++            <span>{t('login.help')}</span>
++          </p>
++        </section>
+ 
+-                        <div className="text-xs text-[var(--text-secondary)]">
+-                          <div className="font-semibold text-[var(--text-primary)]">
+-                            {op.entity_summary ?? meta.statutoryRef}
+-                          </div>
+-                          <div className="text-[11px] text-[var(--text-muted)] mt-0.5 line-clamp-2">
+-                            {meta.description}
+-                          </div>
+-                        </div>
++        {user && (
++          <button
++            type="button"
++            onClick={onBackToWorkspace}
++            className="self-center min-h-[44px] inline-flex items-center gap-1.5 px-3 text-sm font-semibold text-[var(--text-secondary)] cursor-pointer"
++          >
++            <ArrowLeft className="w-4 h-4" /> {t('login.backToWorkspace')}
++          </button>
++        )}
+ 
+-                        <div className="flex items-center gap-2 pt-1">
+-                          <Button
+-                            variant="primary"
+-                            size="sm"
+-                            onClick={() => void onPersonaSwitch(op.role)}
+-                            className="flex-1"
+-                          >
+-                            Switch Role
+-                          </Button>
+-                          <Button
+-                            variant="outline"
+-                            size="sm"
+-                            onClick={() => {
+-                              onChangePhoneInput(op.phone_e164);
+-                            }}
+-                          >
+-                            Use Phone
+-                          </Button>
+-                        </div>
+-                      </div>
+-                    );
+-                  })}
+-                </div>
+-              </Card>
+-            </div>
+-          )}
+-        </div>
+-      </div>
++        {isDevSandbox && operators.length > 0 && (
++          <details className="rounded-[var(--radius-card)] border border-dashed border-[var(--border-strong)] bg-[var(--bg-surface)] p-4">
++            <summary className="cursor-pointer text-sm font-semibold text-[var(--text-secondary)] min-h-[44px] flex items-center">
++              Developer sandbox: switch role (dev builds only)
++            </summary>
++            <ul className="mt-3 flex flex-col gap-2.5">
++              {operators.map((op) => {
++                const meta = getRoleDisplayMeta(op.role);
++                const isCurrent = user?.userId === op.user_id || user?.role === op.role;
++                return (
++                  <li
++                    key={op.user_id}
++                    className={`rounded-[var(--radius-control)] border p-3 flex items-center gap-3 ${
++                      isCurrent ? 'bg-[var(--brand-soft)] border-[var(--brand)]' : 'bg-[var(--bg-sunken)] border-[var(--border-hair)]'
++                    }`}
++                  >
++                    <span className="w-9 h-9 shrink-0 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-xs font-bold font-mono-code inline-flex items-center justify-center">
++                      {formatOperatorInitials(op.full_name)}
++                    </span>
++                    <div className="min-w-0 flex-1">
++                      <div className="text-sm font-bold truncate">{op.full_name}</div>
++                      <div className="text-xs text-[var(--text-secondary)] truncate">{meta.shortBadge}</div>
++                    </div>
++                    <Button variant="primary" size="sm" onClick={() => void onPersonaSwitch(op.role)}>
++                      Switch
++                    </Button>
++                    <Button variant="outline" size="sm" onClick={() => onChangePhoneInput(op.phone_e164)}>
++                      Use phone
++                    </Button>
++                  </li>
++                );
++              })}
++            </ul>
++          </details>
++        )}
++      </main>
+     </div>
+   );
+ };
+diff --git a/src/web/i18n/en.json b/src/web/i18n/en.json
+index 7c59ebb..97dc861 100644
+--- a/src/web/i18n/en.json
++++ b/src/web/i18n/en.json
+@@ -88,5 +88,21 @@
+     "harbourTabAccounting": "Accounting",
+     "harbourTabReports": "Reports",
+     "harbourTabAudit": "Audit"
++  },
++  "login": {
++    "harbour": "Munambam Fishing Harbour",
++    "tagline": "Fair prices. Instant settlement. Every kilo on record.",
++    "welcome": "Welcome back",
++    "subtitle": "Sign in with your registered mobile number",
++    "phoneLabel": "Mobile number",
++    "phoneHint": "We will send a 6-digit code by SMS",
++    "sendCode": "Send code",
++    "codeSentTo": "Code sent to",
++    "otpLabel": "Enter the 6-digit code",
++    "verify": "Verify and sign in",
++    "changeNumber": "Change number",
++    "help": "Trouble signing in? Ask your harbour office to confirm your number is registered.",
++    "backToWorkspace": "Back to workspace",
++    "language": "മലയാളം"
+   }
+ }
+diff --git a/src/web/i18n/ml.json b/src/web/i18n/ml.json
+index 50c8295..fde95f4 100644
+--- a/src/web/i18n/ml.json
++++ b/src/web/i18n/ml.json
+@@ -89,5 +89,21 @@
+     "harbourTabAccounting": "അക്കൗണ്ടിംഗ്",
+     "harbourTabReports": "റിപ്പോർട്ടുകൾ",
+     "harbourTabAudit": "ഓഡിറ്റ്"
++  },
++  "login": {
++    "harbour": "മുനമ്പം ഫിഷിംഗ് ഹാർബർ",
++    "tagline": "ന്യായമായ വില. ഉടൻ പണം. ഓരോ കിലോയ്ക്കും രേഖ.",
++    "welcome": "സ്വാഗതം",
++    "subtitle": "രജിസ്റ്റർ ചെയ്ത മൊബൈൽ നമ്പർ ഉപയോഗിച്ച് സൈൻ ഇൻ ചെയ്യുക",
++    "phoneLabel": "മൊബൈൽ നമ്പർ",
++    "phoneHint": "SMS വഴി 6 അക്ക കോഡ് അയയ്ക്കും",
++    "sendCode": "കോഡ് അയയ്ക്കുക",
++    "codeSentTo": "കോഡ് അയച്ചത്",
++    "otpLabel": "6 അക്ക കോഡ് നൽകുക",
++    "verify": "പരിശോധിച്ച് സൈൻ ഇൻ ചെയ്യുക",
++    "changeNumber": "നമ്പർ മാറ്റുക",
++    "help": "സൈൻ ഇൻ ചെയ്യാൻ പ്രശ്നമുണ്ടോ? നിങ്ങളുടെ നമ്പർ രജിസ്റ്റർ ചെയ്തിട്ടുണ്ടെന്ന് ഹാർബർ ഓഫീസിൽ ഉറപ്പാക്കുക.",
++    "backToWorkspace": "വർക്ക്‌സ്പേസിലേക്ക് മടങ്ങുക",
++    "language": "English"
+   }
+ }
+diff --git a/src/web/ui/index.tsx b/src/web/ui/index.tsx
+index f3a34e6..aef2483 100644
+--- a/src/web/ui/index.tsx
++++ b/src/web/ui/index.tsx
+@@ -1232,6 +1232,7 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
+   ];
+ 
+   const activeItem = navItems.find((n) => n.id === activeNavId);
++  const showBottomNav = navItems.length > 1;
+ 
+   return (
+     <div className="min-h-screen flex flex-col md:flex-row bg-[var(--bg-app)] text-[var(--text-primary)] overflow-x-hidden">
+@@ -1494,15 +1495,10 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
+       <div className="flex-1 flex flex-col min-w-0">
+         <header className="sticky top-0 z-30 min-h-[48px] sm:min-h-[54px] px-2.5 sm:px-6 lg:px-8 py-1.5 sm:py-2 bg-[var(--bg-surface)]/95 backdrop-blur-sm border-b border-[var(--border-hair)] flex items-center justify-between gap-2 sm:gap-4 no-print">
+           <div className="flex items-center gap-2 min-w-0 flex-1">
+-            <button
+-              type="button"
+-              onClick={() => setMobileNavOpen(true)}
+-              aria-label="Open mobile navigation menu"
+-              className="md:hidden w-8 h-8 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-[var(--text-primary)] inline-flex items-center justify-center shrink-0 cursor-pointer"
+-            >
+-              <Menu className="w-4 h-4" />
+-            </button>
+-            <span className="text-[13px] sm:text-sm font-bold text-[var(--text-primary)] truncate">
++            <span className="md:hidden shrink-0" aria-hidden="true">
++              <MaritimeCrestSvgEmblem size={30} />
++            </span>
++            <span className="text-base sm:text-sm font-bold text-[var(--text-primary)] truncate">
+               {activeItem?.labelEn ?? 'Workspace'}
+             </span>
+             <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-[11px] font-mono-code text-[var(--text-muted)] whitespace-nowrap">
+@@ -1514,35 +1510,72 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
+           </div>
+         </header>
+ 
+-        {/* Mobile Horizontal Pill Navigation (< 768px) */}
+-        <nav
+-          aria-label="Mobile Workspace Navigation"
+-          className="md:hidden px-2.5 py-1.5 bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] flex items-center gap-1.5 overflow-x-auto no-scrollbar no-print"
+-        >
+-          {navItems.map((item) => {
+-            const active = item.id === activeNavId;
+-            return (
+-              <button
+-                key={item.id}
+-                type="button"
+-                onClick={() => onSelectNav(item.id)}
+-                className={`h-7 px-2.5 rounded-[var(--radius-pill)] inline-flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+-                  active
+-                    ? 'bg-[var(--brand)] text-[var(--brand-fg)]'
+-                    : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-hair)]'
+-                }`}
+-              >
+-                <span className="shrink-0 scale-90">{item.icon}</span>
+-                <span lang={lang === 'ml' ? 'ml' : 'en'} className="whitespace-nowrap">
+-                  {lang === 'ml' ? item.labelMl : item.labelEn}
+-                </span>
+-              </button>
+-            );
+-          })}
+-        </nav>
++        {/* Mobile Bottom Tab Bar (< 768px): primary nav, >=56px touch targets, safe-area aware */}
++        {showBottomNav && (
++          <nav
++            aria-label="Mobile Workspace Navigation"
++            data-testid="mobile-bottom-nav"
++            className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--bg-surface)] border-t border-[var(--border-hair)] shadow-[var(--shadow-overlay)] pb-[env(safe-area-inset-bottom)]"
++          >
++            <ul className="flex items-stretch justify-around px-1.5 pt-1.5 pb-1.5 gap-1">
++              {(navItems.length > 5 ? navItems.slice(0, 4) : navItems).map((item) => {
++                const active = item.id === activeNavId;
++                const labelText = lang === 'ml' ? item.labelMl : item.labelEn;
++                return (
++                  <li key={item.id} className="flex-1 min-w-0">
++                    <button
++                      type="button"
++                      onClick={() => onSelectNav(item.id)}
++                      aria-current={active ? 'page' : undefined}
++                      aria-label={labelText}
++                      className="w-full min-h-[56px] flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-[0.97] transition-transform"
++                    >
++                      <span
++                        className={`h-8 w-14 rounded-[var(--radius-pill)] inline-flex items-center justify-center transition-colors ${
++                          active
++                            ? 'bg-[var(--brand-soft)] text-[var(--brand)]'
++                            : 'text-[var(--text-secondary)]'
++                        }`}
++                      >
++                        {item.icon}
++                      </span>
++                      <span
++                        lang={lang === 'ml' ? 'ml' : 'en'}
++                        className={`max-w-full truncate px-0.5 text-[11px] leading-none ${
++                          active
++                            ? 'font-bold text-[var(--brand)]'
++                            : 'font-medium text-[var(--text-secondary)]'
++                        }`}
++                      >
++                        {labelText}
++                      </span>
++                    </button>
++                  </li>
++                );
++              })}
++              {navItems.length > 5 && (
++                <li className="flex-1 min-w-0">
++                  <button
++                    type="button"
++                    onClick={() => setMobileNavOpen(true)}
++                    aria-label="More workspaces"
++                    className="w-full min-h-[56px] flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-[0.97] transition-transform"
++                  >
++                    <span className="h-8 w-14 rounded-[var(--radius-pill)] inline-flex items-center justify-center text-[var(--text-secondary)]">
++                      <Menu className="w-5 h-5" />
++                    </span>
++                    <span className="text-[11px] leading-none font-medium text-[var(--text-secondary)]">
++                      More
++                    </span>
++                  </button>
++                </li>
++              )}
++            </ul>
++          </nav>
++        )}
+ 
+         {/* Responsive Content Container: Compact on Mobile (360-639px), Airy on Desktop */}
+-        <main className="flex-1 w-full max-w-[1440px] mx-auto px-2.5 sm:px-6 lg:px-8 xl:px-10 py-3 sm:py-6 flex flex-col gap-3.5 sm:gap-6">
++        <main className={`flex-1 w-full max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 pt-3 ${showBottomNav ? 'pb-[calc(88px+env(safe-area-inset-bottom))]' : 'pb-6'} md:pb-6 sm:pt-6 flex flex-col gap-4 sm:gap-6`}>
+           {children}
+         </main>
+       </div>
+-- 
+2.43.0
+
+
+From 39c1f9fc50561acd6813d5df2acab953088a5dc0 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 24 Nov 2026 19:04:46 +0000
+Subject: [PATCH 2/3] feat(web): fisher passbook hero, plain-language copy,
+ touch targets, scrollable tabs
+
+- fisher: hero 'You receive' amount + plain-language 'where each sale goes' bar (en/ml), no statute references
+- copy: remove statute/ADR/spec cross-references and internal terms from workspace labels; plain-language auction modes
+- ui: humanizeCode() in Badge turns REJECTED_UNFIT etc. into readable text
+- ui: phone button heights >=40-48px; Tabs 40px with auto-scroll-to-active and right-edge fade
+---
+ src/web/i18n/en.json                          |  12 +-
+ src/web/i18n/ml.json                          |  12 +-
+ src/web/ui/index.tsx                          |  38 ++++-
+ src/web/workspaces/fisher/index.tsx           | 136 ++++++++----------
+ .../workspaces/harbour/MasterdataCsvPanel.tsx |   4 +-
+ src/web/workspaces/harbour/index.tsx          |  19 +--
+ src/web/workspaces/inspector/index.tsx        |   6 +-
+ src/web/workspaces/pit/index.tsx              |  26 ++--
+ src/web/workspaces/platform/index.tsx         |   4 +-
+ src/web/workspaces/weighing/index.tsx         |  12 +-
+ 10 files changed, 152 insertions(+), 117 deletions(-)
+
+diff --git a/src/web/i18n/en.json b/src/web/i18n/en.json
+index 97dc861..e190700 100644
+--- a/src/web/i18n/en.json
++++ b/src/web/i18n/en.json
+@@ -87,7 +87,17 @@
+     "harbourTabMasterdata": "Masterdata",
+     "harbourTabAccounting": "Accounting",
+     "harbourTabReports": "Reports",
+-    "harbourTabAudit": "Audit"
++    "harbourTabAudit": "Audit",
++    "fisherHeroLabel": "You receive",
++    "fisherHeroSub": "from your catch sales",
++    "fisherGross": "Total sale value",
++    "splitTitle": "Where each sale goes",
++    "splitSubtitle": "Out of every ₹100 your catch sells for",
++    "splitYou": "You, paid to your account",
++    "splitBonus": "Your bonus, saved for you",
++    "splitAuctioneer": "Auctioneer",
++    "splitHarbour": "Harbour office",
++    "splitCoop": "Your co-operative society"
+   },
+   "login": {
+     "harbour": "Munambam Fishing Harbour",
+diff --git a/src/web/i18n/ml.json b/src/web/i18n/ml.json
+index fde95f4..870646d 100644
+--- a/src/web/i18n/ml.json
++++ b/src/web/i18n/ml.json
+@@ -88,7 +88,17 @@
+     "harbourTabMasterdata": "മാസ്റ്റർഡാറ്റ",
+     "harbourTabAccounting": "അക്കൗണ്ടിംഗ്",
+     "harbourTabReports": "റിപ്പോർട്ടുകൾ",
+-    "harbourTabAudit": "ഓഡിറ്റ്"
++    "harbourTabAudit": "ഓഡിറ്റ്",
++    "fisherHeroLabel": "നിങ്ങൾക്ക് ലഭിക്കുന്നത്",
++    "fisherHeroSub": "നിങ്ങളുടെ മീൻ വിൽപ്പനയിൽ നിന്ന്",
++    "fisherGross": "ആകെ വിൽപ്പന മൂല്യം",
++    "splitTitle": "ഓരോ വിൽപ്പനയും എങ്ങോട്ട് പോകുന്നു",
++    "splitSubtitle": "നിങ്ങളുടെ മീൻ വിറ്റ ഓരോ ₹100-ലും",
++    "splitYou": "നിങ്ങൾക്ക്, അക്കൗണ്ടിലേക്ക്",
++    "splitBonus": "നിങ്ങളുടെ ബോണസ്, നിങ്ങൾക്കായി സൂക്ഷിക്കുന്നു",
++    "splitAuctioneer": "ലേലക്കാരൻ",
++    "splitHarbour": "ഹാർബർ ഓഫീസ്",
++    "splitCoop": "നിങ്ങളുടെ സഹകരണ സംഘം"
+   },
+   "login": {
+     "harbour": "മുനമ്പം ഫിഷിംഗ് ഹാർബർ",
+diff --git a/src/web/ui/index.tsx b/src/web/ui/index.tsx
+index aef2483..748c7dc 100644
+--- a/src/web/ui/index.tsx
++++ b/src/web/ui/index.tsx
+@@ -102,9 +102,9 @@ export const Button: React.FC<ButtonProps> = ({
+   ...rest
+ }) => {
+   const sizeClasses: Record<ButtonSize, string> = {
+-    sm: 'h-8 sm:h-9 px-2.5 sm:px-3 text-xs rounded-[var(--radius-pill)]',
+-    md: 'h-9 sm:h-10 px-3.5 sm:px-5 text-xs sm:text-sm rounded-[var(--radius-pill)]',
+-    dock: 'h-11 sm:min-h-[52px] px-4 sm:px-6 text-sm sm:text-base rounded-[var(--radius-pill)]',
++    sm: 'h-10 sm:h-9 px-3 sm:px-3 text-xs rounded-[var(--radius-pill)]',
++    md: 'h-11 sm:h-10 px-4 sm:px-5 text-sm rounded-[var(--radius-pill)]',
++    dock: 'h-12 sm:min-h-[52px] px-4 sm:px-6 text-sm sm:text-base rounded-[var(--radius-pill)]',
+   };
+ 
+   const variantClasses: Record<ButtonVariant, string> = {
+@@ -363,6 +363,13 @@ export interface BadgeProps {
+   className?: string | undefined;
+ }
+ 
++/** Turns machine codes like REJECTED_UNFIT into readable text ("Rejected unfit"); leaves normal labels untouched. */
++export function humanizeCode(label: string): string {
++  if (!/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(label)) return label;
++  const words = label.toLowerCase().split('_').join(' ');
++  return words.charAt(0).toUpperCase() + words.slice(1);
++}
++
+ export const Badge: React.FC<BadgeProps> = ({
+   tone = 'info',
+   label,
+@@ -399,7 +406,7 @@ export const Badge: React.FC<BadgeProps> = ({
+       className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-[var(--radius-pill)] border text-[10px] sm:text-xs leading-none font-semibold tabular-nums whitespace-nowrap shrink-0 max-w-full overflow-hidden ${current.style} ${className}`}
+     >
+       {current.icon}
+-      <span className="truncate">{label}</span>
++      <span className="truncate">{humanizeCode(label)}</span>
+       {code && <span className="font-mono-code opacity-85 truncate">({code})</span>}
+     </span>
+   );
+@@ -945,9 +952,23 @@ export interface TabsProps {
+ }
+ 
+ export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange }) => {
++  const listRef = React.useRef<HTMLDivElement>(null);
++  const [fadeRight, setFadeRight] = React.useState(false);
++  const updateFade = React.useCallback((): void => {
++    const el = listRef.current;
++    if (el) setFadeRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
++  }, []);
++  React.useEffect(() => {
++    const el = listRef.current;
++    el?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
++    updateFade();
++  }, [activeId, updateFade]);
+   return (
++    <div className="relative min-w-0">
+     <div
++      ref={listRef}
+       role="tablist"
++      onScroll={updateFade}
+       className="flex sm:inline-flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] overflow-x-auto no-scrollbar max-w-full w-full sm:w-auto"
+     >
+       {items.map((item) => {
+@@ -959,7 +980,7 @@ export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange }) => {
+             type="button"
+             aria-selected={active}
+             onClick={() => onChange(item.id)}
+-            className={`min-h-[30px] sm:min-h-[36px] py-1 px-2.5 sm:px-3.5 rounded-[var(--radius-pill)] text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer inline-flex items-center gap-1.5 ${
++            className={`min-h-[40px] sm:min-h-[36px] py-1 px-2.5 sm:px-3.5 rounded-[var(--radius-pill)] text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+               active
+                 ? 'bg-[var(--brand)] text-[var(--brand-fg)]'
+                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)]/60'
+@@ -981,6 +1002,13 @@ export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange }) => {
+         );
+       })}
+     </div>
++    {fadeRight && (
++      <span
++        aria-hidden="true"
++        className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-[var(--radius-pill)] bg-gradient-to-l from-[var(--bg-app)] to-transparent sm:hidden"
++      />
++    )}
++    </div>
+   );
+ };
+ 
+diff --git a/src/web/workspaces/fisher/index.tsx b/src/web/workspaces/fisher/index.tsx
+index 293688e..f78f5be 100644
+--- a/src/web/workspaces/fisher/index.tsx
++++ b/src/web/workspaces/fisher/index.tsx
+@@ -210,85 +210,71 @@ export const FisherWorkspace: React.FC<{
+         />
+       )}
+ 
+-      {/* Passbook Top Balances */}
+-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+-        <div className="col-span-2 sm:col-span-1">
+-          <Metric
+-            featured
+-            label="Net Payout (95%)"
+-            value={formatInrFromPaise(payableAccount?.balance_paise ?? totalNetPaise)}
+-            status={{ tone: 'ok', label: 'SETTLED' }}
+-          />
+-        </div>
+-        <Metric
+-          label="Bonus Escrow (40%)"
+-          value={formatInrFromPaise(bonusEscrowAccount?.balance_paise ?? totalBonusPaise)}
+-          status={{ tone: 'info', label: 'ESCROW' }}
+-        />
+-        <Metric
+-          label="Gross Hammer Value"
+-          value={formatInrFromPaise(totalHammerPaise)}
+-          status={{ tone: 'neutral', label: '100% GTV' }}
+-        />
+-      </div>
+-
+-      {/* Transparent 5% Statutory Deduction Breakdown Card */}
+-      <Card title={t('workspaces.fisherBreakdownTitle')}>
+-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
+-          <div className="col-span-2 lg:col-span-1 p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--brand-soft)] border border-[var(--navy-200)]">
+-            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--brand-soft-fg)]">
+-              1. Your Net Payout (95%)
+-            </div>
+-            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
+-              {formatInrFromPaise(totalNetPaise)}
+-            </div>
+-            <div className="text-[11px] sm:text-xs text-[var(--text-secondary)] mt-0.5 sm:mt-1">
+-              Credited directly to vessel owner
+-            </div>
+-          </div>
+-
+-          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
+-            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
+-              2. Bonus Escrow (40%)
+-            </div>
+-            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--brand)] mt-1">
+-              {formatInrFromPaise(totalBonusPaise)}
+-            </div>
+-            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">
+-              2.00% GTV annual return
+-            </div>
+-          </div>
+-
+-          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
+-            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
+-              3. Auctioneer (20%)
+-            </div>
+-            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
+-              {formatInrFromPaise(totalCommissionPaise / 5n)}
+-            </div>
+-            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">1.00% GTV (Act s.4(5))</div>
++      {/* Hero: the one number a fisher cares about */}
++      <section
++        aria-label={t('workspaces.fisherHeroLabel')}
++        className="rounded-[var(--radius-card)] bg-[var(--decor-aqua-soft)] border border-[var(--border-hair)] p-5 sm:p-6"
++      >
++        <p className="text-sm font-semibold text-[var(--decor-ink)]">{t('workspaces.fisherHeroLabel')}</p>
++        <p
++          data-testid="fisher-hero-amount"
++          className="mt-1 text-[40px] sm:text-5xl leading-none font-bold font-mono-code tabular-nums text-[var(--decor-ink)]"
++        >
++          {formatInrFromPaise(payableAccount?.balance_paise ?? totalNetPaise)}
++        </p>
++        <p className="mt-2 text-sm text-[var(--text-secondary)]">{t('workspaces.fisherHeroSub')}</p>
++        <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--border-hair)] pt-4">
++          <div>
++            <dt className="text-xs text-[var(--text-secondary)]">{t('workspaces.fisherGross')}</dt>
++            <dd className="mt-0.5 text-base font-bold font-mono-code tabular-nums">
++              {formatInrFromPaise(totalHammerPaise)}
++            </dd>
+           </div>
+-
+-          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
+-            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
+-              4. Harbour HMS (20%)
+-            </div>
+-            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
+-              {formatInrFromPaise(totalCommissionPaise / 5n)}
+-            </div>
+-            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">1.00% GTV (Act s.4(5))</div>
++          <div>
++            <dt className="text-xs text-[var(--text-secondary)]">{t('workspaces.splitBonus')}</dt>
++            <dd className="mt-0.5 text-base font-bold font-mono-code tabular-nums text-[var(--brand)]">
++              {formatInrFromPaise(bonusEscrowAccount?.balance_paise ?? totalBonusPaise)}
++            </dd>
+           </div>
++        </dl>
++      </section>
+ 
+-          <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]">
+-            <div className="text-[11px] sm:text-xs font-bold uppercase text-[var(--text-secondary)]">
+-              5. Primary Co-op (20%)
+-            </div>
+-            <div className="text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] mt-1">
+-              {formatInrFromPaise(totalCommissionPaise / 5n)}
+-            </div>
+-            <div className="text-[11px] sm:text-xs text-[var(--text-muted)] mt-0.5 sm:mt-1">1.00% GTV (Act s.4(5))</div>
+-          </div>
++      {/* Where each sale goes: plain-language split, no statute references */}
++      <Card title={t('workspaces.splitTitle')}>
++        <p className="text-sm text-[var(--text-secondary)] mb-3">{t('workspaces.splitSubtitle')}</p>
++        <div
++          role="img"
++          aria-label="95 rupees to you, 2 rupees bonus saved for you, 1 rupee each to auctioneer, harbour office and co-operative society"
++          className="flex h-4 w-full overflow-hidden rounded-[var(--radius-pill)] bg-[var(--bg-sunken)]"
++        >
++          {[
++            { w: 95, c: 'var(--brand)' },
++            { w: 2, c: 'var(--decor-aqua)' },
++            { w: 1, c: 'var(--decor-sun)' },
++            { w: 1, c: 'var(--decor-ink)' },
++            { w: 1, c: 'var(--decor-sand)' },
++          ].map((seg, i) => (
++            <span key={i} style={{ flexBasis: `${seg.w}%`, background: seg.c }} className="min-w-[6px] h-full" />
++          ))}
+         </div>
++        <ul className="mt-4 flex flex-col divide-y divide-[var(--border-hair)]">
++          {[
++            { label: t('workspaces.splitYou'), rupees: '₹95', c: 'var(--brand)', amt: totalNetPaise, strong: true },
++            { label: t('workspaces.splitBonus'), rupees: '₹2', c: 'var(--decor-aqua)', amt: totalBonusPaise },
++            { label: t('workspaces.splitAuctioneer'), rupees: '₹1', c: 'var(--decor-sun)', amt: totalCommissionPaise / 5n },
++            { label: t('workspaces.splitHarbour'), rupees: '₹1', c: 'var(--decor-ink)', amt: totalCommissionPaise / 5n },
++            { label: t('workspaces.splitCoop'), rupees: '₹1', c: 'var(--decor-sand)', amt: totalCommissionPaise / 5n },
++          ].map((row) => (
++            <li key={row.label} className="flex items-center gap-3 py-3 min-h-[52px]">
++              <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full" style={{ background: row.c }} />
++              <span className="flex-1 min-w-0 text-sm text-[var(--text-primary)]">{row.label}</span>
++              <span className="text-xs text-[var(--text-muted)] tabular-nums">{row.rupees}</span>
++              <span className={`w-28 text-right font-mono-code tabular-nums ${row.strong ? 'font-bold text-base' : 'text-sm'}`}>
++                {formatInrFromPaise(row.amt)}
++              </span>
++            </li>
++          ))}
++        </ul>
+       </Card>
+ 
+       {/* Today's Catch Sales Table */}
+diff --git a/src/web/workspaces/harbour/MasterdataCsvPanel.tsx b/src/web/workspaces/harbour/MasterdataCsvPanel.tsx
+index 252eab5..39260b3 100644
+--- a/src/web/workspaces/harbour/MasterdataCsvPanel.tsx
++++ b/src/web/workspaces/harbour/MasterdataCsvPanel.tsx
+@@ -137,12 +137,12 @@ export const MasterdataCsvPanel: React.FC<{
+               value={entityType}
+               onChange={(e) => handleEntityChange(e.target.value as MasterdataEntityType)}
+               options={[
+-                { value: 'species', label: 'Species & Floor Prices (s.19)' },
++                { value: 'species', label: 'Species & Floor Prices' },
+                 { value: 'buyers', label: 'Wholesale Buyers & Credit Limits' },
+                 { value: 'vessels', label: 'Fishing Vessels & Loan Ties' },
+                 { value: 'fishermen', label: 'Fishermen & Ledger Accounts' },
+                 { value: 'coop-societies', label: 'Primary Co-op Societies' },
+-                { value: 'licences', label: 'Auctioneer Licences (s.5)' },
++                { value: 'licences', label: 'Auctioneer Licences' },
+               ]}
+             />
+           </div>
+diff --git a/src/web/workspaces/harbour/index.tsx b/src/web/workspaces/harbour/index.tsx
+index e9d45cd..e6b6a69 100644
+--- a/src/web/workspaces/harbour/index.tsx
++++ b/src/web/workspaces/harbour/index.tsx
+@@ -25,6 +25,7 @@ import {
+   PelagicFishIcon,
+   HarbourQuayDawnSvgDecor,
+   type DataTableColumn,
++  humanizeCode,
+ } from '@web/ui/index.tsx';
+ import {
+   apiRequest,
+@@ -95,7 +96,7 @@ export const HarbourWorkspace: React.FC<{
+       });
+       setFeedback({
+         tone: 'ok',
+-        title: 'Section 19 Basic Price Schedule Updated',
++        title: 'Floor price schedule updated',
+         msg: `Enforcement mode set to ${floorEnforcement}; species floor updated to ₹${floorEditRupees}/kg.`,
+       });
+       await onRefresh();
+@@ -244,7 +245,7 @@ export const HarbourWorkspace: React.FC<{
+     },
+     {
+       key: 'floor',
+-      header: 'Section 19 Basic Floor Price',
++      header: 'Basic floor price',
+       align: 'right',
+       mono: true,
+       render: (r) => (
+@@ -254,7 +255,7 @@ export const HarbourWorkspace: React.FC<{
+   ];
+ 
+   const licenceColumns: ReadonlyArray<DataTableColumn<LicenceRow>> = [
+-    { key: 'no', header: 'Licence No. (s.5)', mono: true, render: (r) => r.licence_no },
++    { key: 'no', header: 'Licence No.', mono: true, render: (r) => r.licence_no },
+     { key: 'name', header: 'Auctioneer Name', render: (r) => <span className="font-semibold">{r.auctioneer_name}</span> },
+     {
+       key: 'soc',
+@@ -282,7 +283,7 @@ export const HarbourWorkspace: React.FC<{
+ 
+   const batchColumns: ReadonlyArray<DataTableColumn<PayoutBatchRow>> = [
+     { key: 'code', header: 'Batch Code', mono: true, render: (r) => <span className="font-semibold">{r.batch_code}</span> },
+-    { key: 'kind', header: 'Beneficiary Pool', render: (r) => r.beneficiary_kind },
++    { key: 'kind', header: 'Beneficiary Pool', render: (r) => humanizeCode(r.beneficiary_kind) },
+     {
+       key: 'amt',
+       header: 'Total Batch Amount',
+@@ -624,7 +625,7 @@ export const HarbourWorkspace: React.FC<{
+             />
+           </Card>
+ 
+-          <Card title="Floor Price Schedule (s.19)">
++          <Card title="Floor Price Schedule">
+             <form
+               onSubmit={handleUpdateFloorSchedule}
+               className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end mb-4 pb-4 border-b border-[var(--border-hair)]"
+@@ -661,7 +662,7 @@ export const HarbourWorkspace: React.FC<{
+             </form>
+ 
+             <DataTable
+-              caption="Section 19 Species Floor Schedule"
++              caption="Species floor price schedule"
+               columns={speciesColumns}
+               rows={data.species}
+               getRowKey={(r) => r.species_id}
+@@ -688,7 +689,7 @@ export const HarbourWorkspace: React.FC<{
+       {activeTab === 'accounting' && (
+         <div className="flex flex-col gap-6">
+           <Card
+-            title="Nodal Bank Payout Batches & UTR Reconciliation (§5 ADR-008)"
++            title="Nodal Bank Payout Batches & UTR Reconciliation"
+             subtitle="Close the harbour day: generate CSV payout batch → import bank UTR → zero unexplained difference"
+             actions={
+               <div className="flex flex-wrap items-center gap-2">
+@@ -717,7 +718,7 @@ export const HarbourWorkspace: React.FC<{
+           </Card>
+ 
+           <Card
+-            title="Dual-Key Reversal Queue (§7 Reversals)"
++            title="Dual-Key Reversal Queue"
+             subtitle="Ledger rows are never edited; corrections post a compensating journal requiring two distinct users (Accountant + Harbour Admin)"
+           >
+             <DataTable
+@@ -746,7 +747,7 @@ export const HarbourWorkspace: React.FC<{
+         <div className="flex flex-col gap-6">
+           <ReportsShadowPanel data={data} token={token} />
+           <Card
+-            title="Statutory Compliance Exports & Section 22 Auctioneer Return (§12 M9)"
++            title="Statutory Compliance Exports & Section 22 Auctioneer Return"
+             subtitle="Download CSV ledgers or print-ready statutory audit statements (no external PDF lock-in)"
+             actions={
+               <div className="flex flex-wrap items-center gap-2.5">
+diff --git a/src/web/workspaces/inspector/index.tsx b/src/web/workspaces/inspector/index.tsx
+index c19d206..a82d9f1 100644
+--- a/src/web/workspaces/inspector/index.tsx
++++ b/src/web/workspaces/inspector/index.tsx
+@@ -227,7 +227,7 @@ export const InspectorWorkspace: React.FC<{
+           status={{ tone: 'info', label: 'CLEARED' }}
+         />
+         <Metric
+-          label="Rejected Unfit (s.21)"
++          label="Rejected Unfit"
+           value={String(
+             data.lots.filter((l) => l.inspection_grade === 'REJECTED_UNFIT').length
+           )}
+@@ -245,7 +245,7 @@ export const InspectorWorkspace: React.FC<{
+             icon={<Sparkles className="w-4 h-4" />}
+             onClick={handleRequestAiAssist}
+           >
+-            Request Optional AI Assist (ADR-009)
++            Request Optional AI Assist
+           </Button>
+         }
+       >
+@@ -262,7 +262,7 @@ export const InspectorWorkspace: React.FC<{
+                 </p>
+               ) : (
+                 <p className="text-xs">
+-                  Advisory LLM is disabled by default (`LLM_PROVIDER=none`). Zero fabricated fallback data is returned (§3 P7). Inspector must grade directly.
++                  Advisory LLM is disabled by default (`LLM_PROVIDER=none`). Zero fabricated fallback data is returned. Inspector must grade directly.
+                 </p>
+               )}
+             </div>
+diff --git a/src/web/workspaces/pit/index.tsx b/src/web/workspaces/pit/index.tsx
+index 44d93ce..0331ea7 100644
+--- a/src/web/workspaces/pit/index.tsx
++++ b/src/web/workspaces/pit/index.tsx
+@@ -132,7 +132,7 @@ export const PitWorkspace: React.FC<{
+         )} | Bonus Escrow: ${formatInrFromPaise(res.bonusEscrowPaise)} | Journal ${
+           res.journalId
+         } SHA-256 chained.${
+-          res.floorWarningTriggered ? ' [Section 19 Floor Price WARN Flagged]' : ''
++          res.floorWarningTriggered ? ' [Below floor price: flagged]' : ''
+         }`,
+       });
+       await onRefresh();
+@@ -273,7 +273,7 @@ export const PitWorkspace: React.FC<{
+             />
+           </div>
+           <Metric
+-            label="Floor Price (s.19)"
++            label="Floor Price"
+             value={formatInrFromPaise(currentSpecies?.floor_price_paise_per_kg ?? '0')}
+             unit="/ KG"
+             sublabel={currentSpecies?.name_en ?? ''}
+@@ -283,7 +283,7 @@ export const PitWorkspace: React.FC<{
+             }}
+           />
+           <Metric
+-            label="Vessel Loan (s.4(8))"
++            label="Vessel Loan"
+             value={currentVessel?.has_active_society_loan ? 'LOAN TIED' : 'FREE VESSEL'}
+             sublabel={currentVessel?.vessel_name_en ?? ''}
+             status={{
+@@ -300,7 +300,7 @@ export const PitWorkspace: React.FC<{
+           <Card title="Lot, Mode & Licence Selection">
+             <div className="flex flex-col gap-3 sm:gap-4">
+               <Select
+-                label="Select Landed Lot (Includes Open, Society-Loan & Unfit s.21 Lots)"
++                label="Select landed lot (open, society-loan and unfit lots)"
+                 dockSize
+                 value={selectedLotId}
+                 onChange={(e) => setSelectedLotId(e.target.value)}
+@@ -318,21 +318,21 @@ export const PitWorkspace: React.FC<{
+ 
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <Select
+-                  label="Auction Mode (§7)"
++                  label="Auction Mode"
+                   dockSize
+                   value={auctionMode}
+                   onChange={(e) => setAuctionMode(e.target.value as AuctionMode)}
+                   options={[
+-                    { value: 'PHYSICAL_SHOUT', label: 'PHYSICAL_SHOUT (Pit Shout)' },
+-                    { value: 'HYBRID_REMOTE', label: 'HYBRID_REMOTE (Floor + SSE)' },
+-                    { value: 'DUTCH_CLOCK', label: 'DUTCH_CLOCK (Descending Clock)' },
+-                    { value: 'COOP_PROCUREMENT', label: 'COOP_PROCUREMENT (s.19(2) Floor Price)' },
+-                    { value: 'HMS_DIRECT_TAKEOVER', label: 'HMS_DIRECT_TAKEOVER (s.10 Proviso)' },
++                    { value: 'PHYSICAL_SHOUT', label: 'Pit shout (voice auction)' },
++                    { value: 'HYBRID_REMOTE', label: 'Hybrid (floor + remote bidders)' },
++                    { value: 'DUTCH_CLOCK', label: 'Dutch clock (price falls until taken)' },
++                    { value: 'COOP_PROCUREMENT', label: 'Co-op procurement (at floor price)' },
++                    { value: 'HMS_DIRECT_TAKEOVER', label: 'Harbour office direct takeover' },
+                   ]}
+                 />
+ 
+                 <Select
+-                  label="Licensed Auctioneer (s.5 & s.4(8))"
++                  label="Licensed auctioneer"
+                   dockSize
+                   value={selectedLicenceId}
+                   onChange={(e) => setSelectedLicenceId(e.target.value)}
+@@ -355,7 +355,7 @@ export const PitWorkspace: React.FC<{
+               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                 <div className="sm:col-span-2">
+                   <Select
+-                    label="Winning Wholesale Buyer Paddle (§7 Check 6 Credit Lock)"
++                    label="Winning Wholesale Buyer Paddle"
+                     dockSize
+                     value={selectedBuyerId}
+                     onChange={(e) => setSelectedBuyerId(e.target.value)}
+@@ -388,7 +388,7 @@ export const PitWorkspace: React.FC<{
+               <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2 text-xs">
+                 <div className="font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
+                   <ShieldCheck className="w-4 h-4 text-[var(--brand)]" />
+-                  <span>Live Statutory Pre-Flight Checks (§7)</span>
++                  <span>Live Statutory Pre-Flight Checks</span>
+                 </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[var(--text-secondary)]">
+                   <div className="flex items-center gap-1.5">
+diff --git a/src/web/workspaces/platform/index.tsx b/src/web/workspaces/platform/index.tsx
+index 198a681..5a9c823 100644
+--- a/src/web/workspaces/platform/index.tsx
++++ b/src/web/workspaces/platform/index.tsx
+@@ -643,7 +643,7 @@ export const PlatformWorkspace: React.FC<{
+                     onChange={(e) => setNewSlug(e.target.value)}
+                   />
+                   <Select
+-                    label="Statutory Regime Preset (§12 M4)"
++                    label="Statutory Regime Preset"
+                     value={newPreset}
+                     onChange={(e) => setNewPreset(e.target.value as CentreType)}
+                     options={[
+@@ -693,7 +693,7 @@ export const PlatformWorkspace: React.FC<{
+               <form onSubmit={handleSavePolicyVersion} className="flex flex-col gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                   <Select
+-                    label="Commercial Monetization Mode (§2 C7)"
++                    label="Commercial Monetization Mode"
+                     value={policyMode}
+                     onChange={(e) => setPolicyMode(e.target.value as CommercialMode)}
+                     options={[
+diff --git a/src/web/workspaces/weighing/index.tsx b/src/web/workspaces/weighing/index.tsx
+index a207146..3040ff9 100644
+--- a/src/web/workspaces/weighing/index.tsx
++++ b/src/web/workspaces/weighing/index.tsx
+@@ -213,7 +213,7 @@ export const WeighingWorkspace: React.FC<{
+     },
+     {
+       key: 'vessel',
+-      header: 'Vessel & Society Loan (s.4(8))',
++      header: 'Vessel & Society Loan',
+       render: (r) => {
+         const v = data.vessels.find((x) => x.vessel_id === r.vessel_id);
+         return (
+@@ -294,7 +294,7 @@ export const WeighingWorkspace: React.FC<{
+               {t('workspaces.weighingTitle')}
+             </h1>
+             <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
+-              {data.vessels.length} {t('dockside.vessel')} · HMAC-SHA256 Signed QR
++              {data.vessels.length} {t('dockside.vessel')} · Secure QR code
+             </p>
+           </div>
+         </div>
+@@ -344,14 +344,14 @@ export const WeighingWorkspace: React.FC<{
+             value={formatKgFromGrams(
+               data.lots.reduce((acc, l) => acc + BigInt(l.net_grams), 0n)
+             )}
+-            status={{ tone: 'info', label: 'BIGINT GRAMS' }}
++            status={{ tone: 'info', label: 'EXACT TO THE GRAM' }}
+           />
+         </div>
+         <Metric
+           label="Tagged Lots Today"
+           value={String(data.lots.length)}
+           unit="LOTS"
+-          status={{ tone: 'ok', label: 'HMAC SIGNED' }}
++          status={{ tone: 'ok', label: 'TAMPER-PROOF' }}
+         />
+         <Metric
+           label="Offline Queue"
+@@ -381,7 +381,7 @@ export const WeighingWorkspace: React.FC<{
+               }))}
+             />
+             <Select
+-              label="Scale Input Adapter (§4.1 Port)"
++              label="Scale Input Adapter"
+               dockSize
+               value={weightSource}
+               onChange={(e) =>
+@@ -396,7 +396,7 @@ export const WeighingWorkspace: React.FC<{
+ 
+           <div>
+             <div className="text-[11px] sm:text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2 sm:mb-3">
+-              2. Select Catch Species (Malayalam + English + Section 19 Floor Price)
++              2. Select catch species and see today's floor price
+             </div>
+             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+               {data.species.map((sp) => (
+-- 
+2.43.0
+
+
+From fbec84d0ea970d194b70d4d49a7843676ee5c640 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 24 Nov 2026 19:04:46 +0000
+Subject: [PATCH 3/3] docs: status and next steps (verified state, UI work done
+ and remaining)
+
+---
+ docs/STATUS_AND_NEXT_STEPS.md | 177 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 177 insertions(+)
+ create mode 100644 docs/STATUS_AND_NEXT_STEPS.md
+
+diff --git a/docs/STATUS_AND_NEXT_STEPS.md b/docs/STATUS_AND_NEXT_STEPS.md
+new file mode 100644
+index 0000000..4ea68ff
+--- /dev/null
++++ b/docs/STATUS_AND_NEXT_STEPS.md
+@@ -0,0 +1,177 @@
++# HarbourOS: Status, Fixes, and Next Steps
++
++> ## UPDATE 2026-11-24: current state (verified against GitHub, not assumed)
++>
++> - **CI is green on `main`** (newest commit `485f1af`: only 2 Node-20 deprecation warnings). The CI/deploy fixes below are **already in `main`**, so the old `harbos-ci-deploy-fix.patch` is obsolete and has been removed.
++> - **Playwright and the Docker step now count as verified**: they run after the scale gate, and that run passed on real CI. (They were UNVERIFIED in section 2.)
++> - Your commit `24edf50` first failed at the **scale-fixture / EXPLAIN gate** (a new failure past the PgBouncer gate, which now passes in CI). `485f1af` rewrote `scripts/scale-fixture.ts` and fixed it. I did not diagnose why it failed in CI but passed locally for me.
++> - **ZAP is still unproven.** The latest ZAP failure (run 11) ran on the *old* commit with the *old* pin. The new `v0.15.0` pin has not run yet. **Action: run `zap-nightly` via `workflow_dispatch`, download `zap_scan`, triage.**
++> - **Dependabot PR #12-#17 runs still fail** at the scale gate because they branched from the broken state. Rebase or close (section 5).
++> - **UI (new):** mobile shell and login redesigned, in `harbos-ui-complete.patch` (see "UI work" at the end).
++
++Repo: `THEJAS-KRISHNA-P-R/harbos` · Base: `main @ bfa291d` · Fix: `harbos-ci-deploy-fix.patch` (1 commit, 15 files)
++Date of work: 2026-11-23
++
++## 0. Read this first
++
++- **CI and ZAP were red for two unrelated reasons. Both are fixed in the patch and verified locally. Neither is fixed on GitHub until you push.** I have no push access. I only have a patch that applies cleanly on a fresh clone of `bfa291d`.
++- **While fixing them I found the deploy path had never worked.** Both Cloud Run manifests crash on boot, the worker cannot start on Cloud Run, and the deploy workflow printed "Deployment successful" without deploying. All fixed and now gated in CI.
++- **"Deployment-ready" is not the same as "works IRL".** The code and pipeline are now in a state I can prove. Production also needs accounts, registrations and a pilot that only you can do (section 6). I will not claim it "solves all problems"; section 8 defines what done means so it is measurable instead.
++
++## 1. Root causes found
++
++| # | Symptom | Root cause | Evidence | Fix |
++|---|---|---|---|---|
++| 1 | CI red on runs 48-50 at "Strict PgBouncer Transaction-Mode Gate" | Test `C1 #7` injects a forged row hash by matching the SQL string `ORDER BY entry_seq ASC`. The query was refactored to `entries.entry_seq`, so the proxy never fired and the (correct) verifier reported a clean chain. **Test bug, not an app bug.** | Reproduced: 87/88, failing at the tamper assertion | Regex tolerant of table-qualified columns; asserts the proxy fired (`tamperHits > 0`) so a refactor fails loudly |
++| 2 | ZAP nightly red, runs 9-10 | `zaproxy/action-baseline@v0.12.0` bundles the retired legacy artifact client. Annotation: *"Create Artifact Container failed: The artifact name zap_scan is not valid."* **Tooling failure, not a security finding.** | v0.12.0 bundle contains the legacy `pipelines/workflows/.../artifacts?api-version` client; v0.15.0 has the new `ArtifactService` client | Pin v0.15.0 at peeled commit `de8ad967d3548d44ef623df22cf95c3b0baf8b25` |
++| 3 | Gitleaks: 3 findings | Fixtures: a fake bank ref (log-redaction test) and a stub MSG91 key | Present in HEAD and commit `0b8393e` | Inline `gitleaks:allow` on the 3 lines + per-finding fingerprints in `.gitleaksignore` (no whole-commit allowlists) |
++| 4 | Runs ≤ 42 died in 6s; Dependabot PRs #11-#17 die in 6-16s | `setup-node` and `gitleaks-action` pinned to SHAs that don't exist | Annotation text on those runs | Already fixed on `main`; Dependabot branches are stale (section 5) |
++| 5 | **Web manifest crashes on boot** | `SMS_PROVIDER` unset → defaults to `console`, which production config forbids. Also sets reserved `PORT`, and Kubernetes-style `secretKeyRef` (Cloud Run needs a secret ID plus a version) | Booted from a Docker-equivalent layout: `FATAL [config]: SMS_PROVIDER=console is forbidden...` | Rewrote manifest |
++| 6 | **Worker manifest crashes on boot** | Missing `DATABASE_URL`, `JWT_ACCESS_SECRET`, `QR_HMAC_SECRET`, `MSG91_OTP_TEMPLATE_ID` | `FATAL [config]: JWT_ACCESS_SECRET must be at least 32 bytes` | Rewrote manifest |
++| 7 | **Worker could never run on Cloud Run** | No HTTP listener; Cloud Run kills Service containers that don't listen on `$PORT` | Code read | `/healthz` listener, `unref()`'d, bind errors never crash the loop |
++| 8 | **Deploy workflow was fake** | Deploy step was `echo "Deployment successful."`; all steps silently skipped when secrets were missing; no image build; migrations ran with the runtime role | `deploy.yml` read | Full pipeline (section 3) |
++| 9 | Re-running `npm test` on a used DB failed (4× HTTP 429, then outbox tests) | `core.auth_rate_limits` and a PENDING backlog in `sync.outbox_events` persisted between runs (94 PENDING rows starved fresh test rows; worker claims FIFO in batches of 50) | Reproduced both | Hermetic bootstrap: reset limiter; reset PENDING outbox only when DB name contains `test` |
++| 10 | Possible runner drift | `ubuntu-latest` is migrating to Ubuntu 26 (runner annotation) | Annotation text | Pinned `ubuntu-24.04` in all workflows |
++
++One of my own changes also broke an architectural rule (`process.env` read outside `config.ts`). The existing boundaries gate caught it and I fixed it. Worth knowing the gate works.
++
++## 2. Verification evidence
++
++All run locally in CI order on a **fresh** Postgres 16.15 + PgBouncer 1.22 + Node 22, on the final committed code.
++
++| Gate | Result |
++|---|---|
++| Action pins vs `git ls-remote` (9/9) | PASS |
++| Lockfile sync · `npm audit --omit=dev` (0 vulns) | PASS |
++| `tsc --noEmit` · i18n · empty-catch grep · boundaries · contrast | PASS |
++| **`check:deploy` (new)**: boots real prod config with each manifest's exact env | PASS (and **10 failures on the original manifests**) |
++| Gitleaks full history + working tree | PASS (0 leaks) |
++| `actionlint` on all 3 workflows | PASS |
++| Migrations 14/14 (owner) · seed | PASS |
++| PgBouncer transaction-mode gate: 88/88 tests + `verify-rls` (33 tables) | PASS; **also 88/88 twice back-to-back on a dirty DB** |
++| Owner-mode RLS gate (`NOBYPASSRLS`, Cloud SQL path) | PASS |
++| Production 5-var boot / fail-closed smoke | PASS |
++| Build + budget (1083 of 1500 KB) · no demo phones in bundle | PASS |
++| Scale fixture (>100k ledger rows) + 13 EXPLAIN plans (index scans, p95 < 10ms) | PASS |
++| 60s two-instance load: overall p95 175ms (< 500), 0×5xx, zero oversell 10/10, ledger chain clean | PASS |
++| Web + worker boot from Docker-equivalent layout with manifest env: web `/healthz` + `/readyz` 200, worker `/healthz` 200, clean exit on SIGTERM | PASS |
++| Response headers on prod server (SPA, hashed asset, 404, API JSON, CORS preflight): strict CSP (no `unsafe-inline`), `frame-ancestors 'none'`, XFO DENY, nosniff, COOP/CORP/COEP, Permissions-Policy, no `Server`/`X-Powered-By`, no cookies, no CORS allow | PASS (manual passive review) |
++
++### UNVERIFIED: not run, with the exact human command
++
++| Not verified | Why | Command |
++|---|---|---|
++| Playwright visual smoke | Sandbox blocks the browser download | `npx playwright install --with-deps chromium && npx playwright test` (the exact CI step) |
++| Docker build + non-root + container health | No Docker here. Note: CI's container step runs the web entry only (default `CMD`); the **worker is never started by any CI step**, so its Cloud Run behaviour is covered only by my local boot test | `docker build -t harbouros . && docker run --rm harbouros id -u` (expect non-zero) |
++| **Real ZAP findings** | Needs the ZAP container | Run workflow `zap-nightly` via `workflow_dispatch`, download artifact `zap_scan`, read the report |
++| **The new deploy workflow against real GCP** | No GCP project | Deploy to `staging` first (section 4) |
++| Cloud Run actually accepting the manifests | Same | `gcloud run services replace` on staging |
++| Whether `ubuntu-24.04` has Docker + `gcloud` + `jq` preinstalled | Assumption from runner image docs | First staging deploy will show it |
++
++## 3. What changed (15 files)
++
++- **Tests:** `c1-backend-compliance.test.ts` (tamper proxy), `pilot-completeness.test.ts` (fixture marker), `helpers/pg-bootstrap.ts` (hermetic state).
++- **CI:** `ci.yml` (runs `check:deploy`, `ubuntu-24.04`), `zap-nightly.yml` (v0.15.0), `.gitleaksignore`, `playwright.config.ts` (webServer startup timeout 30s → 90s; in-memory PGlite boot measured at 18.5s locally, which left too little headroom on slower runners. No assertion weakened).
++- **Deploy:** `deploy/cloud-run-web.yaml`, `deploy/cloud-run-worker.yaml`, `src/server/entry/worker.ts`, `scripts/check-deploy.ts`, `package.json`, `deploy.yml`.
++- **Docs:** `docs/RUNBOOK.md` section 4, `AGENTS.md` rule.
++
++New `deploy.yml` pipeline: preflight (fails loudly on missing secrets) → static gates → build + budget → build/push `harbouros:<sha>` → **migrate as owner before the new revision** → record previous revision → render manifests → `gcloud run services replace` (web, worker) → smoke (`/readyz`, `/healthz`, CSP header, worker Ready) → **auto-rollback of web traffic on failure**. It still refuses to run unless `ci.yml` succeeded for that exact commit.
++
++## 4. Do these in this order
++
++1. **Apply and push** (5 min):
++   ```
++   git checkout -b fix/ci-owasp-green origin/main
++   git am harbos-ci-deploy-fix.patch
++   git push -u origin fix/ci-owasp-green    # open a PR
++   ```
++   Expect the PgBouncer gate and everything before it to pass. **The first red you see after that is new information**, most likely Playwright or the Docker step (both UNVERIFIED above). Fix at root cause; do not weaken gates (`AGENTS.md`).
++2. **Run `zap-nightly` manually** once CI is green. Download `zap_scan`. Triage every alert: fix, or add to `.zap/rules.tsv` with a written reason. Only then set `fail_action: true` so ZAP can fail the build (right now alerts alone never fail the job).
++3. **Turn on branch protection** for `main` requiring the CI check. CI was red for 9+ consecutive runs on `main`; nothing enforced it.
++4. **Do the one-time GCP setup** (`docs/RUNBOOK.md` section 4): Artifact Registry repo, 6 Secret Manager secrets, runtime service account, Workload Identity Federation, Cloud SQL (PostgreSQL 16, `RLS_PLATFORM_MODE=owner`), 3 GitHub Environments with secrets. `npm run check:deploy` prints the exact secret list.
++5. **Deploy to `staging` first** via `workflow_dispatch`. Do not tag a release until staging passes the smoke step and you have used the app end to end from a phone.
++6. **Clean up Dependabot** (section 5).
++
++## 5. Dependabot PRs #11-#17
++
++All branched from the broken pins, so they fail in seconds regardless of content.
++- **Close** #11 (`google-github-actions/auth` 2→3), #13 (`@google/genai` 2→3), #14 (`lucide-react` 0→1): major bumps your config now ignores.
++- **Do not merge** #12 (ZAP bump); the patch already does it correctly, with a SHA verified against the tag.
++- **Rebase or recreate** the rest (`@dependabot rebase`) after `main` is green, and review each action SHA with `npm run check:actions`.
++
++## 6. What only you can do (this is the gap between "pipeline works" and "works IRL")
++
++I did not review application behaviour, `docs/` content, or any real-world integration. I cannot verify any of the following from here.
++
++- **SMS delivery (MSG91).** Real OTP and notification delivery needs an MSG91 account and, for commercial SMS in India, DLT sender-ID and template registration. Test with real phones on real networks. A working OTP flow is the login for every user.
++- **Real database operations.** Backups and tested restore, point-in-time recovery, connection limits behind the pooler, and a migration rehearsal on a copy of production-shaped data.
++- **Monitoring and alerting.** The code emits logs; nothing here proves anyone gets paged. Set uptime checks on `/readyz`, alerts on 5xx rate, outbox backlog (PENDING age), `DEAD_LETTER` count, and the daily ledger anchor/verify job.
++- **Legal and compliance.** `docs/LEGAL_REVIEW.md` exists; I did not read it. Get a lawyer to sign off on settlement/ledger obligations, DPDP Act data handling (including how an immutable ledger interacts with erasure requests), and the user-facing terms.
++- **A pilot with real users.** Auction settlement involves money. Run one harbour with a human fallback and the `FIRST_MORNING`/`PILOT_KIT` docs, reconcile every day against their books, and compare ledger totals to cash.
++- **Domain, TLS, and public exposure.** The workflow grants `allUsers` invoker on the web service. Confirm that is intended and put a domain and managed certificate in front.
++- **Security beyond a baseline scan.** ZAP baseline is passive. Before public launch, get an authenticated active scan or a pentest focused on tenant isolation, OTP abuse, and the money paths.
++- **Support and incident process.** Who answers a failed-settlement call at 6am, and what is the rollback decision rule.
++
++## 7. Known risks and observations
++
++- **Hot-lot tail latency.** 200 concurrent allocations on one lot: that scenario's p95 was **2.5-3.1s** across my runs (overall p95 is 130-175ms). CI gates only the overall figure, so this tail is invisible. Correctness is fine (zero oversell); the contended path is slow. Worth a dedicated budget before real auctions.
++- **Run 47** failed in 38s with no error annotation; the cause is unconfirmed. Gitleaks is plausible but unproven.
++- **Runs 44-46 and older ZAP runs 6-8** were not investigated. The ZAP runs failed in 19-29s, which points to a different cause than the artifact bug. If ZAP still fails after v0.15.0, read those logs.
++- **`.gitleaks.toml` still allowlists four whole commits.** That hides everything in them, including any future real secret. Prefer per-finding fingerprints.
++- **The deploy workflow assumes the DB is reachable from the GitHub runner** for `npm run migrate` (public IP/authorized network, or a self-hosted runner/private path). This is a design choice you must make for Cloud SQL.
++- **`robots.txt` and `sitemap.xml` return the SPA HTML with 200.** Harmless for a private app; wrong if you want search indexing control.
++- **Single image for web and worker.** Fine now; if worker scaling diverges, split them.
++
++## 8. Definition of done (measurable)
++
++Call it launch-ready only when **all** are true:
++
++1. `main` CI green on three consecutive runs, branch protection on.
++2. ZAP run produces a report you have triaged; `fail_action: true` is set.
++3. Staging deploy via the workflow succeeds, including smoke and a deliberate rollback drill.
++4. Playwright and Docker steps pass in CI (currently UNVERIFIED).
++5. A restore from backup has been performed and timed.
++6. Alerts fire on a synthetic failure (kill the worker; confirm someone is paged).
++7. Real OTP SMS delivered on real phones (DLT-registered).
++8. Legal review complete.
++9. A pilot has run for at least two weeks with daily reconciliation and zero unexplained ledger differences.
++
++Everything in section 6 sits behind items 5-9. No amount of code on my side closes those.
++
++
++---
++
++## UI work (mobile shell, login, fisher passbook, copy): `harbos-ui-complete.patch`
++
++Applies cleanly on `main @ 485f1af` (5 files). Verified on that merged tree: typecheck, i18n parity, boundaries (incl. no-hardcoded-hex / no-green rules), WCAG contrast, bundle budget, `check:fast` (33 unit tests), and **Playwright 4/4** from a fresh server. Screenshots: `ui-before-A.png`, `ui-before-B.png`, `ui-after.png` (390x844, headless Chromium 153).
++
++### What was wrong (measured)
++- The app was a desktop admin dashboard squeezed into 390px: every role got a six-control hamburger header, a clipped chip row, and (for the harbour role) a second clipped tab row ("Rep...").
++- No bottom navigation on any screen. Harbour workspace was **4,882px** of single-column scroll; login page **2,706px**.
++- The login page showed implementation details to end users ("HS256 JWT + RLS", "Node.js 22 + PostgreSQL 16", `core.otp_challenges`, "E.164").
++- Developer/spec annotations used as UI copy across workspaces: `Act s.21`, `§7`, `§4.1 Port`, `ADR-009`, `BIGINT GRAMS`, `HMAC SIGNED`, `FORCE RLS`, `UNVERIFIED-HARDWARE`.
++- Every number carries a pill badge, so nothing has hierarchy. The auction pit pad (most time-critical screen) is five dropdowns.
++- Not "no images": there are SVG illustrations and a species glyph sprite, but they are used on the login hero only.
++
++### What the patch changes
++- **Bottom tab bar** (>=56px targets, safe-area aware, active pill) replaces the chip row; shown only for roles with 2+ workspaces; "More" opens the drawer when there are more than 5.
++- **Compact header**: brand mark + title, language toggle, avatar; command-palette search is desktop-only; Ledger is icon-only on phones with a proper accessible name.
++- **Login rewritten**: one screen (2,706px -> 844px), two steps (number, then code), `tel`/`one-time-code` keyboards, 56px primary action, hero illustration kept (`hero-scene` e2e contract), bilingual (new `login.*` keys in en/ml), no internals shown, dev role-switcher collapsed and dev-only.
++- Colours come only from `tokens.css`; the repo's `no-green` rule explicitly bans the Wise-style lime, so the "Wise look" is approximated with ocean/aqua and sand, not copied.
++
++### Also done in the second pass (same patch, `harbos-ui-complete.patch`, 2 commits, 13 files)
++- **Fisher passbook**: hero "You receive" amount, then a plain-language "where each sale goes" bar with amounts (no statute references); new en/ml strings.
++- **Copy pass**: removed statute, ADR and spec cross-references (`§`, `s.19`, `ADR-009`) and internal terms (`BIGINT GRAMS`, `HMAC SIGNED`) from workspace labels; auction modes now read in plain language; `humanizeCode()` in `Badge` turns `REJECTED_UNFIT` into "Rejected unfit" everywhere a badge is used.
++- **Touch targets**: phone button heights raised to 40-48px (desktop unchanged); tabs 40px, auto-scroll the active tab into view, and show a fade only when more tabs are off-screen.
++- Verified on the merged tree: typecheck, i18n parity (97 keys), boundaries, contrast, deploy manifests, bundle budget, `check:fast` (33 tests), **Playwright 4/4**. Server code is untouched; `main`'s CI covers the 88-test DB suite.
++
++### STILL NOT DONE (be clear-eyed)
++Correction to an earlier note: `Button` already had pressed (`active:scale`) and loading states; what is missing is skeleton loading and success confirmations.
++1. **Auction pit pad** is still a form of dropdowns. It needs a lot card with big bid/allocate controls and a one-tap confirm. This is the most time-critical screen and a real redesign, not a copy fix.
++2. **Raw codes still leak in plain text** (not badges): e.g. `FISHERMAN_NET_SETTLEMENT` elsewhere, `Digital Scale Indicator [UNVERIFIED-HARDWARE]` (left in on purpose: it is an honest disclosure that scale hardware is unverified, so replace with a clear "not yet verified" wording rather than hiding it).
++3. **Species glyphs in the floor-price lists** and de-duplicating repeated row labels ("SPECIES (ENGLISH / MALAYALAM)" on every row). The glyph sprite exists; the lists do not use it.
++4. **Harbour/platform roles** are office roles: they now work on a phone but deserve desktop-first layouts (tables, side panels).
++5. **Buyer and inspector screens** got the shell and copy pass only, not a redesign.
++6. **Malayalam coverage**: new strings are bilingual, but many existing workspace labels are English-only hard-coded text. Needs a systematic i18n pass.
++7. **Real-device testing**: I only used headless Chromium 153 (extracted from an npm package). Test on low-end Android: Malayalam fonts, keyboard overlap, offline QR scanning, slow networks.
++8. **Skeleton/loading and success feedback** states.
+-- 
+2.43.0

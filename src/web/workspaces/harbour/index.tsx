@@ -6,7 +6,6 @@ import {
   RotateCcw,
   Landmark,
   ShieldCheck,
-  Search,
   X,
 } from 'lucide-react';
 import {
@@ -19,11 +18,8 @@ import {
   Input,
   Select,
   Toast,
-  WorkflowStepStrip,
-  StatutorySealIcon,
-  HarbourLedgerVaultIcon,
-  PelagicFishIcon,
-  HarbourQuayDawnSvgDecor,
+  SpeciesGlyph,
+  humanizeCode,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
 import {
@@ -95,7 +91,7 @@ export const HarbourWorkspace: React.FC<{
       });
       setFeedback({
         tone: 'ok',
-        title: 'Section 19 Basic Price Schedule Updated',
+        title: 'Floor price schedule updated',
         msg: `Enforcement mode set to ${floorEnforcement}; species floor updated to ₹${floorEditRupees}/kg.`,
       });
       await onRefresh();
@@ -227,13 +223,16 @@ export const HarbourWorkspace: React.FC<{
     { key: 'code', header: 'Code', mono: true, render: (r) => r.code },
     {
       key: 'name',
-      header: 'Species (English / Malayalam)',
+      header: 'Species',
       render: (r) => (
-        <div>
-          <span className="font-semibold">{r.name_en}</span>{' '}
-          <span lang="ml" className="text-[var(--text-secondary)]">
-            ({r.name_ml})
-          </span>
+        <div className="flex items-center gap-2 min-w-0">
+          <SpeciesGlyph code={`${r.code} ${r.name_en}`} size={20} className="shrink-0" />
+          <div className="min-w-0">
+            <span className="font-semibold">{r.name_en}</span>{' '}
+            <span lang="ml" className="text-[var(--text-secondary)]">
+              ({r.name_ml})
+            </span>
+          </div>
         </div>
       ),
     },
@@ -244,7 +243,7 @@ export const HarbourWorkspace: React.FC<{
     },
     {
       key: 'floor',
-      header: 'Section 19 Basic Floor Price',
+      header: 'Floor Price',
       align: 'right',
       mono: true,
       render: (r) => (
@@ -254,11 +253,11 @@ export const HarbourWorkspace: React.FC<{
   ];
 
   const licenceColumns: ReadonlyArray<DataTableColumn<LicenceRow>> = [
-    { key: 'no', header: 'Licence No. (s.5)', mono: true, render: (r) => r.licence_no },
+    { key: 'no', header: 'Licence No.', mono: true, render: (r) => r.licence_no },
     { key: 'name', header: 'Auctioneer Name', render: (r) => <span className="font-semibold">{r.auctioneer_name}</span> },
     {
       key: 'soc',
-      header: 's.4(8) Deputed Co-op Society',
+      header: 'Co-op Society',
       mono: true,
       render: (r) => r.deputed_by_society_id ?? 'Independent (Non-Loan Vessels Only)',
     },
@@ -282,7 +281,7 @@ export const HarbourWorkspace: React.FC<{
 
   const batchColumns: ReadonlyArray<DataTableColumn<PayoutBatchRow>> = [
     { key: 'code', header: 'Batch Code', mono: true, render: (r) => <span className="font-semibold">{r.batch_code}</span> },
-    { key: 'kind', header: 'Beneficiary Pool', render: (r) => r.beneficiary_kind },
+    { key: 'kind', header: 'Beneficiary Pool', render: (r) => humanizeCode(r.beneficiary_kind) },
     {
       key: 'amt',
       header: 'Total Batch Amount',
@@ -389,7 +388,7 @@ export const HarbourWorkspace: React.FC<{
             {r.actor_name ?? r.actor_user_id}
           </span>
           <span className="text-xs font-mono-code text-[var(--text-muted)]">
-            {r.actor_user_id} · {r.actor_role}
+            {r.actor_user_id} · {humanizeCode(r.actor_role)}
           </span>
         </div>
       ),
@@ -472,13 +471,13 @@ export const HarbourWorkspace: React.FC<{
             value={auditRoleFilter}
             onChange={(e) => setAuditRoleFilter(e.target.value)}
             options={[
-              { value: 'ALL', label: 'All Roles' },
-              { value: 'HARBOUR_ADMIN', label: 'HARBOUR_ADMIN' },
-              { value: 'ACCOUNTANT', label: 'ACCOUNTANT' },
-              { value: 'LICENSED_AUCTIONEER', label: 'LICENSED_AUCTIONEER' },
-              { value: 'WEIGHING_OPERATOR', label: 'WEIGHING_OPERATOR' },
-              { value: 'AUTHORIZED_INSPECTOR', label: 'AUTHORIZED_INSPECTOR' },
-              { value: 'SUPER_ADMIN', label: 'SUPER_ADMIN' },
+              { value: 'ALL', label: 'All roles' },
+              { value: 'HARBOUR_ADMIN', label: 'Harbour admin' },
+              { value: 'ACCOUNTANT', label: 'Accountant' },
+              { value: 'LICENSED_AUCTIONEER', label: 'Licensed auctioneer' },
+              { value: 'WEIGHING_OPERATOR', label: 'Weighing operator' },
+              { value: 'AUTHORIZED_INSPECTOR', label: 'Quality inspector' },
+              { value: 'SUPER_ADMIN', label: 'Platform admin' },
             ]}
           />
         </div>
@@ -533,7 +532,7 @@ export const HarbourWorkspace: React.FC<{
             onClick={handleExportSection22ReturnCsv}
             className="self-start sm:self-auto"
           >
-            Export s.22 CSV
+            Export Return CSV
           </Button>
           <div className="w-full sm:w-auto min-w-0">
             <Tabs
@@ -574,13 +573,13 @@ export const HarbourWorkspace: React.FC<{
           />
         </div>
         <Metric
-          label="Fisher Bonus Pool (40%)"
+          label="Fisher Bonus"
           value={formatInrFromPaise(totalBonusEscrowPaise)}
           sublabel="2.00% GTV escrow"
           status={{ tone: 'info', label: 'ESCROW' }}
         />
         <Metric
-          label="Ledger Chain"
+          label="Ledger"
           value={`${data.ledgerVerification.entryCount} rows`}
           sublabel={`Head ${data.ledgerVerification.headHash.slice(0, 12)}…`}
           status={{
@@ -624,7 +623,7 @@ export const HarbourWorkspace: React.FC<{
             />
           </Card>
 
-          <Card title="Floor Price Schedule (s.19)">
+          <Card title="Floor Price Schedule">
             <form
               onSubmit={handleUpdateFloorSchedule}
               className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end mb-4 pb-4 border-b border-[var(--border-hair)]"
@@ -634,9 +633,9 @@ export const HarbourWorkspace: React.FC<{
                 value={floorEnforcement}
                 onChange={(e) => setFloorEnforcement(e.target.value as FloorEnforcement)}
                 options={[
-                  { value: 'WARN', label: 'WARN (Flag Below Floor)' },
-                  { value: 'BLOCK', label: 'BLOCK (Reject Below Floor)' },
-                  { value: 'OFF', label: 'OFF (Advisory)' },
+                  { value: 'WARN', label: 'Warn — flag sales below floor' },
+                  { value: 'BLOCK', label: 'Block — reject sales below floor' },
+                  { value: 'OFF', label: 'Off — advisory only' },
                 ]}
               />
               <Select
@@ -649,7 +648,7 @@ export const HarbourWorkspace: React.FC<{
                 }))}
               />
               <Input
-                label="New Basic Floor Price (₹ / kg)"
+                label="New Floor Price (₹ / kg)"
                 type="number"
                 mono
                 value={floorEditRupees}
@@ -661,7 +660,7 @@ export const HarbourWorkspace: React.FC<{
             </form>
 
             <DataTable
-              caption="Section 19 Species Floor Schedule"
+              caption="Species Floor Schedule"
               columns={speciesColumns}
               rows={data.species}
               getRowKey={(r) => r.species_id}
@@ -688,7 +687,7 @@ export const HarbourWorkspace: React.FC<{
       {activeTab === 'accounting' && (
         <div className="flex flex-col gap-6">
           <Card
-            title="Nodal Bank Payout Batches & UTR Reconciliation (§5 ADR-008)"
+            title="Nodal Bank Payout Batches & UTR Reconciliation"
             subtitle="Close the harbour day: generate CSV payout batch → import bank UTR → zero unexplained difference"
             actions={
               <div className="flex flex-wrap items-center gap-2">
@@ -717,7 +716,7 @@ export const HarbourWorkspace: React.FC<{
           </Card>
 
           <Card
-            title="Dual-Key Reversal Queue (§7 Reversals)"
+            title="Dual-Key Reversal Queue"
             subtitle="Ledger rows are never edited; corrections post a compensating journal requiring two distinct users (Accountant + Harbour Admin)"
           >
             <DataTable
@@ -729,8 +728,8 @@ export const HarbourWorkspace: React.FC<{
           </Card>
 
           <Card
-            title="Double-Entry Ledger Accounts (`ledger.accounts`)"
-            subtitle="Per-beneficiary balances computed from append-only journal entries (fixes P11)"
+            title="Double-Entry Ledger Accounts"
+            subtitle="Per-beneficiary balances computed from append-only journal entries"
           >
             <DataTable
               caption="Statutory Ledger Accounts"
@@ -746,8 +745,8 @@ export const HarbourWorkspace: React.FC<{
         <div className="flex flex-col gap-6">
           <ReportsShadowPanel data={data} token={token} />
           <Card
-            title="Statutory Compliance Exports & Section 22 Auctioneer Return (§12 M9)"
-            subtitle="Download CSV ledgers or print-ready statutory audit statements (no external PDF lock-in)"
+            title="Statutory Compliance Exports & Auctioneer Return"
+            subtitle="Download CSV ledgers or print-ready statutory audit statements"
             actions={
               <div className="flex flex-wrap items-center gap-2.5">
                 <Button
@@ -755,7 +754,7 @@ export const HarbourWorkspace: React.FC<{
                   icon={<FileDown className="w-4 h-4" />}
                   onClick={handleExportSection22ReturnCsv}
                 >
-                  Download s.22 Return & Apportionment (CSV)
+                  Download Auctioneer Return (CSV)
                 </Button>
                 <Button
                   variant="secondary"
@@ -771,7 +770,7 @@ export const HarbourWorkspace: React.FC<{
                 <span className="flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-[var(--brand)]" />
                   <span>
-                    Report totals verified equal to ledger.accounts balances for {data.tenant?.name_en}
+                    Report totals verified equal to ledger balances for {data.tenant?.name_en}
                   </span>
                 </span>
                 <span className="font-mono-code">Generated at {new Date().toISOString()}</span>
@@ -782,7 +781,7 @@ export const HarbourWorkspace: React.FC<{
               <div className="p-5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase text-[var(--text-secondary)]">
-                    Section 22 Licensed Auctioneer Return (C11)
+                    Licensed Auctioneer Return
                   </span>
                   <Badge tone="ok" label="READY" />
                 </div>

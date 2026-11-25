@@ -1,20 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import {
-  UserCheck,
-  ArrowRight,
-  KeyRound,
-  ShieldCheck,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, MessageSquareText, ShieldCheck } from 'lucide-react';
 import {
   Button,
-  Card,
-  Badge,
   Input,
-  Select,
   Toast,
   MaritimeCrestSvgEmblem,
   DawnHarbourHeroScene,
 } from '@web/ui/index.tsx';
+import { useI18n } from '@web/i18n/index.tsx';
 import {
   apiRequest,
   formatOperatorInitials,
@@ -59,9 +52,11 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
   displayedOperators,
   onPersonaSwitch,
   onBackToWorkspace,
-  onOpenActiveProfile,
 }) => {
   const isDevSandbox = !import.meta.env.PROD;
+  const { locale, setLocale, t } = useI18n();
+  const [editingNumber, setEditingNumber] = useState(false);
+  const otpStep = (Boolean(authSuccess) || Boolean(devEchoOtp)) && !editingNumber;
   const [fetchedDemoOperators, setFetchedDemoOperators] = useState<ReadonlyArray<OperatorRow>>([]);
 
   useEffect(() => {
@@ -102,223 +97,196 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
     displayedOperators.length > 0 ? displayedOperators : fetchedDemoOperators;
 
   return (
-    <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] py-4 sm:py-8 px-3 sm:px-6 lg:px-10 flex flex-col items-center justify-center">
-      <div className="w-full max-w-[1160px] flex flex-col gap-4 sm:gap-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-[var(--border-hair)]">
-          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-            <MaritimeCrestSvgEmblem size={36} className="shrink-0" />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight">
-                  HarbourOS Operator Identity &amp; Sign-In Portal
-                </h1>
-                <Badge tone="ok" label="HS256 JWT + RLS" />
-              </div>
-              <p className="text-[11px] sm:text-xs text-[var(--text-secondary)]">
-                Kerala Fish Auctioning, Marketing and Maintenance of Quality Act, 2021 (Act 16 of 2021) · Node.js 22 + PostgreSQL 16
-              </p>
-            </div>
+    <div className="min-h-screen flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)]">
+      {/* Hero: brand, language toggle, illustration, promise */}
+      <header className="bg-[var(--decor-aqua-soft)] rounded-b-[32px] px-5 pt-[calc(16px+env(safe-area-inset-top))] pb-14 sm:pb-16 flex flex-col items-center">
+        <div className="w-full max-w-[460px] flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <MaritimeCrestSvgEmblem size={34} />
+            <span className="text-lg font-bold tracking-tight text-[var(--text-primary)]">
+              HarbourOS
+            </span>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {user && (
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-                onClick={onOpenActiveProfile}
-              >
-                Active: {user.fullName}
-              </Button>
-            )}
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-              onClick={onBackToWorkspace}
-            >
-              Back to Workspace
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLocale(locale === 'en' ? 'ml' : 'en')}
+            aria-label={locale === 'en' ? 'Switch to Malayalam' : 'Switch to English'}
+          >
+            {t('login.language')}
+          </Button>
         </div>
+        <DawnHarbourHeroScene className="mt-5 w-[min(300px,78vw)]" />
+        <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--brand)]">
+          {t('login.harbour')}
+        </p>
+        <p
+          lang={locale}
+          className="mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-[var(--text-secondary)]"
+        >
+          {t('login.tagline')}
+        </p>
+      </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
-          <div className={isDevSandbox && operators.length > 0 ? 'lg:col-span-6 flex flex-col gap-3.5 sm:gap-5' : 'lg:col-span-8 lg:col-start-3 flex flex-col gap-3.5 sm:gap-5'}>
-            <div className="p-3 sm:p-4 rounded-[var(--radius-card)] border border-[var(--border-hair)] bg-[var(--bg-surface)] bg-pattern-isobath flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
-              <DawnHarbourHeroScene className="w-[140px] sm:w-[200px] shrink-0" />
-              <div className="flex flex-col gap-1 min-w-0">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--brand)]">
-                  Munambam Fishing Harbour (HMS)
-                </div>
-                <div className="text-sm font-bold text-[var(--text-primary)]">
-                  Passwordless Mobile OTP &amp; Role-Scoped Access
-                </div>
-                <p className="text-xs text-[var(--text-secondary)]">
-                  Every operator token carries cryptographically signed <code>tenantId</code>, <code>role</code>, and <code>entityRefId</code> claims enforced by PostgreSQL Row-Level Security.
-                </p>
-              </div>
-            </div>
-
-            {authError && (
-              <Toast
-                tone="danger"
-                title="Authentication Error"
-                message={authError}
-                onDismiss={onDismissAuthError}
-              />
-            )}
-
-            {authSuccess && (
-              <Toast
-                tone="ok"
-                title="OTP Challenge Issued"
-                message={authSuccess}
-                onDismiss={onDismissAuthSuccess}
-              />
-            )}
-
-            <Card
-              stepBadge="ADR-003"
-              kicker="Passwordless Operator Authentication"
-              title="Sign In via Registered Mobile OTP"
-              subtitle="Enter your registered E.164 mobile number to receive a single-use 6-digit OTP challenge"
-              icon={<KeyRound className="w-5 h-5" />}
-            >
-              <div className="flex flex-col gap-5">
-                <form onSubmit={(e) => void onRequestOtp(e)} className="flex flex-col gap-3.5">
-                  {isDevSandbox && operators.length > 0 && (
-                    <Select
-                      label="Step 1: Select Sandbox Harbour Operator Phone"
-                      value={phoneInput}
-                      onChange={(e) => onChangePhoneInput(e.target.value)}
-                      options={operators.map((op) => ({
-                        value: op.phone_e164,
-                        label: `${op.phone_e164} — ${op.full_name} (${op.role})`,
-                      }))}
-                    />
-                  )}
-                  <Input
-                    label="Registered E.164 Mobile Number"
-                    mono
-                    value={phoneInput}
-                    onChange={(e) => onChangePhoneInput(e.target.value)}
-                    hint="Format: +91XXXXXXXXXX (verified against core.otp_challenges)"
-                  />
-                  <Button type="submit" variant="secondary" className="w-full">
-                    1. Request 6-Digit OTP Challenge
-                  </Button>
-                </form>
-
-                {devEchoOtp && isDevSandbox && (
-                  <div className="p-4 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase text-[var(--info)]">
-                        OTP_DEV_ECHO Active (Sandbox Mode)
-                      </span>
-                      <Badge tone="info" label={`CODE: ${devEchoOtp}`} />
-                    </div>
-                    <p className="text-xs text-[var(--text-secondary)]">
-                      Single-use CSPRNG 6-digit OTP code auto-filled below. Production builds refuse to boot if <code>OTP_DEV_ECHO=true</code>.
-                    </p>
-                  </div>
-                )}
-
-                <form
-                  onSubmit={(e) => void onVerifyOtp(e)}
-                  className="flex flex-col gap-3.5 pt-4 border-t border-[var(--border-hair)]"
-                >
-                  <Input
-                    label="Step 2: Enter 6-Digit OTP Code"
-                    mono
-                    placeholder="Enter 6-digit OTP"
-                    value={otpInput}
-                    onChange={(e) => onChangeOtpInput(e.target.value)}
-                  />
-                  <Button type="submit" variant="primary" className="w-full">
-                    2. Verify OTP &amp; Sign In with HS256 JWT
-                  </Button>
-                </form>
-              </div>
-            </Card>
+      {/* Sign-in sheet overlaps the hero */}
+      <main className="flex-1 w-full max-w-[460px] mx-auto -mt-8 px-4 pb-[calc(24px+env(safe-area-inset-bottom))] flex flex-col gap-4">
+        <section
+          aria-labelledby="login-title"
+          className="rounded-[28px] bg-[var(--bg-surface)] border border-[var(--border-hair)] shadow-[var(--shadow-overlay)] p-5 sm:p-6 flex flex-col gap-5"
+        >
+          <div>
+            <h1 id="login-title" lang={locale} className="text-2xl font-bold tracking-tight">
+              {t('login.welcome')}
+            </h1>
+            <p lang={locale} className="mt-1 text-sm text-[var(--text-secondary)]">
+              {t('login.subtitle')}
+            </p>
           </div>
 
-          {isDevSandbox && operators.length > 0 && (
-            <div className="lg:col-span-6 flex flex-col gap-4">
-              <Card
-                stepBadge="SANDBOX PERSONAS"
-                kicker="Development Demo Mode"
-                title="Statutory Harbour Operator Personas"
-                subtitle="Switch between the 8 statutory Act 16 roles in development mode or pre-fill their phone for OTP verification"
-                icon={<ShieldCheck className="w-5 h-5" />}
-              >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {operators.map((op) => {
-                    const meta = getRoleDisplayMeta(op.role);
-                    const isCurrent = user?.userId === op.user_id || user?.role === op.role;
-                    return (
-                      <div
-                        key={op.user_id}
-                        className={`p-4 rounded-[var(--radius-card)] border flex flex-col justify-between gap-3 transition-all ${
-                          isCurrent
-                            ? 'bg-[var(--brand-soft)] border-[var(--brand)]'
-                            : 'bg-[var(--bg-sunken)]/70 border-[var(--border-hair)] hover:border-[var(--border-strong)]'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="w-9 h-9 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-xs font-bold font-mono-code inline-flex items-center justify-center shrink-0">
-                              {formatOperatorInitials(op.full_name)}
-                            </span>
-                            <div className="min-w-0">
-                              <div className="text-sm font-bold text-[var(--text-primary)] truncate">
-                                {op.full_name}
-                              </div>
-                              <div className="text-xs font-mono-code text-[var(--text-secondary)]">
-                                {op.phone_e164}
-                              </div>
-                            </div>
-                          </div>
-                          <span className="px-2 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] border border-[var(--border-hair)] text-[10px] font-bold font-mono-code text-[var(--brand)] whitespace-nowrap shrink-0 leading-none">
-                            {meta.shortBadge}
-                          </span>
-                        </div>
-
-                        <div className="text-xs text-[var(--text-secondary)]">
-                          <div className="font-semibold text-[var(--text-primary)]">
-                            {op.entity_summary ?? meta.statutoryRef}
-                          </div>
-                          <div className="text-[11px] text-[var(--text-muted)] mt-0.5 line-clamp-2">
-                            {meta.description}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-1">
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => void onPersonaSwitch(op.role)}
-                            className="flex-1"
-                          >
-                            Switch Role
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              onChangePhoneInput(op.phone_e164);
-                            }}
-                          >
-                            Use Phone
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            </div>
+          {authError && (
+            <Toast
+              tone="danger"
+              title="Couldn't sign you in"
+              message={authError}
+              onDismiss={onDismissAuthError}
+            />
           )}
-        </div>
-      </div>
+
+          {!otpStep ? (
+            <form
+              onSubmit={(e) => {
+                setEditingNumber(false);
+                void onRequestOtp(e);
+              }}
+              className="flex flex-col gap-4"
+            >
+              <Input
+                label={t('login.phoneLabel')}
+                dockSize
+                mono
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="+91 98765 43210"
+                value={phoneInput}
+                onChange={(e) => onChangePhoneInput(e.target.value)}
+                hint={t('login.phoneHint')}
+              />
+              <Button
+                type="submit"
+                variant="primary"
+                size="dock"
+                className="w-full min-h-[56px]"
+                icon={<MessageSquareText className="w-5 h-5" />}
+              >
+                {t('login.sendCode')}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={(e) => void onVerifyOtp(e)} className="flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] bg-[var(--bg-tint)] px-3.5 py-3">
+                <div className="min-w-0">
+                  <div lang={locale} className="text-xs text-[var(--text-secondary)]">
+                    {t('login.codeSentTo')}
+                  </div>
+                  <div className="font-mono-code text-sm font-bold truncate">{phoneInput}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingNumber(true);
+                    onDismissAuthSuccess();
+                    onChangeOtpInput('');
+                  }}
+                  className="shrink-0 min-h-[44px] px-2 text-sm font-semibold text-[var(--brand)] cursor-pointer"
+                >
+                  {t('login.changeNumber')}
+                </button>
+              </div>
+              <Input
+                label={t('login.otpLabel')}
+                dockSize
+                mono
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="••••••"
+                value={otpInput}
+                onChange={(e) => onChangeOtpInput(e.target.value.replace(/\D/g, ''))}
+              />
+              {devEchoOtp && isDevSandbox && (
+                <p className="text-xs rounded-[var(--radius-control)] bg-[var(--info-bg)] text-[var(--info)] px-3 py-2">
+                  Dev sandbox code: <span className="font-mono-code font-bold">{devEchoOtp}</span>
+                </p>
+              )}
+              <Button
+                type="submit"
+                variant="primary"
+                size="dock"
+                className="w-full min-h-[56px]"
+                icon={<ArrowRight className="w-5 h-5" />}
+              >
+                {t('login.verify')}
+              </Button>
+            </form>
+          )}
+
+          <p lang={locale} className="flex items-start gap-2 text-xs text-[var(--text-muted)]">
+            <ShieldCheck className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
+            <span>{t('login.help')}</span>
+          </p>
+        </section>
+
+        {user && (
+          <button
+            type="button"
+            onClick={onBackToWorkspace}
+            className="self-center min-h-[44px] inline-flex items-center gap-1.5 px-3 text-sm font-semibold text-[var(--text-secondary)] cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" /> {t('login.backToWorkspace')}
+          </button>
+        )}
+
+        {isDevSandbox && operators.length > 0 && (
+          <details className="rounded-[var(--radius-card)] border border-dashed border-[var(--border-strong)] bg-[var(--bg-surface)] p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-[var(--text-secondary)] min-h-[44px] flex items-center">
+              Developer sandbox: switch role (dev builds only)
+            </summary>
+            <ul className="mt-3 flex flex-col gap-2.5">
+              {operators.map((op) => {
+                const meta = getRoleDisplayMeta(op.role);
+                const isCurrent = user?.userId === op.user_id || user?.role === op.role;
+                return (
+                  <li
+                    key={op.user_id}
+                    className={`rounded-[var(--radius-control)] border p-3 flex items-center gap-3 ${
+                      isCurrent
+                        ? 'bg-[var(--brand-soft)] border-[var(--brand)]'
+                        : 'bg-[var(--bg-sunken)] border-[var(--border-hair)]'
+                    }`}
+                  >
+                    <span className="w-9 h-9 shrink-0 rounded-[var(--radius-pill)] bg-[var(--brand)] text-[var(--brand-fg)] text-xs font-bold font-mono-code inline-flex items-center justify-center">
+                      {formatOperatorInitials(op.full_name)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-bold truncate">{op.full_name}</div>
+                      <div className="text-xs text-[var(--text-secondary)] truncate">
+                        {meta.shortBadge}
+                      </div>
+                    </div>
+                    <Button variant="primary" size="sm" onClick={() => void onPersonaSwitch(op.role)}>
+                      Switch
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => onChangePhoneInput(op.phone_e164)}>
+                      Use phone
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+        )}
+      </main>
     </div>
   );
 };

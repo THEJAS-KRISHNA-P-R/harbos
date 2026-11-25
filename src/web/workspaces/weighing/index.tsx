@@ -8,6 +8,7 @@ import {
   Input,
   Select,
   SpeciesTile,
+  SpeciesGlyph,
   ConnectivityBadge,
   DataTable,
   Modal,
@@ -117,8 +118,8 @@ export const WeighingWorkspace: React.FC<{
       setOfflineQueue((prev) => [...prev, cmd]);
       setFeedback({
         tone: 'warn',
-        title: 'Queued in IndexedDB Offline Buffer',
-        msg: `Command ${cmd.commandId} stored locally (${offlineQueue.length + 1} pending). Reconnect to sync idempotently.`,
+        title: 'Saved offline on this device',
+        msg: `Entry ${cmd.commandId} stored locally (${offlineQueue.length + 1} pending). Reconnect to sync safely without duplicates.`,
       });
       setSubmitting(false);
       return;
@@ -162,7 +163,7 @@ export const WeighingWorkspace: React.FC<{
       setFeedback({
         tone: 'ok',
         title: `Lot ${res.lotCode} Locked & Signed`,
-        msg: `HMAC-SHA256 QR signature ${res.qrSignature} generated. Ready for sticker print and Pit auction.`,
+        msg: `Tamper-proof QR code ${res.qrSignature.slice(0, 12)}… generated. Ready for sticker print and Pit auction.`,
       });
       await onRefresh();
     } catch (err) {
@@ -190,7 +191,7 @@ export const WeighingWorkspace: React.FC<{
       setFeedback({
         tone: 'ok',
         title: 'Offline Queue Synced with Zero Duplicates',
-        msg: `Applied ${res.syncedCount} queued weighing commands via idempotent /api/v1/sync/commands.`,
+        msg: `Synced ${res.syncedCount} offline weighing entries safely to the harbour ledger.`,
       });
       await onRefresh();
     } catch (err) {
@@ -213,7 +214,7 @@ export const WeighingWorkspace: React.FC<{
     },
     {
       key: 'vessel',
-      header: 'Vessel & Society Loan (s.4(8))',
+      header: 'Vessel & Society Loan',
       render: (r) => {
         const v = data.vessels.find((x) => x.vessel_id === r.vessel_id);
         return (
@@ -230,14 +231,17 @@ export const WeighingWorkspace: React.FC<{
     },
     {
       key: 'species',
-      header: 'Species (EN / ML)',
+      header: 'Species',
       render: (r) => {
         const s = data.species.find((x) => x.species_id === r.species_id);
         return (
-          <div>
-            <div className="font-medium">{s?.name_en ?? r.species_id}</div>
-            <div lang="ml" className="text-xs text-[var(--text-secondary)]">
-              {s?.name_ml}
+          <div className="flex items-center gap-2 min-w-0">
+            <SpeciesGlyph code={`${s?.code ?? ''} ${s?.name_en ?? ''}`} size={20} className="shrink-0" />
+            <div className="min-w-0">
+              <div className="font-medium">{s?.name_en ?? r.species_id}</div>
+              <div lang="ml" className="text-xs text-[var(--text-secondary)]">
+                {s?.name_ml}
+              </div>
             </div>
           </div>
         );
@@ -259,7 +263,7 @@ export const WeighingWorkspace: React.FC<{
     },
     {
       key: 'qr',
-      header: 'Signed QR HMAC',
+      header: 'QR Verification',
       mono: true,
       render: (r) => <span className="text-xs">{r.qr_signature.slice(0, 12)}…</span>,
     },
@@ -294,7 +298,7 @@ export const WeighingWorkspace: React.FC<{
               {t('workspaces.weighingTitle')}
             </h1>
             <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
-              {data.vessels.length} {t('dockside.vessel')} · HMAC-SHA256 Signed QR
+              {data.vessels.length} {t('dockside.vessel')} · Secure QR code
             </p>
           </div>
         </div>
@@ -344,14 +348,14 @@ export const WeighingWorkspace: React.FC<{
             value={formatKgFromGrams(
               data.lots.reduce((acc, l) => acc + BigInt(l.net_grams), 0n)
             )}
-            status={{ tone: 'info', label: 'BIGINT GRAMS' }}
+            status={{ tone: 'info', label: 'EXACT TO THE GRAM' }}
           />
         </div>
         <Metric
           label="Tagged Lots Today"
           value={String(data.lots.length)}
           unit="LOTS"
-          status={{ tone: 'ok', label: 'HMAC SIGNED' }}
+          status={{ tone: 'ok', label: 'TAMPER-PROOF' }}
         />
         <Metric
           label="Offline Queue"
@@ -381,22 +385,22 @@ export const WeighingWorkspace: React.FC<{
               }))}
             />
             <Select
-              label="Scale Input Adapter (§4.1 Port)"
+              label="Scale Input Adapter"
               dockSize
               value={weightSource}
               onChange={(e) =>
                 setWeightSource(e.target.value as 'BLE_SCALE' | 'MANUAL')
               }
               options={[
-                { value: 'BLE_SCALE', label: 'Digital Scale Indicator [UNVERIFIED-HARDWARE] (25.000 kg / box)' },
-                { value: 'MANUAL', label: 'Manual Override (Requires Supervisor PIN)' },
+                { value: 'BLE_SCALE', label: 'Digital scale indicator (hardware not yet verified · 25 kg / box)' },
+                { value: 'MANUAL', label: 'Manual override (requires Supervisor PIN)' },
               ]}
             />
           </div>
 
           <div>
             <div className="text-[11px] sm:text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2 sm:mb-3">
-              2. Select Catch Species (Malayalam + English + Section 19 Floor Price)
+              2. Select catch species and see today&apos;s floor price
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
               {data.species.map((sp) => (
@@ -423,18 +427,18 @@ export const WeighingWorkspace: React.FC<{
               onChange={(e) => setTotalBoxes(e.target.value)}
             />
             <Input
-              label="4. Net Catch Weight (kg → grams)"
+              label="4. Net Catch Weight (kg)"
               type="number"
               step="0.001"
               mono
               dockSize
               value={netKgInput}
               onChange={(e) => setNetKgInput(e.target.value)}
-              hint={`Exact integer storage: ${Math.round((Number(netKgInput) || 0) * 1000).toLocaleString('en-IN')} grams`}
+              hint={`Recorded to exact gram: ${Math.round((Number(netKgInput) || 0) * 1000).toLocaleString('en-IN')} g`}
             />
             <div className="col-span-2 sm:col-span-1">
               <Input
-                label="5. Core Temperature (°C — s.21 Quality)"
+                label="5. Core Temperature (°C)"
                 type="number"
                 step="0.1"
                 mono
@@ -450,7 +454,7 @@ export const WeighingWorkspace: React.FC<{
               <div className="flex items-center gap-2.5 text-[var(--warning)]">
                 <ShieldAlert className="w-5 h-5 shrink-0" />
                 <span className="text-sm font-semibold">
-                  Manual Weight Override requires Supervisor PIN (logged to core.audit_logs). Demo PIN: 1234
+                  Manual weight override requires Supervisor PIN (recorded in audit log). Demo PIN: 1234
                 </span>
               </div>
               <Input

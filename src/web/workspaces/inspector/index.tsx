@@ -1,16 +1,24 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Sparkles, ThermometerSnowflake } from 'lucide-react';
+import {
+  ShieldCheck,
+  Sparkles,
+  ThermometerSnowflake,
+  Minus,
+  Plus,
+  OctagonAlert,
+  CheckCircle2,
+} from 'lucide-react';
 import {
   Button,
   Card,
   Badge,
   Metric,
-  Select,
   Input,
   DataTable,
   Toast,
-  ThermometerFishGradeIcon,
+  SpeciesGlyph,
   ColdChainInspectorSvgDecor,
+  humanizeCode,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
 import {
@@ -19,9 +27,38 @@ import {
   type BootstrapData,
   type LotRow,
 } from '@web/lib/api.ts';
+import { stepTemperatureC } from '@web/lib/ui-formatters.ts';
 import type { InspectionGrade } from '@shared/ids.ts';
-import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 import { useI18n } from '@web/i18n/index.tsx';
+
+const GRADE_CHOICES: ReadonlyArray<{
+  value: InspectionGrade;
+  title: string;
+  detail: string;
+  danger?: boolean;
+}> = [
+  {
+    value: 'A_EXPORT',
+    title: 'Export Grade A',
+    detail: 'Prime ice-chilled, ready for export',
+  },
+  {
+    value: 'A_DOMESTIC',
+    title: 'Domestic Grade A',
+    detail: 'Standard fresh wholesale market',
+  },
+  {
+    value: 'B_PROCESS',
+    title: 'Processing Grade B',
+    detail: 'Curing, drying or meal processing',
+  },
+  {
+    value: 'REJECTED_UNFIT',
+    title: 'Unfit — Block Sale',
+    detail: 'Quarantine and prevent auction',
+    danger: true,
+  },
+];
 
 export const InspectorWorkspace: React.FC<{
   data: BootstrapData;
@@ -35,7 +72,7 @@ export const InspectorWorkspace: React.FC<{
   const [grade, setGrade] = useState<InspectionGrade>('A_EXPORT');
   const [coreTempC, setCoreTempC] = useState('1.8');
   const [notes, setNotes] = useState(
-    `Clear cornea, bright red gills, firm elastic flesh, core temp <= 2.5C (${ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE})`
+    'Clear cornea, bright red gills, firm elastic flesh, core temp <= 2.5°C'
   );
   const [submitting, setSubmitting] = useState(false);
   const [aiAdvisory, setAiAdvisory] = useState<{
@@ -50,10 +87,20 @@ export const InspectorWorkspace: React.FC<{
     msg: string;
   } | null>(null);
 
-  const selectedLot = data.lots.find((l) => l.lot_id === selectedLotId);
+  const selectedLot = data.lots.find((l) => l.lot_id === selectedLotId) ?? data.lots[0];
   const selectedSpecies = data.species.find(
     (s) => s.species_id === selectedLot?.species_id
   );
+
+  const tempNumber = Number(coreTempC);
+  const isTempWarm = Number.isFinite(tempNumber) && tempNumber > 2.5;
+
+  const handleSelectLot = (lot: LotRow): void => {
+    setSelectedLotId(lot.lot_id);
+    setGrade(lot.inspection_grade ?? 'A_DOMESTIC');
+    setCoreTempC(String(lot.core_temp_c ?? 2.0));
+    setNotes(lot.inspection_notes || 'Clear cornea, bright red gills, firm flesh');
+  };
 
   const handleSaveInspection = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
@@ -74,19 +121,20 @@ export const InspectorWorkspace: React.FC<{
           notes,
         },
       });
+      const readableGrade = humanizeCode(res.grade);
       setFeedback({
         tone: res.grade === 'REJECTED_UNFIT' ? 'danger' : 'ok',
-        title: `Lot ${selectedLot.lot_code} Certified: ${res.grade}`,
+        title: `Lot ${selectedLot.lot_code} certified: ${readableGrade}`,
         msg:
           res.grade === 'REJECTED_UNFIT'
-            ? 'Lot marked BLOCKED_UNFIT under Section 21. Any auction allocation attempt will be rejected by the server.'
-            : `Lot certified for ${res.grade} sale under Section 21.`,
+            ? 'Lot quarantined and blocked from auction. Any sale attempt will be rejected.'
+            : `Lot cleared for auction under ${readableGrade}.`,
       });
       await onRefresh();
     } catch (err) {
       setFeedback({
         tone: 'danger',
-        title: 'Inspection Update Failed',
+        title: 'Inspection update failed',
         msg: err instanceof Error ? err.message : 'Error saving inspection',
       });
     } finally {
@@ -126,10 +174,13 @@ export const InspectorWorkspace: React.FC<{
       render: (r) => {
         const sp = data.species.find((s) => s.species_id === r.species_id);
         return (
-          <div>
-            <div className="font-medium">{sp?.name_en}</div>
-            <div lang="ml" className="text-xs text-[var(--text-secondary)]">
-              {sp?.name_ml}
+          <div className="flex items-center gap-2">
+            <SpeciesGlyph code={`${sp?.code ?? ''} ${sp?.name_en ?? ''}`} size={18} />
+            <div>
+              <div className="font-medium">{sp?.name_en}</div>
+              <div lang="ml" className="text-xs text-[var(--text-secondary)]">
+                {sp?.name_ml}
+              </div>
             </div>
           </div>
         );
@@ -137,7 +188,7 @@ export const InspectorWorkspace: React.FC<{
     },
     {
       key: 'temp',
-      header: 'Core Temp (°C)',
+      header: 'Core Temp',
       align: 'right',
       mono: true,
       render: (r) => `${r.core_temp_c}°C`,
@@ -151,47 +202,55 @@ export const InspectorWorkspace: React.FC<{
     },
     {
       key: 'grade',
-      header: 's.21 Quality Grade',
+      header: 'Quality Grade',
       render: (r) => (
         <Badge
           tone={
-            r.inspection_grade === 'REJECTED_UNFIT'
+            !r.inspection_grade
+              ? 'neutral'
+              : r.inspection_grade === 'REJECTED_UNFIT'
               ? 'danger'
               : r.inspection_grade === 'A_EXPORT'
               ? 'ok'
               : 'info'
           }
-          label={r.inspection_grade}
+          label={r.inspection_grade ?? 'Pending'}
         />
       ),
     },
     {
       key: 'notes',
-      header: 'Inspector Notes',
-      render: (r) => <span className="text-xs text-[var(--text-secondary)]">{r.inspection_notes}</span>,
+      header: 'Notes',
+      render: (r) => (
+        <span className="text-xs text-[var(--text-secondary)]">{r.inspection_notes}</span>
+      ),
     },
   ];
 
   return (
-    <div className="flex flex-col gap-3.5 sm:gap-5">
-      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+    <div className="flex flex-col gap-4 sm:gap-5">
+      <div className="p-3.5 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:block shrink-0">
             <ColdChainInspectorSvgDecor size={36} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
               {t('workspaces.inspectorTitle')}
             </h1>
-            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
-              {t('workspaces.inspectorSubtitle')}
+            <p className="text-xs text-[var(--text-secondary)] truncate">
+              {t('workspaces.inspectorSubtitle')} · Target ≤ 2.5°C
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
-          <Badge tone="ok" label="ACT 16 s.21" />
-          <Badge tone="info" label="<= 2.5°C" />
-        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Sparkles className="w-4 h-4" />}
+          onClick={handleRequestAiAssist}
+        >
+          Optional AI Assist
+        </Button>
       </div>
 
       {feedback && (
@@ -206,12 +265,10 @@ export const InspectorWorkspace: React.FC<{
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
         <div className="col-span-2 sm:col-span-1">
           <Metric
-            label="Export Grade (A_EXPORT)"
-            value={String(
-              data.lots.filter((l) => l.inspection_grade === 'A_EXPORT').length
-            )}
+            label="Export Grade A"
+            value={String(data.lots.filter((l) => l.inspection_grade === 'A_EXPORT').length)}
             unit="LOTS"
-            status={{ tone: 'ok', label: 'CERTIFIED' }}
+            status={{ tone: 'ok', label: 'Certified' }}
           />
         </div>
         <Metric
@@ -219,97 +276,197 @@ export const InspectorWorkspace: React.FC<{
           value={String(
             data.lots.filter(
               (l) =>
-                l.inspection_grade === 'A_DOMESTIC' ||
-                l.inspection_grade === 'B_PROCESS'
+                l.inspection_grade === 'A_DOMESTIC' || l.inspection_grade === 'B_PROCESS'
             ).length
           )}
           unit="LOTS"
-          status={{ tone: 'info', label: 'CLEARED' }}
+          status={{ tone: 'info', label: 'Cleared' }}
         />
         <Metric
-          label="Rejected Unfit (s.21)"
+          label="Rejected Unfit"
           value={String(
             data.lots.filter((l) => l.inspection_grade === 'REJECTED_UNFIT').length
           )}
           unit="BLOCKED"
-          status={{ tone: 'danger', label: 'QUARANTINED' }}
+          status={{ tone: 'danger', label: 'Quarantined' }}
         />
       </div>
 
-      <Card
-        title={t('workspaces.inspectorCard')}
-        actions={
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Sparkles className="w-4 h-4" />}
-            onClick={handleRequestAiAssist}
-          >
-            Request Optional AI Assist (ADR-009)
-          </Button>
-        }
-      >
-        <form onSubmit={handleSaveInspection} className="flex flex-col gap-3.5 sm:gap-5">
+      <Card title={t('workspaces.inspectorCard')}>
+        <form onSubmit={handleSaveInspection} className="flex flex-col gap-5">
           {aiAdvisory && (
-            <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 text-[var(--info)] flex flex-col gap-1">
-              <div className="text-xs font-bold uppercase tracking-wide">
+            <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 text-[var(--info)] flex flex-col gap-1">
+              <div className="text-xs font-bold tracking-wide">
                 {aiAdvisory.advisoryDisclaimer}
               </div>
               {aiAdvisory.available ? (
                 <p className="text-sm font-medium">
-                  Suggested Grade: <strong>{aiAdvisory.suggestedGrade}</strong> —{' '}
+                  Suggested grade:{' '}
+                  <strong>{humanizeCode(aiAdvisory.suggestedGrade ?? '')}</strong> —{' '}
                   {aiAdvisory.confidenceNote}
                 </p>
               ) : (
                 <p className="text-xs">
-                  Advisory LLM is disabled by default (`LLM_PROVIDER=none`). Zero fabricated fallback data is returned (§3 P7). Inspector must grade directly.
+                  Advisory AI is disabled on this server. No fabricated suggestion is shown — grade the lot directly below.
                 </p>
               )}
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
-            <Select
-              label="Select Lot to Inspect"
-              dockSize
-              value={selectedLotId}
-              onChange={(e) => setSelectedLotId(e.target.value)}
-              options={data.lots.map((l) => ({
-                value: l.lot_id,
-                label: `${l.lot_code} (${l.inspection_grade}) — ${formatKgFromGrams(l.net_grams)}`,
-              }))}
-            />
-
-            <Select
-              label="Section 21 Quality Grade"
-              dockSize
-              value={grade}
-              onChange={(e) => setGrade(e.target.value as InspectionGrade)}
-              options={[
-                { value: 'A_EXPORT', label: 'A_EXPORT (Prime Ice-Chilled Export)' },
-                { value: 'A_DOMESTIC', label: 'A_DOMESTIC (Standard Wholesale)' },
-                { value: 'B_PROCESS', label: 'B_PROCESS (Curing / Meal Processing)' },
-                { value: 'REJECTED_UNFIT', label: 'REJECTED_UNFIT (Block Sale under s.21)' },
-              ]}
-            />
-
-            <Input
-              label="Core Flesh Temperature (°C)"
-              type="number"
-              step="0.1"
-              mono
-              dockSize
-              value={coreTempC}
-              onChange={(e) => setCoreTempC(e.target.value)}
-            />
+          {/* 1. Tap a lot card */}
+          <div>
+            <div className="text-xs font-semibold text-[var(--text-secondary)] mb-2.5">
+              {t('workspaces.inspectorSelectLot')}
+            </div>
+            <div
+              role="radiogroup"
+              aria-label="Lots to inspect"
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"
+            >
+              {data.lots.map((lot) => {
+                const sp = data.species.find((s) => s.species_id === lot.species_id);
+                const active = lot.lot_id === selectedLot?.lot_id;
+                return (
+                  <button
+                    key={lot.lot_id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => handleSelectLot(lot)}
+                    className={`min-h-[68px] p-3 rounded-[var(--radius-card)] border text-left transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                      active
+                        ? 'bg-[var(--brand-soft)] border-[var(--brand)] ring-2 ring-[var(--brand)]'
+                        : 'bg-[var(--bg-surface)] border-[var(--border-strong)]/60 hover:bg-[var(--bg-tint)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <SpeciesGlyph code={`${sp?.code ?? ''} ${sp?.name_en ?? ''}`} size={22} />
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-[var(--text-primary)] truncate">
+                          {lot.lot_code}
+                        </div>
+                        <div className="text-xs text-[var(--text-secondary)] truncate">
+                          {sp?.name_en ?? lot.species_id} · {formatKgFromGrams(lot.net_grams)}
+                        </div>
+                      </div>
+                    </div>
+                    <Badge
+                      tone={
+                        !lot.inspection_grade
+                          ? 'neutral'
+                          : lot.inspection_grade === 'REJECTED_UNFIT'
+                          ? 'danger'
+                          : lot.inspection_grade === 'A_EXPORT'
+                          ? 'ok'
+                          : 'info'
+                      }
+                      label={lot.inspection_grade ?? 'Pending'}
+                    />
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <Input
-            label="Organoleptic & Hygiene Inspection Remarks"
-            dockSize
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
+          {/* 2. Big 4-Choice Grade Selector */}
+          <div>
+            <div className="text-xs font-semibold text-[var(--text-secondary)] mb-2.5">
+              {t('workspaces.inspectorGradeChoice')}
+            </div>
+            <div
+              role="radiogroup"
+              aria-label="Quality grade"
+              data-testid="inspector-grade-picker"
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5"
+            >
+              {GRADE_CHOICES.map((choice) => {
+                const selected = grade === choice.value;
+                return (
+                  <button
+                    key={choice.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setGrade(choice.value)}
+                    className={`min-h-[72px] p-3.5 rounded-[var(--radius-card)] border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 ${
+                      selected
+                        ? choice.danger
+                          ? 'bg-[var(--danger-bg)] border-[var(--danger)] ring-2 ring-[var(--danger)] text-[var(--danger-fg)]'
+                          : 'bg-[var(--brand-soft)] border-[var(--brand)] ring-2 ring-[var(--brand)] text-[var(--brand-soft-fg)]'
+                        : 'bg-[var(--bg-surface)] border-[var(--border-strong)]/60 hover:bg-[var(--bg-tint)] text-[var(--text-primary)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="text-sm font-bold">{choice.title}</span>
+                      {selected &&
+                        (choice.danger ? (
+                          <OctagonAlert className="w-4 h-4 shrink-0" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        ))}
+                    </div>
+                    <span className="text-xs opacity-85">{choice.detail}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. Core Temperature Stepper + Remarks */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+            <div className="md:col-span-4 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="inspector-core-temp"
+                  className="text-xs font-semibold text-[var(--text-secondary)]"
+                >
+                  Core flesh temperature (°C)
+                </label>
+                <span
+                  className={`text-xs font-semibold ${
+                    isTempWarm ? 'text-[var(--warning)]' : 'text-[var(--brand)]'
+                  }`}
+                >
+                  {isTempWarm ? 'Warm (> 2.5°C)' : 'Cold-chain OK'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Decrease temperature by 0.5 degrees"
+                  onClick={() => setCoreTempC((prev) => stepTemperatureC(prev, -0.5))}
+                  className="w-11 h-11 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-[var(--text-primary)] inline-flex items-center justify-center cursor-pointer shrink-0"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <input
+                  id="inspector-core-temp"
+                  type="number"
+                  step="0.1"
+                  value={coreTempC}
+                  onChange={(e) => setCoreTempC(e.target.value)}
+                  className="flex-1 min-w-0 h-11 text-center font-mono-code text-base font-bold tabular-nums rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-strong)] text-[var(--text-primary)]"
+                />
+                <button
+                  type="button"
+                  aria-label="Increase temperature by 0.5 degrees"
+                  onClick={() => setCoreTempC((prev) => stepTemperatureC(prev, 0.5))}
+                  className="w-11 h-11 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-[var(--text-primary)] inline-flex items-center justify-center cursor-pointer shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="md:col-span-8">
+              <Input
+                label="Freshness & hygiene inspection remarks"
+                dockSize
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+          </div>
 
           <div className="flex items-center justify-end gap-3">
             <Button
@@ -320,32 +477,30 @@ export const InspectorWorkspace: React.FC<{
               className="w-full sm:w-auto"
               icon={
                 grade === 'REJECTED_UNFIT' ? (
-                  <ThermometerSnowflake className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <ThermometerSnowflake className="w-5 h-5" />
                 ) : (
-                  <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <ShieldCheck className="w-5 h-5" />
                 )
               }
             >
               {grade === 'REJECTED_UNFIT'
-                ? 'Quarantine & Block Lot (REJECTED_UNFIT)'
-                : `Confirm ${grade} Certification`}
+                ? 'Quarantine & block lot from sale'
+                : `Confirm ${humanizeCode(grade)}`}
             </Button>
           </div>
         </form>
       </Card>
 
-      <Card title="Harbour Quality Inspection Log" subtitle="Click any lot to load into inspector form">
+      <Card
+        title="Harbour quality inspection log"
+        subtitle="Tap any lot to load into the inspection form"
+      >
         <DataTable
           caption="Quality Inspection Log"
           columns={columns}
           rows={data.lots}
           getRowKey={(r) => r.lot_id}
-          onRowClick={(r) => {
-            setSelectedLotId(r.lot_id);
-            setGrade(r.inspection_grade);
-            setCoreTempC(String(r.core_temp_c));
-            setNotes(r.inspection_notes);
-          }}
+          onRowClick={handleSelectLot}
         />
       </Card>
     </div>

@@ -47,8 +47,10 @@ import {
   type KeralaSpeciesGlyphId,
   type MomentIllustrationVariant,
 } from './illustrations/index.tsx';
+import { humanizeCode } from '@web/lib/ui-formatters.ts';
 
 export {
+  humanizeCode,
   HarbourCrestIcon,
   DockScaleIcon,
   AuctionGavelBellIcon,
@@ -102,9 +104,9 @@ export const Button: React.FC<ButtonProps> = ({
   ...rest
 }) => {
   const sizeClasses: Record<ButtonSize, string> = {
-    sm: 'h-8 sm:h-9 px-2.5 sm:px-3 text-xs rounded-[var(--radius-pill)]',
-    md: 'h-9 sm:h-10 px-3.5 sm:px-5 text-xs sm:text-sm rounded-[var(--radius-pill)]',
-    dock: 'h-11 sm:min-h-[52px] px-4 sm:px-6 text-sm sm:text-base rounded-[var(--radius-pill)]',
+    sm: 'h-10 sm:h-9 px-3 sm:px-3 text-xs rounded-[var(--radius-pill)]',
+    md: 'h-11 sm:h-10 px-4 sm:px-5 text-sm rounded-[var(--radius-pill)]',
+    dock: 'h-12 sm:min-h-[52px] px-4 sm:px-6 text-sm sm:text-base rounded-[var(--radius-pill)]',
   };
 
   const variantClasses: Record<ButtonVariant, string> = {
@@ -399,7 +401,7 @@ export const Badge: React.FC<BadgeProps> = ({
       className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-[var(--radius-pill)] border text-[10px] sm:text-xs leading-none font-semibold tabular-nums whitespace-nowrap shrink-0 max-w-full overflow-hidden ${current.style} ${className}`}
     >
       {current.icon}
-      <span className="truncate">{label}</span>
+      <span className="truncate">{humanizeCode(label)}</span>
       {code && <span className="font-mono-code opacity-85 truncate">({code})</span>}
     </span>
   );
@@ -910,15 +912,25 @@ export const Toast: React.FC<ToastProps> = ({
     info: 'bg-[var(--info-bg)] text-[var(--info)] border-[var(--info)]/40',
   };
 
+  const toneIcons: Record<'ok' | 'warn' | 'danger' | 'info', React.ReactNode> = {
+    ok: <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />,
+    warn: <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />,
+    danger: <OctagonAlert className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />,
+    info: <Info className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />,
+  };
+
   return (
     <div
       role="status"
       aria-live="polite"
-      className={`px-5 py-3.5 rounded-[var(--radius-card)] border flex items-start justify-between gap-3 ${toneStyles[tone]}`}
+      className={`px-4 sm:px-5 py-3.5 rounded-[var(--radius-card)] border flex items-start justify-between gap-3 animate-utr-row-in ${toneStyles[tone]}`}
     >
-      <div className="flex flex-col gap-0.5">
-        <span className="text-xs font-bold uppercase tracking-wide">{title}</span>
-        {message && <p className="text-sm">{message}</p>}
+      <div className="flex items-start gap-2.5 min-w-0">
+        {toneIcons[tone]}
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-xs font-bold tracking-wide">{title}</span>
+          {message && <p className="text-sm">{message}</p>}
+        </div>
       </div>
       {onDismiss && (
         <Button variant="ghost" size="sm" onClick={onDismiss}>
@@ -945,47 +957,112 @@ export interface TabsProps {
 }
 
 export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange }) => {
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const [fadeRight, setFadeRight] = React.useState(false);
+  const updateFade = React.useCallback((): void => {
+    const el = listRef.current;
+    if (el) setFadeRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+  }, []);
+  React.useEffect(() => {
+    const el = listRef.current;
+    el?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({
+      inline: 'center',
+      block: 'nearest',
+    });
+    updateFade();
+  }, [activeId, updateFade]);
+
   return (
-    <div
-      role="tablist"
-      className="flex sm:inline-flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] overflow-x-auto no-scrollbar max-w-full w-full sm:w-auto"
-    >
-      {items.map((item) => {
-        const active = item.id === activeId;
-        return (
-          <button
-            key={item.id}
-            role="tab"
-            type="button"
-            aria-selected={active}
-            onClick={() => onChange(item.id)}
-            className={`min-h-[30px] sm:min-h-[36px] py-1 px-2.5 sm:px-3.5 rounded-[var(--radius-pill)] text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-              active
-                ? 'bg-[var(--brand)] text-[var(--brand-fg)]'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)]/60'
-            }`}
-          >
-            <span className="whitespace-nowrap">{item.label}</span>
-            {item.badge !== undefined && (
-              <span
-                className={`px-1.5 py-0.5 text-[10px] sm:text-xs rounded-[var(--radius-pill)] font-mono-code whitespace-nowrap shrink-0 leading-none ${
-                  active
-                    ? 'bg-[var(--brand-hover)] text-[var(--brand-fg)]'
-                    : 'bg-[var(--brand-soft)] text-[var(--brand-soft-fg)]'
-                }`}
-              >
-                {item.badge}
-              </span>
-            )}
-          </button>
-        );
-      })}
+    <div className="relative min-w-0">
+      <div
+        ref={listRef}
+        role="tablist"
+        onScroll={updateFade}
+        className="flex sm:inline-flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] overflow-x-auto no-scrollbar max-w-full w-full sm:w-auto"
+      >
+        {items.map((item) => {
+          const active = item.id === activeId;
+          return (
+            <button
+              key={item.id}
+              role="tab"
+              type="button"
+              aria-selected={active}
+              onClick={() => onChange(item.id)}
+              className={`min-h-[40px] sm:min-h-[36px] py-1 px-2.5 sm:px-3.5 rounded-[var(--radius-pill)] text-xs sm:text-sm font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                active
+                  ? 'bg-[var(--brand)] text-[var(--brand-fg)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)]/60'
+              }`}
+            >
+              <span className="whitespace-nowrap">{item.label}</span>
+              {item.badge !== undefined && (
+                <span
+                  className={`px-1.5 py-0.5 text-[10px] sm:text-xs rounded-[var(--radius-pill)] font-mono-code whitespace-nowrap shrink-0 leading-none ${
+                    active
+                      ? 'bg-[var(--brand-hover)] text-[var(--brand-fg)]'
+                      : 'bg-[var(--brand-soft)] text-[var(--brand-soft-fg)]'
+                  }`}
+                >
+                  {item.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {fadeRight && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-[var(--radius-pill)] bg-gradient-to-l from-[var(--bg-app)] to-transparent sm:hidden"
+        />
+      )}
     </div>
   );
 };
 
 export const Skeleton: React.FC<{ className?: string }> = ({ className = 'h-4 w-full' }) => (
   <div className={`rounded-[var(--radius-control)] bg-[var(--bg-sunken)] animate-pulse ${className}`} />
+);
+
+export const WorkspaceSkeleton: React.FC<{ label?: string }> = ({
+  label = 'Loading workspace…',
+}) => (
+  <div
+    role="status"
+    aria-busy="true"
+    aria-label={label}
+    data-testid="workspace-skeleton"
+    className="flex flex-col gap-4 sm:gap-5"
+  >
+    <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-2 flex-1">
+        <Skeleton className="h-5 w-48" />
+        <Skeleton className="h-3.5 w-64 max-w-full" />
+      </div>
+      <Skeleton className="h-9 w-28 rounded-[var(--radius-pill)]" />
+    </div>
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="col-span-2 sm:col-span-1 p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-2.5">
+        <Skeleton className="h-3.5 w-24" />
+        <Skeleton className="h-8 w-36" />
+      </div>
+      <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-2.5">
+        <Skeleton className="h-3.5 w-20" />
+        <Skeleton className="h-8 w-28" />
+      </div>
+      <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-2.5">
+        <Skeleton className="h-3.5 w-20" />
+        <Skeleton className="h-8 w-24" />
+      </div>
+    </div>
+    <div className="p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-3">
+      <Skeleton className="h-5 w-44" />
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-12 w-4/5" />
+    </div>
+  </div>
 );
 
 export interface EmptyStateProps {
@@ -1067,13 +1144,13 @@ export const Keypad: React.FC<KeypadProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      <div className="grid grid-cols-3 gap-2">
         {keys.map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => handleKey(k)}
-            className="min-h-[46px] sm:min-h-[58px] rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-strong)] hover:bg-[var(--brand-soft)] text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] flex items-center justify-center cursor-pointer transition-colors"
+            className="min-h-[46px] sm:min-h-[50px] rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-strong)] hover:bg-[var(--brand-soft)] text-base sm:text-xl font-bold font-mono-code text-[var(--text-primary)] flex items-center justify-center cursor-pointer transition-colors"
           >
             {k === 'BACK' ? <Delete className="w-4 h-4 sm:w-5 sm:h-5" /> : k}
           </button>
@@ -1180,6 +1257,8 @@ export interface NavItem {
   id: string;
   labelEn: string;
   labelMl: string;
+  shortLabelEn?: string | undefined;
+  shortLabelMl?: string | undefined;
   icon: React.ReactNode;
   badge?: string | undefined;
   group?: 'operations' | 'clearing' | 'governance' | undefined;
@@ -1232,6 +1311,7 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
   ];
 
   const activeItem = navItems.find((n) => n.id === activeNavId);
+  const showBottomNav = navItems.length > 1;
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[var(--bg-app)] text-[var(--text-primary)] overflow-x-hidden">
@@ -1494,15 +1574,10 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
       <div className="flex-1 flex flex-col min-w-0">
         <header className="sticky top-0 z-30 min-h-[48px] sm:min-h-[54px] px-2.5 sm:px-6 lg:px-8 py-1.5 sm:py-2 bg-[var(--bg-surface)]/95 backdrop-blur-sm border-b border-[var(--border-hair)] flex items-center justify-between gap-2 sm:gap-4 no-print">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <button
-              type="button"
-              onClick={() => setMobileNavOpen(true)}
-              aria-label="Open mobile navigation menu"
-              className="md:hidden w-8 h-8 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-[var(--text-primary)] inline-flex items-center justify-center shrink-0 cursor-pointer"
-            >
-              <Menu className="w-4 h-4" />
-            </button>
-            <span className="text-[13px] sm:text-sm font-bold text-[var(--text-primary)] truncate">
+            <span className="md:hidden shrink-0" aria-hidden="true">
+              <MaritimeCrestSvgEmblem size={30} />
+            </span>
+            <span className="text-base sm:text-sm font-bold text-[var(--text-primary)] truncate">
               {activeItem?.labelEn ?? 'Workspace'}
             </span>
             <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-[11px] font-mono-code text-[var(--text-muted)] whitespace-nowrap">
@@ -1514,35 +1589,80 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
           </div>
         </header>
 
-        {/* Mobile Horizontal Pill Navigation (< 768px) */}
-        <nav
-          aria-label="Mobile Workspace Navigation"
-          className="md:hidden px-2.5 py-1.5 bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] flex items-center gap-1.5 overflow-x-auto no-scrollbar no-print"
-        >
-          {navItems.map((item) => {
-            const active = item.id === activeNavId;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onSelectNav(item.id)}
-                className={`h-7 px-2.5 rounded-[var(--radius-pill)] inline-flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                  active
-                    ? 'bg-[var(--brand)] text-[var(--brand-fg)]'
-                    : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-hair)]'
-                }`}
-              >
-                <span className="shrink-0 scale-90">{item.icon}</span>
-                <span lang={lang === 'ml' ? 'ml' : 'en'} className="whitespace-nowrap">
-                  {lang === 'ml' ? item.labelMl : item.labelEn}
-                </span>
-              </button>
-            );
-          })}
-        </nav>
+        {/* Mobile Bottom Tab Bar (< 768px): primary nav, >=56px touch targets, safe-area aware */}
+        {showBottomNav && (
+          <nav
+            aria-label="Mobile Workspace Navigation"
+            data-testid="mobile-bottom-nav"
+            className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--bg-surface)] border-t border-[var(--border-hair)] shadow-[var(--shadow-overlay)] pb-[env(safe-area-inset-bottom)] no-print"
+          >
+            <ul className="flex items-stretch justify-around px-1.5 pt-1.5 pb-1.5 gap-1">
+              {(navItems.length > 5 ? navItems.slice(0, 4) : navItems).map((item) => {
+                const active = item.id === activeNavId;
+                const labelText = lang === 'ml' ? item.labelMl : item.labelEn;
+                const shortText =
+                  lang === 'ml'
+                    ? item.shortLabelMl ?? item.labelMl
+                    : item.shortLabelEn ?? item.labelEn;
+                return (
+                  <li key={item.id} className="flex-1 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => onSelectNav(item.id)}
+                      aria-current={active ? 'page' : undefined}
+                      aria-label={labelText}
+                      className="w-full min-h-[56px] flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-[0.97] transition-transform"
+                    >
+                      <span
+                        className={`h-8 w-14 rounded-[var(--radius-pill)] inline-flex items-center justify-center transition-colors ${
+                          active
+                            ? 'bg-[var(--brand-soft)] text-[var(--brand)]'
+                            : 'text-[var(--text-secondary)]'
+                        }`}
+                      >
+                        {item.icon}
+                      </span>
+                      <span
+                        lang={lang === 'ml' ? 'ml' : 'en'}
+                        className={`max-w-full truncate px-0.5 text-[11px] leading-none ${
+                          active
+                            ? 'font-bold text-[var(--brand)]'
+                            : 'font-medium text-[var(--text-secondary)]'
+                        }`}
+                      >
+                        {shortText}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+              {navItems.length > 5 && (
+                <li className="flex-1 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setMobileNavOpen(true)}
+                    aria-label="More workspaces"
+                    className="w-full min-h-[56px] flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-[0.97] transition-transform"
+                  >
+                    <span className="h-8 w-14 rounded-[var(--radius-pill)] inline-flex items-center justify-center text-[var(--text-secondary)]">
+                      <Menu className="w-5 h-5" />
+                    </span>
+                    <span className="text-[11px] leading-none font-medium text-[var(--text-secondary)]">
+                      More
+                    </span>
+                  </button>
+                </li>
+              )}
+            </ul>
+          </nav>
+        )}
 
         {/* Responsive Content Container: Compact on Mobile (360-639px), Airy on Desktop */}
-        <main className="flex-1 w-full max-w-[1440px] mx-auto px-2.5 sm:px-6 lg:px-8 xl:px-10 py-3 sm:py-6 flex flex-col gap-3.5 sm:gap-6">
+        <main
+          className={`flex-1 w-full max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 pt-3 ${
+            showBottomNav ? 'pb-[calc(88px+env(safe-area-inset-bottom))]' : 'pb-6'
+          } md:pb-6 sm:pt-6 flex flex-col gap-4 sm:gap-6`}
+        >
           {children}
         </main>
       </div>

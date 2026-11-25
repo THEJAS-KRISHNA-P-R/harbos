@@ -1,17 +1,29 @@
-import React, { useState } from 'react';
-import { Gavel, ShieldCheck, Timer, CheckCircle2, ScanLine, Printer } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import {
+  Gavel,
+  ShieldCheck,
+  Timer,
+  CheckCircle2,
+  ScanLine,
+  Printer,
+  Minus,
+  Plus,
+  SlidersHorizontal,
+  AlertTriangle,
+} from 'lucide-react';
 import {
   Button,
   Card,
   Badge,
-  Metric,
   Select,
   Input,
   Keypad,
   DataTable,
   Modal,
   Toast,
+  SpeciesGlyph,
   AuctionPitAmphitheatreSvgDecor,
+  humanizeCode,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
 import {
@@ -21,11 +33,19 @@ import {
   type BootstrapData,
   type AllocationRow,
 } from '@web/lib/api.ts';
+import { clampBoxCount, computePitSalePreview } from '@web/lib/ui-formatters.ts';
 import type { AuctionMode } from '@shared/ids.ts';
-import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 import { BarcodeScannerModal } from '@web/shared/BarcodeScannerModal.tsx';
+
+const AUCTION_MODE_OPTIONS: ReadonlyArray<{ value: AuctionMode; label: string }> = [
+  { value: 'PHYSICAL_SHOUT', label: 'Pit shout (voice auction)' },
+  { value: 'HYBRID_REMOTE', label: 'Hybrid (floor + remote bidders)' },
+  { value: 'DUTCH_CLOCK', label: 'Dutch clock (price falls until taken)' },
+  { value: 'COOP_PROCUREMENT', label: 'Co-op procurement (at floor price)' },
+  { value: 'HMS_DIRECT_TAKEOVER', label: 'Harbour office direct takeover' },
+];
 
 export const PitWorkspace: React.FC<{
   data: BootstrapData;
@@ -33,7 +53,17 @@ export const PitWorkspace: React.FC<{
   onRefresh: () => Promise<void>;
 }> = ({ data, token, onRefresh }) => {
   const { t } = useI18n();
-  const openLots = data.lots.filter((l) => l.available_boxes > 0);
+  const openLots = useMemo(
+    () =>
+      data.lots.filter(
+        (l) =>
+          l.available_boxes > 0 &&
+          Boolean(l.inspection_grade) &&
+          l.inspection_grade !== 'REJECTED_UNFIT'
+      ),
+    [data.lots]
+  );
+
   const [selectedLotId, setSelectedLotId] = useState(
     openLots[0]?.lot_id ?? data.lots[0]?.lot_id ?? 'LOT-2026-001'
   );
@@ -66,6 +96,37 @@ export const PitWorkspace: React.FC<{
   const currentLicence = data.licences.find((l) => l.licence_id === selectedLicenceId);
   const currentBuyer = data.buyers.find((b) => b.buyer_id === selectedBuyerId);
 
+  const maxBoxes = Math.max(1, currentLot?.available_boxes ?? 1);
+  const numericBoxes = clampBoxCount(Number(boxesRequested) || 1, maxBoxes);
+
+  const salePreview = useMemo(() => {
+    if (!currentLot) return null;
+    return computePitSalePreview({
+      priceRupeesPerKg: Number(bidPriceRupeesPerKg) || 0,
+      boxesRequested: numericBoxes,
+      lotTotalBoxes: currentLot.total_boxes,
+      lotAvailableBoxes: currentLot.available_boxes,
+      lotNetGrams: BigInt(currentLot.net_grams),
+      floorPricePaisePerKg: BigInt(currentSpecies?.floor_price_paise_per_kg ?? '0'),
+    });
+  }, [currentLot, currentSpecies, bidPriceRupeesPerKg, numericBoxes]);
+
+  const handleSelectLot = (lotId: string): void => {
+    setSelectedLotId(lotId);
+    const lot = data.lots.find((l) => l.lot_id === lotId);
+    if (!lot) return;
+    if (lot.available_boxes > 0 && Number(boxesRequested) > lot.available_boxes) {
+      setBoxesRequested(String(lot.available_boxes));
+    }
+    const sp = data.species.find((s) => s.species_id === lot.species_id);
+    if (sp) {
+      const floorRupees = Math.ceil(Number(BigInt(sp.floor_price_paise_per_kg) / 100n));
+      if (floorRupees > 0) {
+        setBidPriceRupeesPerKg(String(floorRupees + 20));
+      }
+    }
+  };
+
   const handleLotQrScan = (rawCode: string): void => {
     const q = rawCode.trim().toUpperCase();
     const matched = data.lots.find(
@@ -75,17 +136,17 @@ export const PitWorkspace: React.FC<{
         q.includes(l.lot_code.toUpperCase())
     );
     if (matched) {
-      setSelectedLotId(matched.lot_id);
+      handleSelectLot(matched.lot_id);
       setFeedback({
         tone: 'ok',
-        title: `Lot Scanned: ${matched.lot_code}`,
-        msg: `Loaded lot ${matched.lot_code} (${matched.available_boxes}/${matched.total_boxes} boxes available).`,
+        title: `Lot scanned: ${matched.lot_code}`,
+        msg: `Loaded ${matched.lot_code} (${matched.available_boxes}/${matched.total_boxes} boxes available).`,
       });
     } else {
       setFeedback({
         tone: 'warn',
-        title: 'Lot QR Not Found',
-        msg: `No landed lot matched "${rawCode}". Select from the lot dropdown.`,
+        title: 'Lot QR not found',
+        msg: `No landed lot matched "${rawCode}". Tap a lot card below.`,
       });
     }
   };
@@ -110,6 +171,7 @@ export const PitWorkspace: React.FC<{
       }>(`/api/v1/lots/${currentLot.lot_id}/allocate`, {
         method: 'POST',
         token,
+        idempotencyKey: `pit-${currentLot.lot_id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         body: {
           sessionId: 'SES-MUN-MORNING-01',
           auctionMode,
@@ -126,20 +188,18 @@ export const PitWorkspace: React.FC<{
       setLastLatencyMs(res.serverLatencyMs);
       setFeedback({
         tone: res.floorWarningTriggered ? 'warn' : 'ok',
-        title: `Sale Confirmed: ${res.allocationId} (${res.serverLatencyMs} ms)`,
-        msg: `Hammer: ${formatInrFromPaise(res.hammerPaise)} | Fisherman Net (95%): ${formatInrFromPaise(
+        title: `Sale confirmed · ${res.allocationId}`,
+        msg: `Hammer ${formatInrFromPaise(res.hammerPaise)} · Fisher receives ${formatInrFromPaise(
           res.fishermanNetPaise
-        )} | Bonus Escrow: ${formatInrFromPaise(res.bonusEscrowPaise)} | Journal ${
-          res.journalId
-        } SHA-256 chained.${
-          res.floorWarningTriggered ? ' [Section 19 Floor Price WARN Flagged]' : ''
+        )} · Bonus ${formatInrFromPaise(res.bonusEscrowPaise)} · ${res.remainingBoxes} boxes left.${
+          res.floorWarningTriggered ? ' Below floor price: flagged.' : ''
         }`,
       });
       await onRefresh();
     } catch (err) {
       setFeedback({
         tone: 'danger',
-        title: 'Statutory Allocation Rejected by Server',
+        title: 'Sale could not be recorded',
         msg: err instanceof Error ? err.message : 'Allocation failed',
       });
     } finally {
@@ -150,47 +210,48 @@ export const PitWorkspace: React.FC<{
   const allocColumns: ReadonlyArray<DataTableColumn<AllocationRow>> = [
     {
       key: 'id',
-      header: 'Allocation / Journal',
-      mono: true,
-      render: (r) => (
-        <div>
-          <div className="font-semibold">{r.allocation_id}</div>
-          <div className="text-xs text-[var(--text-muted)]">{r.journal_id}</div>
-        </div>
-      ),
+      header: 'Sale / Lot',
+      render: (r) => {
+        const lot = data.lots.find((l) => l.lot_id === r.lot_id);
+        const sp = data.species.find((s) => s.species_id === lot?.species_id);
+        return (
+          <div className="flex items-center gap-2 min-w-0">
+            <SpeciesGlyph code={`${sp?.code ?? ''} ${sp?.name_en ?? ''}`} size={20} />
+            <div className="min-w-0">
+              <div className="font-semibold font-mono-code truncate">{r.allocation_id}</div>
+              <div className="text-xs text-[var(--text-muted)] truncate">
+                {lot?.lot_code ?? r.lot_id} · {sp?.name_en ?? 'Catch'}
+              </div>
+            </div>
+          </div>
+        );
+      },
     },
     {
       key: 'mode',
-      header: 'Auction Mode',
+      header: 'Mode',
       render: (r) => <Badge tone="info" label={r.auction_mode} />,
     },
     {
       key: 'boxes',
-      header: 'Boxes / Weight',
+      header: 'Boxes & Weight',
       align: 'right',
       mono: true,
       render: (r) => `${r.boxes_allocated} boxes (${formatKgFromGrams(r.grams_allocated)})`,
     },
     {
       key: 'hammer',
-      header: 'Hammer Value',
+      header: 'Sale Value',
       align: 'right',
       mono: true,
       render: (r) => <span className="font-bold">{formatInrFromPaise(r.hammer_paise)}</span>,
     },
     {
       key: 'fisherman',
-      header: 'Fisherman Net (95%)',
+      header: 'Fisher Receives (95%)',
       align: 'right',
       mono: true,
       render: (r) => formatInrFromPaise(r.fisherman_net_paise),
-    },
-    {
-      key: 'latency',
-      header: 'Server Latency',
-      align: 'right',
-      mono: true,
-      render: (r) => `${r.server_latency_ms} ms`,
     },
     {
       key: 'slip',
@@ -212,33 +273,37 @@ export const PitWorkspace: React.FC<{
     },
   ];
 
+  const isLotBlocked = currentLot?.inspection_grade === 'REJECTED_UNFIT';
+  const isLotSoldOut = (currentLot?.available_boxes ?? 0) <= 0;
+  const activeModeLabel =
+    AUCTION_MODE_OPTIONS.find((m) => m.value === auctionMode)?.label ?? humanizeCode(auctionMode);
+
   return (
-    <div className="flex flex-col gap-3.5 sm:gap-5">
-      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+    <div className="flex flex-col gap-4 sm:gap-5">
+      {/* Compact Pit Top Header */}
+      <div className="p-3.5 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:block shrink-0">
             <AuctionPitAmphitheatreSvgDecor size={36} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
               {t('workspaces.pitTitle')}
             </h1>
-            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
-              {openLots.length} Open Lots · Atomic Ledger Post
+            <p className="text-xs text-[var(--text-secondary)] truncate">
+              {openLots.length} open lots · {activeModeLabel} · {lastLatencyMs} ms
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="secondary"
             size="sm"
-            icon={<ScanLine className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            icon={<ScanLine className="w-4 h-4" />}
             onClick={() => setScannerOpen(true)}
           >
             {t('actions.scanLotQr')}
           </Button>
-          <Badge tone="ok" label="LEADER LEASE" code={`#${fencingToken}`} />
-          <Badge tone="info" label={`P50: ${lastLatencyMs} MS`} />
         </div>
       </div>
 
@@ -251,163 +316,281 @@ export const PitWorkspace: React.FC<{
         />
       )}
 
-      {/* Current Lot Status Metrics */}
-      {currentLot && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
-          <div className="col-span-2 sm:col-span-1">
-            <Metric
-              featured
-              label={`Current Lot: ${currentLot.lot_code}`}
-              value={`${currentLot.available_boxes} / ${currentLot.total_boxes}`}
-              unit="BOXES"
-              sublabel={formatKgFromGrams(currentLot.available_grams)}
-              status={{
-                tone:
-                  currentLot.inspection_grade === 'REJECTED_UNFIT'
-                    ? 'danger'
-                    : currentLot.available_boxes > 0
-                    ? 'ok'
-                    : 'neutral',
-                label: currentLot.inspection_grade || 'PENDING',
-              }}
-            />
-          </div>
-          <Metric
-            label="Floor Price (s.19)"
-            value={formatInrFromPaise(currentSpecies?.floor_price_paise_per_kg ?? '0')}
-            unit="/ KG"
-            sublabel={currentSpecies?.name_en ?? ''}
-            status={{
-              tone: 'info',
-              label: `MODE: ${data.tenant?.floor_enforcement ?? 'WARN'}`,
-            }}
-          />
-          <Metric
-            label="Vessel Loan (s.4(8))"
-            value={currentVessel?.has_active_society_loan ? 'LOAN TIED' : 'FREE VESSEL'}
-            sublabel={currentVessel?.vessel_name_en ?? ''}
-            status={{
-              tone: currentVessel?.has_active_society_loan ? 'warn' : 'ok',
-              label: currentVessel?.has_active_society_loan ? 'DEPUTED ONLY' : 'OPEN',
-            }}
-          />
-        </div>
-      )}
+      {/* Main Pit Pad: Left = Visual Lot Cards + Buyer Paddle + Box Stepper, Right = Live Spotlight + Keypad + Hammer Confirm */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
+        <div className="lg:col-span-7 flex flex-col gap-4">
+          {/* Step 1: Visual Landed Lot Selector Cards */}
+          <Card title={t('workspaces.pitSelectLot')}>
+            <div
+              role="radiogroup"
+              aria-label="Landed lots for auction"
+              data-testid="pit-lot-picker"
+              className="grid grid-cols-1 sm:grid-cols-2 gap-2.5"
+            >
+              {data.lots.map((lot) => {
+                const sp = data.species.find((s) => s.species_id === lot.species_id);
+                const vessel = data.vessels.find((v) => v.vessel_id === lot.vessel_id);
+                const selected = lot.lot_id === currentLot?.lot_id;
+                const unfit = lot.inspection_grade === 'REJECTED_UNFIT';
+                const soldOut = lot.available_boxes <= 0;
+                return (
+                  <button
+                    key={lot.lot_id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => handleSelectLot(lot.lot_id)}
+                    className={`min-h-[76px] p-3.5 rounded-[var(--radius-card)] border text-left transition-all cursor-pointer flex flex-col gap-2 active:scale-[0.99] ${
+                      selected
+                        ? 'bg-[var(--brand-soft)] border-[var(--brand)] ring-2 ring-[var(--brand)]'
+                        : unfit
+                        ? 'bg-[var(--danger-bg)]/40 border-[var(--danger)]/35 hover:border-[var(--danger)]'
+                        : soldOut
+                        ? 'bg-[var(--bg-sunken)]/60 border-[var(--border-hair)] opacity-75'
+                        : 'bg-[var(--bg-surface)] border-[var(--border-strong)]/60 hover:bg-[var(--bg-tint)]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-8 h-8 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)] inline-flex items-center justify-center shrink-0">
+                          <SpeciesGlyph code={`${sp?.code ?? ''} ${sp?.name_en ?? ''}`} size={20} />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-[var(--text-primary)] truncate">
+                            {sp?.name_en ?? lot.species_id}
+                          </div>
+                          <div className="text-[11px] font-mono-code text-[var(--text-secondary)] truncate">
+                            {lot.lot_code}
+                            {sp?.name_ml ? ` · ${sp.name_ml}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-right shrink-0">
+                        <span className="block text-sm font-bold font-mono-code tabular-nums text-[var(--text-primary)]">
+                          {lot.available_boxes}/{lot.total_boxes}
+                        </span>
+                        <span className="block text-[10px] font-semibold text-[var(--text-muted)]">
+                          boxes
+                        </span>
+                      </span>
+                    </div>
 
-      {/* Pit Allocation Grid: Left = Lot & Statutory Controls, Right = Keypad */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-5">
-        <div className="lg:col-span-7 flex flex-col gap-3.5 sm:gap-4">
-          <Card title="Lot, Mode & Licence Selection">
-            <div className="flex flex-col gap-3 sm:gap-4">
-              <Select
-                label="Select Landed Lot (Includes Open, Society-Loan & Unfit s.21 Lots)"
-                dockSize
-                value={selectedLotId}
-                onChange={(e) => setSelectedLotId(e.target.value)}
-                options={data.lots.map((l) => {
-                  const sp = data.species.find((s) => s.species_id === l.species_id);
-                  const v = data.vessels.find((x) => x.vessel_id === l.vessel_id);
-                  return {
-                    value: l.lot_id,
-                    label: `${l.lot_code} — ${sp?.name_en ?? ''} (${l.available_boxes}/${l.total_boxes} boxes) [${
-                      l.inspection_grade
-                    }]${v?.has_active_society_loan ? ' [s.4(8) Loan]' : ''}`,
-                  };
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-[var(--text-secondary)]">
+                      <span className="font-mono-code tabular-nums">
+                        {formatKgFromGrams(lot.available_grams)} · Floor{' '}
+                        {formatInrFromPaise(sp?.floor_price_paise_per_kg ?? '0')}/kg
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        {vessel?.has_active_society_loan && (
+                          <span className="font-semibold text-[var(--warning)]">Loan tied</span>
+                        )}
+                        {unfit ? (
+                          <span className="font-semibold text-[var(--danger-fg)]">
+                            Rejected unfit
+                          </span>
+                        ) : soldOut ? (
+                          <span className="font-semibold text-[var(--text-muted)]">Sold out</span>
+                        ) : !lot.inspection_grade ? (
+                          <span className="font-semibold text-[var(--warning)]">Awaiting QC</span>
+                        ) : null}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* Step 2: Buyer Paddle Cards + Big Box Stepper */}
+          <Card title={t('workspaces.pitBuyerPaddle')}>
+            <div className="flex flex-col gap-4">
+              <div
+                role="radiogroup"
+                aria-label="Winning buyer paddle"
+                data-testid="pit-buyer-picker"
+                className="grid grid-cols-1 sm:grid-cols-2 gap-2.5"
+              >
+                {data.buyers.map((b) => {
+                  const avail =
+                    BigInt(b.escrow_balance_paise) +
+                    BigInt(b.approved_credit_paise) -
+                    BigInt(b.unsettled_payables_paise) -
+                    BigInt(b.active_holds_paise);
+                  const selected = b.buyer_id === selectedBuyerId;
+                  return (
+                    <button
+                      key={b.buyer_id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setSelectedBuyerId(b.buyer_id)}
+                      className={`min-h-[60px] p-3 rounded-[var(--radius-card)] border text-left transition-all cursor-pointer flex items-center justify-between gap-2.5 active:scale-[0.99] ${
+                        selected
+                          ? 'bg-[var(--brand-soft)] border-[var(--brand)] ring-2 ring-[var(--brand)]'
+                          : 'bg-[var(--bg-surface)] border-[var(--border-strong)]/60 hover:bg-[var(--bg-tint)]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span
+                          className={`h-10 min-w-[44px] px-2 rounded-[var(--radius-control)] font-mono-code font-bold text-sm inline-flex items-center justify-center shrink-0 ${
+                            selected
+                              ? 'bg-[var(--brand)] text-[var(--brand-fg)]'
+                              : 'bg-[var(--bg-sunken)] text-[var(--text-primary)]'
+                          }`}
+                        >
+                          #{b.paddle_no}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-[var(--text-primary)] truncate">
+                            {b.buyer_name}
+                          </div>
+                          <div className="text-xs font-mono-code tabular-nums text-[var(--text-secondary)] truncate">
+                            Limit {formatInrFromPaise(avail)}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
                 })}
-              />
+              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Box Count Stepper */}
+              <div className="pt-3 border-t border-[var(--border-hair)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-[var(--text-secondary)]">
+                    Boxes to allocate
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)] font-mono-code tabular-nums">
+                    {currentLot
+                      ? `${currentLot.available_boxes} available · ${formatKgFromGrams(
+                          salePreview?.gramsAllocated ?? 0n
+                        )} selected`
+                      : ''}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="Decrease boxes"
+                    onClick={() =>
+                      setBoxesRequested(String(clampBoxCount(numericBoxes - 1, maxBoxes)))
+                    }
+                    className="w-11 h-11 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-[var(--text-primary)] inline-flex items-center justify-center cursor-pointer active:scale-95"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <input
+                    type="number"
+                    aria-label="Boxes to allocate"
+                    min={1}
+                    max={maxBoxes}
+                    value={boxesRequested}
+                    onChange={(e) => setBoxesRequested(e.target.value)}
+                    className="w-16 h-11 text-center font-mono-code text-lg font-bold tabular-nums rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-strong)] text-[var(--text-primary)]"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Increase boxes"
+                    onClick={() =>
+                      setBoxesRequested(String(clampBoxCount(numericBoxes + 1, maxBoxes)))
+                    }
+                    className="w-11 h-11 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-[var(--text-primary)] inline-flex items-center justify-center cursor-pointer active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <div className="flex items-center gap-1.5 ml-1">
+                    {[1, 2, maxBoxes]
+                      .filter((v, idx, arr) => v >= 1 && arr.indexOf(v) === idx)
+                      .map((preset) => (
+                        <Button
+                          key={preset}
+                          size="sm"
+                          variant={numericBoxes === preset ? 'primary' : 'outline'}
+                          onClick={() => setBoxesRequested(String(preset))}
+                        >
+                          {preset === maxBoxes && maxBoxes > 2 ? `All (${maxBoxes})` : `${preset}`}
+                        </Button>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Secondary / Advanced Pit Options Collapsed by Default */}
+          <details
+            open={auctionMode === 'HMS_DIRECT_TAKEOVER' || fencingToken !== '10'}
+            className="rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] p-4"
+          >
+            <summary className="cursor-pointer min-h-[44px] flex items-center justify-between gap-2 text-sm font-semibold text-[var(--text-primary)]">
+              <span className="inline-flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-[var(--brand)]" />
+                <span>{t('workspaces.pitMoreOptions')}</span>
+              </span>
+              <span className="text-xs font-mono-code text-[var(--text-muted)]">
+                {currentLicence?.auctioneer_name ?? 'Auctioneer'} · Lease #{fencingToken}
+              </span>
+            </summary>
+
+            <div className="mt-4 pt-4 border-t border-[var(--border-hair)] flex flex-col gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <Select
-                  label="Auction Mode (§7)"
+                  label="Auction mode"
                   dockSize
                   value={auctionMode}
                   onChange={(e) => setAuctionMode(e.target.value as AuctionMode)}
-                  options={[
-                    { value: 'PHYSICAL_SHOUT', label: 'PHYSICAL_SHOUT (Pit Shout)' },
-                    { value: 'HYBRID_REMOTE', label: 'HYBRID_REMOTE (Floor + SSE)' },
-                    { value: 'DUTCH_CLOCK', label: 'DUTCH_CLOCK (Descending Clock)' },
-                    { value: 'COOP_PROCUREMENT', label: 'COOP_PROCUREMENT (s.19(2) Floor Price)' },
-                    { value: 'HMS_DIRECT_TAKEOVER', label: 'HMS_DIRECT_TAKEOVER (s.10 Proviso)' },
-                  ]}
+                  options={AUCTION_MODE_OPTIONS}
                 />
 
                 <Select
-                  label="Licensed Auctioneer (s.5 & s.4(8))"
+                  label="Licensed auctioneer"
                   dockSize
                   value={selectedLicenceId}
                   onChange={(e) => setSelectedLicenceId(e.target.value)}
                   options={data.licences.map((lic) => ({
                     value: lic.licence_id,
-                    label: `${lic.auctioneer_name} [${lic.status}]`,
+                    label: `${lic.auctioneer_name} (${humanizeCode(lic.status)})`,
                   }))}
                 />
               </div>
 
               {auctionMode === 'HMS_DIRECT_TAKEOVER' && (
                 <Input
-                  label={`Government Permission Reference (Required by ${ACT_16_2021_CITATIONS.HMS_DIRECT_TAKEOVER_PROVISO})`}
+                  label="Government permission reference"
                   value={govPermissionRef}
                   onChange={(e) => setGovPermissionRef(e.target.value)}
                   mono
                 />
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2">
-                  <Select
-                    label="Winning Wholesale Buyer Paddle (§7 Check 6 Credit Lock)"
-                    dockSize
-                    value={selectedBuyerId}
-                    onChange={(e) => setSelectedBuyerId(e.target.value)}
-                    options={data.buyers.map((b) => {
-                      const avail =
-                        BigInt(b.escrow_balance_paise) +
-                        BigInt(b.approved_credit_paise) -
-                        BigInt(b.unsettled_payables_paise) -
-                        BigInt(b.active_holds_paise);
-                      return {
-                        value: b.buyer_id,
-                        label: `Paddle #${b.paddle_no} — ${b.buyer_name} (Avail: ${formatInrFromPaise(
-                          avail
-                        )})`,
-                      };
-                    })}
-                  />
-                </div>
-                <Input
-                  label="Boxes to Allocate"
-                  type="number"
-                  mono
-                  dockSize
-                  value={boxesRequested}
-                  onChange={(e) => setBoxesRequested(e.target.value)}
-                />
-              </div>
-
-              {/* Pre-flight Statutory Validation Banner */}
-              <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2 text-xs">
-                <div className="font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
+              <div className="p-3.5 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2 text-xs">
+                <div className="font-bold text-[var(--text-secondary)] flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-[var(--brand)]" />
-                  <span>Live Statutory Pre-Flight Checks (§7)</span>
+                  <span>Pre-flight auction checks</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[var(--text-secondary)]">
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[var(--brand)] shrink-0" />
                     <span>
-                      Licence: <strong>{currentLicence?.status}</strong> (until{' '}
-                      {currentLicence?.valid_until})
+                      Licence: <strong>{humanizeCode(currentLicence?.status ?? 'ACTIVE')}</strong>{' '}
+                      (until {currentLicence?.valid_until})
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[var(--brand)] shrink-0" />
                     <span>
-                      Buyer Paddle: <strong>#{currentBuyer?.paddle_no}</strong>
+                      Vessel:{' '}
+                      <strong>
+                        {currentVessel?.has_active_society_loan
+                          ? 'Society loan tied'
+                          : 'Free vessel'}
+                      </strong>
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Timer className="w-3.5 h-3.5 text-[var(--brand)] shrink-0" />
                     <span>
-                      Fencing Token: <strong>#{fencingToken}</strong> (Stale &lt; 10 rejected)
+                      Leader lease token: <strong>#{fencingToken}</strong>
                     </span>
                   </div>
                   <div>
@@ -417,38 +600,120 @@ export const PitWorkspace: React.FC<{
                       className="underline font-semibold text-[var(--brand)] cursor-pointer"
                     >
                       {fencingToken === '10'
-                        ? 'Simulate Stale Tablet Token (#4)'
-                        : 'Restore Valid Leader Token (#10)'}
+                        ? 'Test stale tablet token (#4)'
+                        : 'Restore valid leader token (#10)'}
                     </button>
                   </div>
                 </div>
               </div>
             </div>
-          </Card>
+          </details>
         </div>
 
-        {/* Right Column: Numeric Keypad & Hammer Drop Button */}
-        <div className="lg:col-span-5 flex flex-col gap-3.5 sm:gap-4">
-          <Card
-            title="2. Pit Numeric Keypad & Hammer Drop"
-            subtitle="Rapid one-handed bidding keypad"
-          >
-            <div className="flex flex-col gap-3 sm:gap-4">
+        {/* Right Column: Active Lot Live Summary + Numeric Keypad + One-Tap Confirm */}
+        <div className="lg:col-span-5 flex flex-col gap-3 lg:sticky lg:top-20">
+          {currentLot && salePreview && (
+            <section
+              aria-label="Active lot sale summary"
+              data-testid="pit-active-lot-card"
+              className="rounded-[var(--radius-card)] bg-[var(--decor-aqua-soft)] border border-[var(--border-hair)] p-4 flex flex-col gap-2.5"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-10 h-10 rounded-[var(--radius-control)] bg-[var(--bg-surface)] border border-[var(--border-hair)] inline-flex items-center justify-center shrink-0">
+                    <SpeciesGlyph
+                      code={`${currentSpecies?.code ?? ''} ${currentSpecies?.name_en ?? ''}`}
+                      size={24}
+                    />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-base font-bold text-[var(--decor-ink)] truncate">
+                      {currentSpecies?.name_en ?? currentLot.species_id}
+                    </div>
+                    <div className="text-xs font-mono-code text-[var(--text-secondary)] truncate">
+                      {currentLot.lot_code} · {currentVessel?.vessel_name_en ?? ''}
+                    </div>
+                  </div>
+                </div>
+                <Badge
+                  tone={
+                    isLotBlocked
+                      ? 'danger'
+                      : salePreview.floorStatus === 'BELOW'
+                      ? 'warn'
+                      : 'ok'
+                  }
+                  label={
+                    isLotBlocked
+                      ? 'Rejected unfit'
+                      : salePreview.floorStatus === 'BELOW'
+                      ? t('workspaces.pitBelowFloor')
+                      : salePreview.floorStatus === 'AT'
+                      ? t('workspaces.pitAtFloor')
+                      : t('workspaces.pitAboveFloor')
+                  }
+                />
+              </div>
+
+              <div className="pt-2 border-t border-[var(--border-hair)] flex items-baseline justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold text-[var(--text-secondary)]">
+                    {t('workspaces.pitLiveTotal')}
+                  </div>
+                  <div
+                    data-testid="pit-live-hammer-total"
+                    className="text-3xl font-bold font-mono-code tabular-nums text-[var(--decor-ink)] leading-tight"
+                  >
+                    {formatInrFromPaise(salePreview.hammerPaise)}
+                  </div>
+                </div>
+                <div className="text-right text-xs font-mono-code tabular-nums text-[var(--text-secondary)]">
+                  <div>
+                    {numericBoxes} {numericBoxes === 1 ? 'box' : 'boxes'} · {formatKgFromGrams(salePreview.gramsAllocated)}
+                  </div>
+                  <div>
+                    Floor {formatInrFromPaise(currentSpecies?.floor_price_paise_per_kg ?? '0')}/kg
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] bg-[var(--bg-surface)]/80 rounded-[var(--radius-control)] px-3 py-2">
+                <span>
+                  Buyer: <strong>#{currentBuyer?.paddle_no}</strong> {currentBuyer?.buyer_name}
+                </span>
+                <span className="font-mono-code tabular-nums font-semibold text-[var(--brand)]">
+                  Fisher 95%: {formatInrFromPaise(salePreview.fishermanNetPaise)}
+                </span>
+              </div>
+
+              {isLotBlocked && (
+                <div className="flex items-center gap-2 text-xs font-semibold text-[var(--danger-fg)] bg-[var(--danger-bg)] rounded-[var(--radius-control)] px-3 py-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>This lot failed quality inspection and cannot be sold.</span>
+                </div>
+              )}
+            </section>
+          )}
+
+          <Card title="3. Bid Price & Confirm">
+            <div className="flex flex-col gap-3">
               <Keypad
                 value={bidPriceRupeesPerKg}
                 onChange={setBidPriceRupeesPerKg}
                 onQuickIncrement={(delta) =>
-                  setBidPriceRupeesPerKg((prev) => String((Number(prev) || 0) + delta))
+                  setBidPriceRupeesPerKg((prev) => String(Math.max(0, (Number(prev) || 0) + delta)))
                 }
               />
 
               <Button
                 variant="primary"
                 size="dock"
+                data-testid="pit-confirm-hammer-btn"
                 loading={submitting}
+                disabled={isLotSoldOut}
                 icon={<Gavel className="w-5 h-5" />}
                 onClick={handleConfirmAllocation}
-                className="w-full"
+                className="w-full min-h-[52px]"
               >
                 {t('workspaces.pitConfirmBtn')}
               </Button>
@@ -460,7 +725,7 @@ export const PitWorkspace: React.FC<{
       {/* Confirmed Allocations Table */}
       <Card
         title={t('workspaces.pitAllocationsTitle')}
-        subtitle="Corrections require a Dual-Key Reversal Journal authorized by Accountant + Harbour Admin"
+        subtitle="Corrections require a two-person reversal approved by Accountant and Harbour Admin"
       >
         <DataTable
           caption="Confirmed Pit Sale Allocations"
@@ -474,7 +739,7 @@ export const PitWorkspace: React.FC<{
         open={Boolean(saleSlipAlloc)}
         onClose={() => setSaleSlipAlloc(null)}
         title={t('slips.saleSlip')}
-        description="Audited dockside commercial sale memorandum with QR hash verification"
+        description="Audited dockside commercial sale memorandum with QR verification"
         footer={
           <>
             <Button variant="outline" onClick={() => setSaleSlipAlloc(null)}>
@@ -490,61 +755,84 @@ export const PitWorkspace: React.FC<{
           </>
         }
       >
-        {saleSlipAlloc && (() => {
-          const lot = data.lots.find((l) => l.lot_id === saleSlipAlloc.lot_id);
-          const buyer = data.buyers.find((b) => b.buyer_id === saleSlipAlloc.buyer_id);
-          const sp = data.species.find((s) => s.species_id === lot?.species_id);
-          return (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    size="sm"
-                    variant={slipFormat === '80mm' ? 'primary' : 'outline'}
-                    onClick={() => setSlipFormat('80mm')}
-                  >
-                    80mm
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={slipFormat === 'A4' ? 'primary' : 'outline'}
-                    onClick={() => setSlipFormat('A4')}
-                  >
-                    A4
-                  </Button>
+        {saleSlipAlloc &&
+          (() => {
+            const lot = data.lots.find((l) => l.lot_id === saleSlipAlloc.lot_id);
+            const buyer = data.buyers.find((b) => b.buyer_id === saleSlipAlloc.buyer_id);
+            const sp = data.species.find((s) => s.species_id === lot?.species_id);
+            return (
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant={slipFormat === '80mm' ? 'primary' : 'outline'}
+                      onClick={() => setSlipFormat('80mm')}
+                    >
+                      80mm
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={slipFormat === 'A4' ? 'primary' : 'outline'}
+                      onClick={() => setSlipFormat('A4')}
+                    >
+                      A4
+                    </Button>
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isReprint}
+                      onChange={(e) => setIsReprint(e.target.checked)}
+                    />
+                    <span>{t('actions.reprint')}</span>
+                  </label>
                 </div>
-                <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isReprint}
-                    onChange={(e) => setIsReprint(e.target.checked)}
-                  />
-                  <span>{t('actions.reprint')}</span>
-                </label>
+                <DocksidePrintSlip
+                  slipType="BUYER_SALE_SLIP"
+                  printFormat={slipFormat}
+                  isReprint={isReprint}
+                  harbourName={data.tenant?.name_en ?? 'Munambam Harbour'}
+                  referenceNo={saleSlipAlloc.allocation_id}
+                  timestampIso={saleSlipAlloc.created_at}
+                  items={[
+                    {
+                      label: t('dockside.lotCode'),
+                      value: lot?.lot_code ?? saleSlipAlloc.lot_id,
+                      highlight: true,
+                    },
+                    {
+                      label: t('dockside.species'),
+                      value: sp ? `${sp.name_en} / ${sp.name_ml}` : 'Catch',
+                    },
+                    {
+                      label: t('dockside.buyerPaddle'),
+                      value: `#${buyer?.paddle_no ?? '—'} ${buyer?.buyer_name ?? ''}`,
+                    },
+                    {
+                      label: t('dockside.boxes'),
+                      value: `${saleSlipAlloc.boxes_allocated} boxes (${formatKgFromGrams(
+                        saleSlipAlloc.grams_allocated
+                      )})`,
+                    },
+                    { label: 'Journal', value: saleSlipAlloc.journal_id },
+                  ]}
+                  summaryRows={[
+                    {
+                      label: t('dockside.hammerAmount'),
+                      value: formatInrFromPaise(saleSlipAlloc.hammer_paise),
+                    },
+                    {
+                      label: 'Buyer Total Payable',
+                      value: formatInrFromPaise(saleSlipAlloc.buyer_payable_paise),
+                      bold: true,
+                    },
+                  ]}
+                  qrPayload={`HARBOUROS|SALE|${saleSlipAlloc.allocation_id}|${saleSlipAlloc.journal_id}`}
+                />
               </div>
-              <DocksidePrintSlip
-                slipType="BUYER_SALE_SLIP"
-                printFormat={slipFormat}
-                isReprint={isReprint}
-                harbourName={data.tenant?.name_en ?? 'Munambam Harbour (HMS)'}
-                referenceNo={saleSlipAlloc.allocation_id}
-                timestampIso={saleSlipAlloc.created_at}
-                items={[
-                  { label: t('dockside.lotCode'), value: lot?.lot_code ?? saleSlipAlloc.lot_id, highlight: true },
-                  { label: t('dockside.species'), value: sp ? `${sp.name_en} / ${sp.name_ml}` : 'Catch' },
-                  { label: t('dockside.buyerPaddle'), value: `#${buyer?.paddle_no ?? '—'} ${buyer?.buyer_name ?? ''}` },
-                  { label: t('dockside.boxes'), value: `${saleSlipAlloc.boxes_allocated} boxes (${formatKgFromGrams(saleSlipAlloc.grams_allocated)})` },
-                  { label: 'Journal', value: saleSlipAlloc.journal_id },
-                ]}
-                summaryRows={[
-                  { label: t('dockside.hammerAmount'), value: formatInrFromPaise(saleSlipAlloc.hammer_paise) },
-                  { label: 'Buyer Total Payable', value: formatInrFromPaise(saleSlipAlloc.buyer_payable_paise), bold: true },
-                ]}
-                qrPayload={`HARBOUROS|SALE|${saleSlipAlloc.allocation_id}|${saleSlipAlloc.journal_id}`}
-              />
-            </div>
-          );
-        })()}
+            );
+          })()}
       </Modal>
 
       <BarcodeScannerModal

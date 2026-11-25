@@ -105,7 +105,7 @@ export const MasterdataCsvPanel: React.FC<{
 
       <Card
         title={t('actions.importMasterdata')}
-        subtitle="Dry-run validate CSV rows for GSTIN, E.164, formula-injection, and Act s.5 licence rules before single-transaction atomic commit"
+        subtitle="Dry-run validate CSV rows for GSTIN, phone format, formula-injection, and auctioneer licence rules before atomic commit"
         actions={
           <Button
             variant="outline"
@@ -137,12 +137,12 @@ export const MasterdataCsvPanel: React.FC<{
               value={entityType}
               onChange={(e) => handleEntityChange(e.target.value as MasterdataEntityType)}
               options={[
-                { value: 'species', label: 'Species & Floor Prices (s.19)' },
+                { value: 'species', label: 'Species & Floor Prices' },
                 { value: 'buyers', label: 'Wholesale Buyers & Credit Limits' },
                 { value: 'vessels', label: 'Fishing Vessels & Loan Ties' },
                 { value: 'fishermen', label: 'Fishermen & Ledger Accounts' },
                 { value: 'coop-societies', label: 'Primary Co-op Societies' },
-                { value: 'licences', label: 'Auctioneer Licences (s.5)' },
+                { value: 'licences', label: 'Auctioneer Licences' },
               ]}
             />
           </div>

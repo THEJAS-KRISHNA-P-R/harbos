@@ -12,6 +12,7 @@ import {
   Select,
   Modal,
   EmptyState,
+  WorkspaceSkeleton,
   DockScaleIcon,
   AuctionGavelBellIcon,
   BuyerCrateEscrowIcon,
@@ -158,7 +159,7 @@ const GOLDEN_VECTOR_ROWS: ReadonlyArray<GoldenVectorRow> = [
 ];
 
 export const App: React.FC = () => {
-  const { locale: lang, setLocale: setLang } = useI18n();
+  const { locale: lang, setLocale: setLang, t } = useI18n();
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
@@ -443,8 +444,8 @@ export const App: React.FC = () => {
       ]);
       setProfileFeedback({
         tone: 'ok',
-        title: 'Operator Profile Saved to PostgreSQL',
-        msg: `Updated core.users record for ${res.user.fullName} (${res.user.phoneE164}) and issued fresh HS256 JWT.`,
+        title: 'Profile saved',
+        msg: `Updated details for ${res.user.fullName} (${res.user.phoneE164}).`,
       });
     } catch (err) {
       setProfileFeedback({
@@ -467,7 +468,7 @@ export const App: React.FC = () => {
       const openCount = bootstrap.lots.filter((l) => l.available_boxes > 0).length;
       return `${openCount} open`;
     }
-    if (wsId === 'inspector') return 's.21';
+    if (wsId === 'inspector') return 'QC';
     if (wsId === 'buyer') return '#101';
     if (wsId === 'fisher') return '95%';
     if (wsId === 'harbour') {
@@ -476,16 +477,28 @@ export const App: React.FC = () => {
       ).length;
       return pendingRev > 0 ? `${pendingRev} key` : 'OK';
     }
-    if (wsId === 'platform') return 'TS+PG';
+    if (wsId === 'platform') return 'Admin';
     return undefined;
+  };
+
+  const SHORT_NAV_LABELS: Record<WorkspaceId, { en: string; ml: string }> = {
+    weighing: { en: 'Weighing', ml: 'തൂക്കം' },
+    pit: { en: 'Pit Pad', ml: 'ലേലം' },
+    inspector: { en: 'Quality', ml: 'ഗുണനിലവാരം' },
+    buyer: { en: 'Buyer', ml: 'വാങ്ങൽ' },
+    fisher: { en: 'Passbook', ml: 'പാസ്ബുക്ക്' },
+    harbour: { en: 'Harbour', ml: 'ഹാർബർ' },
+    platform: { en: 'Platform', ml: 'പ്ലാറ്റ്‌ഫോം' },
   };
 
   const navItems: ReadonlyArray<NavItem> = useMemo(
     () =>
       allowedWorkspaces.map((w) => ({
         id: w.id,
-        labelEn: w.titleEn,
+        labelEn: w.id === 'inspector' ? 'Quality Inspection' : w.titleEn,
         labelMl: w.titleMl,
+        shortLabelEn: SHORT_NAV_LABELS[w.id].en,
+        shortLabelMl: SHORT_NAV_LABELS[w.id].ml,
         icon: WORKSPACE_ICONS[w.id],
         badge: getWorkspaceBadge(w.id),
         group: WORKSPACE_GROUPS[w.id],
@@ -535,7 +548,7 @@ export const App: React.FC = () => {
         onClick={() => setCommandPaletteOpen(true)}
         aria-label="Open Command Palette"
         title="Command Palette (⌘K)"
-        className="h-8 w-8 sm:w-auto sm:h-9 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-tint)] inline-flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
+        className="hidden sm:inline-flex sm:h-9 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-tint)] items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
       >
         <Search className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">⌘K</span>
@@ -559,7 +572,7 @@ export const App: React.FC = () => {
               { value: 'LICENSED_AUCTIONEER', label: 'Role: Auctioneer' },
               { value: 'WHOLESALE_BUYER', label: 'Role: Buyer #101' },
               { value: 'FISHERMAN_BOAT_OWNER', label: 'Role: Vessel Owner' },
-              { value: 'AUTHORIZED_INSPECTOR', label: 'Role: Inspector s.21' },
+              { value: 'AUTHORIZED_INSPECTOR', label: 'Role: Quality Inspector' },
               { value: 'SUPER_ADMIN', label: 'Role: Super Admin' },
             ]}
           />
@@ -570,10 +583,11 @@ export const App: React.FC = () => {
         <Button
           variant="primary"
           size="sm"
-          icon={<BookOpen className="w-3.5 h-3.5" />}
+          icon={<BookOpen className="w-4 h-4" />}
           onClick={() => setLedgerDrawerOpen(true)}
+          aria-label="Open Ledger Inspector"
         >
-          Ledger
+          <span className="hidden sm:inline">Ledger</span>
         </Button>
       )}
 
@@ -676,15 +690,12 @@ export const App: React.FC = () => {
           />
         </React.Suspense>
       ) : !bootstrap || !token ? (
-        <EmptyState
-          title="Loading HarbourOS Statutory Clearing Engine…"
-          description="Initializing Node.js 22 + PostgreSQL 16 and verifying SHA-256 ledger hash chain."
-        />
+        <WorkspaceSkeleton label={t('workspaces.loadingHarbour')} />
       ) : !isActiveWorkspaceAuthorized && user ? (
         <div data-testid="rbac-access-restricted">
           <EmptyState
             title="Access Restricted by Role Policy"
-            description={`Your signed-in role (${activeRoleMeta.titleEn}) is not authorized to open the "${activeWorkspace}" workspace under Kerala Act 16 of 2021 RBAC controls.`}
+            description={`Your signed-in role (${activeRoleMeta.titleEn}) does not have permission to open the "${activeWorkspace}" workspace.`}
             action={
               <Button
                 variant="primary"
@@ -698,12 +709,7 @@ export const App: React.FC = () => {
         </div>
       ) : (
         <React.Suspense
-          fallback={
-            <EmptyState
-              title="Loading Statutory Workspace…"
-              description="Preparing role-scoped clearing surface."
-            />
-          }
+          fallback={<WorkspaceSkeleton label={t('workspaces.loadingWorkspace')} />}
         >
           {activeWorkspace === 'weighing' && (
             <WeighingWorkspace
