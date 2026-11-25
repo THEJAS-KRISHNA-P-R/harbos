@@ -10,6 +10,7 @@ import {
   Plus,
   SlidersHorizontal,
   AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import {
   Button,
@@ -22,6 +23,7 @@ import {
   Modal,
   Toast,
   SpeciesGlyph,
+  SkeletonCardGrid,
   WorkspaceSkeleton,
   AuctionPitAmphitheatreSvgDecor,
   humanizeCode,
@@ -52,8 +54,9 @@ export const PitWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
   loading?: boolean;
+  refreshing?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, loading = false, onRefresh }) => {
+}> = ({ data, token, loading = false, refreshing = false, onRefresh }) => {
   const { t } = useI18n();
   const openLots = useMemo(
     () =>
@@ -303,6 +306,16 @@ export const PitWorkspace: React.FC<{
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button
+            variant="outline"
+            size="sm"
+            aria-label="Refresh auction lots"
+            icon={<RefreshCw className="w-4 h-4" />}
+            loading={refreshing}
+            onClick={() => void onRefresh()}
+          >
+            Refresh
+          </Button>
+          <Button
             variant="secondary"
             size="sm"
             icon={<ScanLine className="w-4 h-4" />}
@@ -327,6 +340,15 @@ export const PitWorkspace: React.FC<{
         <div className="lg:col-span-7 flex flex-col gap-4">
           {/* Step 1: Visual Landed Lot Selector Cards */}
           <Card title={t('workspaces.pitSelectLot')}>
+            {refreshing || submitting ? (
+              <SkeletonCardGrid
+                count={Math.max(2, Math.min(4, data.lots.length))}
+                columns={2}
+                variant="selectable"
+                testId="pit-lot-picker-skeleton"
+                label="Refreshing open auction lots…"
+              />
+            ) : (
             <div
               role="radiogroup"
               aria-label="Landed lots for auction"
@@ -405,6 +427,7 @@ export const PitWorkspace: React.FC<{
                 );
               })}
             </div>
+            )}
           </Card>
 
           {/* Step 2: Buyer Paddle Cards + Big Box Stepper */}
@@ -739,6 +762,7 @@ export const PitWorkspace: React.FC<{
           caption="Confirmed Pit Sale Allocations"
           columns={allocColumns}
           rows={data.allocations}
+          loading={refreshing || submitting}
           getRowKey={(r) => r.allocation_id}
         />
       </Card>

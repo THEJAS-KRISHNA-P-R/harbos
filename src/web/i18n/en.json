@@ -110,7 +110,8 @@
     "inspectorSelectLot": "1. Select lot to inspect",
     "inspectorGradeChoice": "2. Choose quality grade",
     "loadingWorkspace": "Loading workspace…",
-    "loadingHarbour": "Preparing harbour records…"
+    "loadingHarbour": "Preparing harbour records…",
+    "syncingData": "Synchronizing harbour data…"
   },
   "harbour": {
     "gtv": "Gross Turnover (GTV)",
@@ -309,5 +310,13 @@
     "help": "Trouble signing in? Ask your harbour office to confirm your number is registered.",
     "backToWorkspace": "Back to workspace",
     "language": "മലയാളം"
+  },
+  "errors": {
+    "workspaceTitle": "This workspace encountered an unexpected error",
+    "workspaceDescription": "A runtime error interrupted this view. Your session and saved harbour records remain intact—try rendering again or switch to another workspace.",
+    "tryAgain": "Try Again",
+    "reloadPage": "Reload Page",
+    "returnToDefaultWorkspace": "Return to Default Workspace",
+    "technicalDetails": "Technical details"
   }
 }

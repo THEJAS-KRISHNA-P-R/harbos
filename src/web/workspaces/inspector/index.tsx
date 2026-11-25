@@ -18,6 +18,7 @@ import {
   Toast,
   SpeciesGlyph,
   Skeleton,
+  SkeletonCardGrid,
   WorkspaceSkeleton,
   ColdChainInspectorSvgDecor,
   humanizeCode,
@@ -66,8 +67,9 @@ export const InspectorWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
   loading?: boolean;
+  refreshing?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, loading = false, onRefresh }) => {
+}> = ({ data, token, loading = false, refreshing = false, onRefresh }) => {
   const { t } = useI18n();
   const [selectedLotId, setSelectedLotId] = useState(
     data.lots[0]?.lot_id ?? 'LOT-2026-001'
@@ -351,6 +353,15 @@ export const InspectorWorkspace: React.FC<{
             <div className="text-xs font-semibold text-[var(--text-secondary)] mb-2.5">
               {t('workspaces.inspectorSelectLot')}
             </div>
+            {refreshing || submitting ? (
+              <SkeletonCardGrid
+                count={Math.max(3, Math.min(6, data.lots.length))}
+                columns={3}
+                variant="alert"
+                testId="inspector-lots-skeleton"
+                label="Refreshing landed lots…"
+              />
+            ) : (
             <div
               role="radiogroup"
               aria-label="Lots to inspect"
@@ -399,6 +410,7 @@ export const InspectorWorkspace: React.FC<{
                 );
               })}
             </div>
+            )}
           </div>
 
           {/* 2. Big 4-Choice Grade Selector */}
@@ -532,6 +544,7 @@ export const InspectorWorkspace: React.FC<{
           caption="Quality Inspection Log"
           columns={columns}
           rows={data.lots}
+          loading={refreshing || submitting}
           getRowKey={(r) => r.lot_id}
           onRowClick={handleSelectLot}
         />

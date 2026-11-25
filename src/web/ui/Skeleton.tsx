@@ -4,6 +4,7 @@ import {
   getSkeletonTextLineWidths,
   resolveSkeletonCardGridColumnsClass,
   resolveSkeletonListLayout,
+  resolveSkeletonRowColumnKind,
   resolveWorkspaceSkeletonPreset,
   type SkeletonCardGridColumns,
   type SkeletonCardGridVariant,
@@ -346,29 +347,152 @@ export const SkeletonCardGrid: React.FC<SkeletonCardGridProps> = ({
   );
 };
 
+export interface SkeletonListRowProps {
+  columns?: number;
+  rowIndex?: number;
+  mode?: 'table' | 'grid' | 'mobile';
+  showLeadingGlyph?: boolean;
+  showTrailingBadge?: boolean;
+  columnAlignments?: ReadonlyArray<'left' | 'right' | undefined>;
+  testId?: string;
+}
+
+export const SkeletonListRow: React.FC<SkeletonListRowProps> = ({
+  columns = 4,
+  rowIndex = 0,
+  mode = 'grid',
+  showLeadingGlyph = true,
+  showTrailingBadge = true,
+  columnAlignments,
+  testId,
+}) => {
+  if (mode === 'mobile') {
+    return (
+      <div
+        aria-hidden="true"
+        data-testid={testId}
+        className="p-3 flex flex-col gap-2"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {showLeadingGlyph && (
+              <Skeleton variant="circle" className="h-6 w-6 shrink-0" />
+            )}
+            <Skeleton className="h-4 w-1/2 max-w-[180px]" />
+          </div>
+          {showTrailingBadge && <Skeleton variant="pill" className="h-5 w-16 shrink-0" />}
+        </div>
+        <div className="flex items-center justify-between gap-4 pt-1 border-t border-[var(--border-hair)]">
+          <Skeleton variant="text" className="h-3 w-24" />
+          <Skeleton variant="text" className="h-3 w-20" />
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <Skeleton variant="text" className="h-3 w-20" />
+          <Skeleton variant="text" className="h-3 w-24" />
+        </div>
+      </div>
+    );
+  }
+
+  const renderCellContent = (cIdx: number): React.ReactNode => {
+    const kind = resolveSkeletonRowColumnKind(cIdx, columns, {
+      hasLeadingPrimary: true,
+      hasTrailingBadge: showTrailingBadge,
+    });
+    const alignRight = columnAlignments?.[cIdx] === 'right';
+
+    if (kind === 'primary') {
+      return (
+        <div className="flex items-center gap-2.5 min-w-0">
+          {showLeadingGlyph && (
+            <Skeleton variant="circle" className="h-6 w-6 shrink-0" />
+          )}
+          <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+            <Skeleton className={`h-3.5 ${getSkeletonCellWidthClass(rowIndex, cIdx)}`} />
+            <Skeleton variant="text" className="h-2.5 w-2/3" />
+          </div>
+        </div>
+      );
+    }
+
+    if (kind === 'badge') {
+      return (
+        <div className={`flex ${alignRight ? 'justify-end' : 'justify-start'}`}>
+          <Skeleton variant="pill" className="h-5 w-20" />
+        </div>
+      );
+    }
+
+    if (kind === 'numeric' || alignRight) {
+      return (
+        <div className="flex justify-end">
+          <Skeleton className={`h-4 ${getSkeletonCellWidthClass(rowIndex, cIdx)} max-w-[104px]`} />
+        </div>
+      );
+    }
+
+    return <Skeleton className={`h-4 ${getSkeletonCellWidthClass(rowIndex, cIdx)}`} />;
+  };
+
+  if (mode === 'table') {
+    return (
+      <tr aria-busy="true" data-testid={testId}>
+        {Array.from({ length: columns }).map((_, cIdx) => (
+          <td key={`cell-${rowIndex}-${cIdx}`} className="px-3 py-3 lg:px-4">
+            {renderCellContent(cIdx)}
+          </td>
+        ))}
+      </tr>
+    );
+  }
+
+  return (
+    <div
+      aria-hidden="true"
+      data-testid={testId}
+      className="px-4 py-3 grid gap-4 items-center"
+      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+    >
+      {Array.from({ length: columns }).map((_, cIdx) => (
+        <div key={`cell-${rowIndex}-${cIdx}`} className="min-w-0">
+          {renderCellContent(cIdx)}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const SkeletonTable: React.FC<{
   rows?: number;
   columns?: number;
+  showLeadingGlyph?: boolean;
+  showTrailingBadge?: boolean;
   className?: string;
-}> = ({ rows = 4, columns = 4, className = '' }) => (
+}> = ({
+  rows = 4,
+  columns = 4,
+  showLeadingGlyph = true,
+  showTrailingBadge = true,
+  className = '',
+}) => (
   <div
     aria-hidden="true"
     className={`bg-[var(--bg-surface)] border border-[var(--border-hair)] rounded-[var(--radius-card)] overflow-hidden ${className}`}
   >
-    {/* Mobile stacked skeleton cards */}
+    {/* Mobile stacked skeleton list rows */}
     <div className="md:hidden divide-y divide-[var(--border-hair)]">
       {Array.from({ length: Math.min(rows, 3) }).map((_, idx) => (
-        <div key={`m-row-${idx}`} className="p-3 flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-3">
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton variant="pill" className="h-5 w-16" />
-          </div>
-          <Skeleton variant="text" lines={2} />
-        </div>
+        <SkeletonListRow
+          key={`m-row-${idx}`}
+          mode="mobile"
+          rowIndex={idx}
+          showLeadingGlyph={showLeadingGlyph}
+          showTrailingBadge={showTrailingBadge}
+        />
       ))}
     </div>
 
-    {/* Desktop table skeleton */}
+    {/* Desktop table skeleton list rows */}
     <div className="hidden md:block">
       <div
         className="bg-[var(--bg-sunken)] border-b border-[var(--border-hair)] px-4 py-2.5 grid gap-4"
@@ -386,18 +510,14 @@ export const SkeletonTable: React.FC<{
       </div>
       <div className="divide-y divide-[var(--border-hair)]">
         {Array.from({ length: rows }).map((_, rIdx) => (
-          <div
+          <SkeletonListRow
             key={`row-${rIdx}`}
-            className="px-4 py-3.5 grid gap-4 items-center"
-            style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-          >
-            {Array.from({ length: columns }).map((__, cIdx) => (
-              <Skeleton
-                key={`cell-${rIdx}-${cIdx}`}
-                className={`h-4 ${getSkeletonCellWidthClass(rIdx, cIdx)}`}
-              />
-            ))}
-          </div>
+            mode="grid"
+            columns={columns}
+            rowIndex={rIdx}
+            showLeadingGlyph={showLeadingGlyph}
+            showTrailingBadge={showTrailingBadge}
+          />
         ))}
       </div>
     </div>

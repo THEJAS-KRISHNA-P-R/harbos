@@ -12,6 +12,7 @@ import {
   Select,
   Modal,
   EmptyState,
+  ErrorBoundary,
   WorkspaceSkeleton,
   DockScaleIcon,
   AuctionGavelBellIcon,
@@ -163,6 +164,7 @@ export const App: React.FC = () => {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
+  const [bootstrapRefreshing, setBootstrapRefreshing] = useState(false);
   const [personaSwitching, setPersonaSwitching] = useState(false);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(() => {
     if (typeof window !== 'undefined') {
@@ -205,11 +207,16 @@ export const App: React.FC = () => {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   const loadBootstrap = useCallback(async (jwt: string): Promise<void> => {
-    const data = await apiRequest<BootstrapData>('/api/v1/bootstrap', {
-      method: 'GET',
-      token: jwt,
-    });
-    setBootstrap(data);
+    setBootstrapRefreshing(true);
+    try {
+      const data = await apiRequest<BootstrapData>('/api/v1/bootstrap', {
+        method: 'GET',
+        token: jwt,
+      });
+      setBootstrap(data);
+    } finally {
+      setBootstrapRefreshing(false);
+    }
   }, []);
 
   const loadOperatorProfile = useCallback(async (jwt: string): Promise<void> => {
@@ -478,16 +485,18 @@ export const App: React.FC = () => {
 
   const getWorkspaceBadge = (wsId: WorkspaceId): string | undefined => {
     if (!bootstrap) return undefined;
-    if (wsId === 'weighing') return `${bootstrap.lots.length} lots`;
+    const lots = Array.isArray(bootstrap.lots) ? bootstrap.lots : [];
+    const reversals = Array.isArray(bootstrap.reversals) ? bootstrap.reversals : [];
+    if (wsId === 'weighing') return `${lots.length} lots`;
     if (wsId === 'pit') {
-      const openCount = bootstrap.lots.filter((l) => l.available_boxes > 0).length;
+      const openCount = lots.filter((l) => l.available_boxes > 0).length;
       return `${openCount} open`;
     }
     if (wsId === 'inspector') return 'QC';
     if (wsId === 'buyer') return '#101';
     if (wsId === 'fisher') return '95%';
     if (wsId === 'harbour') {
-      const pendingRev = bootstrap.reversals.filter(
+      const pendingRev = reversals.filter(
         (r) => r.status === 'PENDING_SECOND_APPROVAL'
       ).length;
       return pendingRev > 0 ? `${pendingRev} key` : 'OK';
@@ -667,6 +676,12 @@ export const App: React.FC = () => {
 
   const ShellComponent = docksideMobileLayout ? DocksideShell : AppShell;
 
+  const activeNavLabel = useMemo(() => {
+    const item = navItems.find((n) => n.id === activeWorkspace);
+    if (!item) return activeWorkspace;
+    return lang === 'ml' ? item.labelMl : item.labelEn;
+  }, [navItems, activeWorkspace, lang]);
+
   return (
     <ShellComponent
       brandSubtitle={bootstrap?.tenant?.name_en ?? 'Munambam HMS'}
@@ -675,6 +690,8 @@ export const App: React.FC = () => {
       onSelectNav={handleSelectWorkspace}
       lang={lang}
       headerRight={headerControls}
+      refreshing={bootstrapRefreshing}
+      refreshingLabel={t('workspaces.syncingData')}
       operatorCard={{
         initials: activeInitials,
         fullName: user?.fullName ?? 'Capt. Mathew Thomas',
@@ -723,63 +740,92 @@ export const App: React.FC = () => {
           />
         </div>
       ) : (
-        <React.Suspense
-          fallback={
-            <WorkspaceSkeleton workspace={activeWorkspace} label={t('workspaces.loadingWorkspace')} />
+        <ErrorBoundary
+          contextLabel={activeNavLabel}
+          title={t('errors.workspaceTitle')}
+          description={t('errors.workspaceDescription')}
+          retryLabel={t('errors.tryAgain')}
+          reloadLabel={t('errors.reloadPage')}
+          detailsLabel={t('errors.technicalDetails')}
+          resetKeys={[activeWorkspace, user?.userId, screenMode, bootstrap]}
+          testId="workspace-error-boundary"
+          onReset={() => (token ? loadBootstrap(token) : undefined)}
+          secondaryAction={
+            user && activeWorkspace !== ROLE_DEFAULT_WORKSPACE[user.role]
+              ? {
+                  label: t('errors.returnToDefaultWorkspace'),
+                  onClick: () => handleSelectWorkspace(ROLE_DEFAULT_WORKSPACE[user.role]),
+                }
+              : undefined
           }
         >
-          {activeWorkspace === 'weighing' && (
-            <WeighingWorkspace
-              data={bootstrap}
-              token={token}
-              loading={personaSwitching}
-              onRefresh={() => loadBootstrap(token)}
-            />
-          )}
-          {activeWorkspace === 'pit' && (
-            <PitWorkspace
-              data={bootstrap}
-              token={token}
-              loading={personaSwitching}
-              onRefresh={() => loadBootstrap(token)}
-            />
-          )}
-          {activeWorkspace === 'buyer' && (
-            <BuyerWorkspace
-              data={bootstrap}
-              token={token}
-              loading={personaSwitching}
-              onRefresh={() => loadBootstrap(token)}
-            />
-          )}
-          {activeWorkspace === 'fisher' && (
-            <FisherWorkspace data={bootstrap} loading={personaSwitching} />
-          )}
-          {activeWorkspace === 'inspector' && (
-            <InspectorWorkspace
-              data={bootstrap}
-              token={token}
-              loading={personaSwitching}
-              onRefresh={() => loadBootstrap(token)}
-            />
-          )}
-          {activeWorkspace === 'harbour' && (
-            <HarbourWorkspace
-              data={bootstrap}
-              token={token}
-              loading={personaSwitching}
-              onRefresh={() => loadBootstrap(token)}
-            />
-          )}
-          {activeWorkspace === 'platform' && (
-            <PlatformWorkspace
-              data={bootstrap}
-              token={token}
-              loading={personaSwitching}
-              onRefresh={() => loadBootstrap(token)}
-            />
-          )}
-        </React.Suspense>
+          <React.Suspense
+            fallback={
+              <WorkspaceSkeleton workspace={activeWorkspace} label={t('workspaces.loadingWorkspace')} />
+            }
+          >
+            {activeWorkspace === 'weighing' && (
+              <WeighingWorkspace
+                data={bootstrap}
+                token={token}
+                loading={personaSwitching}
+                refreshing={bootstrapRefreshing}
+                onRefresh={() => loadBootstrap(token)}
+              />
+            )}
+            {activeWorkspace === 'pit' && (
+              <PitWorkspace
+                data={bootstrap}
+                token={token}
+                loading={personaSwitching}
+                refreshing={bootstrapRefreshing}
+                onRefresh={() => loadBootstrap(token)}
+              />
+            )}
+            {activeWorkspace === 'buyer' && (
+              <BuyerWorkspace
+                data={bootstrap}
+                token={token}
+                loading={personaSwitching}
+                refreshing={bootstrapRefreshing}
+                onRefresh={() => loadBootstrap(token)}
+              />
+            )}
+            {activeWorkspace === 'fisher' && (
+              <FisherWorkspace
+                data={bootstrap}
+                loading={personaSwitching}
+                refreshing={bootstrapRefreshing}
+              />
+            )}
+            {activeWorkspace === 'inspector' && (
+              <InspectorWorkspace
+                data={bootstrap}
+                token={token}
+                loading={personaSwitching}
+                refreshing={bootstrapRefreshing}
+                onRefresh={() => loadBootstrap(token)}
+              />
+            )}
+            {activeWorkspace === 'harbour' && (
+              <HarbourWorkspace
+                data={bootstrap}
+                token={token}
+                loading={personaSwitching}
+                refreshing={bootstrapRefreshing}
+                onRefresh={() => loadBootstrap(token)}
+              />
+            )}
+            {activeWorkspace === 'platform' && (
+              <PlatformWorkspace
+                data={bootstrap}
+                token={token}
+                loading={personaSwitching}
+                onRefresh={() => loadBootstrap(token)}
+              />
+            )}
+          </React.Suspense>
+        </ErrorBoundary>
       )}
 
       <OperatorProfileDrawer

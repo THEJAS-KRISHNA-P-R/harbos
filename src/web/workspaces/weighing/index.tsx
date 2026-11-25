@@ -41,8 +41,9 @@ export const WeighingWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
   loading?: boolean;
+  refreshing?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, loading = false, onRefresh }) => {
+}> = ({ data, token, loading = false, refreshing = false, onRefresh }) => {
   const { t } = useI18n();
   const [selectedVesselId, setSelectedVesselId] = useState(data.vessels[0]?.vessel_id ?? 'VSL-01');
   const [selectedSpeciesId, setSelectedSpeciesId] = useState(data.species[0]?.species_id ?? 'SPC-01');
@@ -310,6 +311,16 @@ export const WeighingWorkspace: React.FC<{
         </div>
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
           <Button
+            variant="outline"
+            size="sm"
+            aria-label="Refresh landed lots"
+            icon={<RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            loading={refreshing}
+            onClick={() => void onRefresh()}
+          >
+            Refresh
+          </Button>
+          <Button
             variant="secondary"
             size="sm"
             icon={<ScanLine className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
@@ -509,6 +520,7 @@ export const WeighingWorkspace: React.FC<{
           caption="Landed Lots Registry"
           columns={columns}
           rows={data.lots}
+          loading={refreshing || submitting}
           getRowKey={(r) => r.lot_id}
           onRowClick={(r) => {
             const v = data.vessels.find((x) => x.vessel_id === r.vessel_id);

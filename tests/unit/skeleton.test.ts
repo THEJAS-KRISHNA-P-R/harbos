@@ -5,6 +5,8 @@ import {
   getSkeletonTextLineWidths,
   resolveSkeletonCardGridColumnsClass,
   resolveSkeletonListLayout,
+  resolveSkeletonRowColumnKind,
+  resolveSkeletonRowCount,
   resolveWorkspaceSkeletonPreset,
   shouldShowWorkspaceSkeleton,
 } from '../../src/web/ui/skeleton-layout';
@@ -105,4 +107,20 @@ test('resolveSkeletonCardGridColumnsClass maps responsive column presets cleanly
   assert.equal(resolveSkeletonCardGridColumnsClass(4), 'grid-cols-2 lg:grid-cols-4');
   assert.equal(resolveSkeletonCardGridColumnsClass(6), 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6');
 });
+
+test('resolveSkeletonRowColumnKind maps primary, text, numeric, and trailing badge columns', () => {
+  assert.equal(resolveSkeletonRowColumnKind(0, 6), 'primary');
+  assert.equal(resolveSkeletonRowColumnKind(1, 6), 'text');
+  assert.equal(resolveSkeletonRowColumnKind(4, 6), 'numeric');
+  assert.equal(resolveSkeletonRowColumnKind(5, 6), 'badge');
+  assert.equal(resolveSkeletonRowColumnKind(5, 6, { hasTrailingBadge: false }), 'numeric');
+});
+
+test('resolveSkeletonRowCount bounds skeleton row count smoothly to existing table height', () => {
+  assert.equal(resolveSkeletonRowCount(0, 3, 5), 3);
+  assert.equal(resolveSkeletonRowCount(2, 3, 5), 3);
+  assert.equal(resolveSkeletonRowCount(4, 3, 5), 4);
+  assert.equal(resolveSkeletonRowCount(25, 3, 5), 5);
+});
+
 

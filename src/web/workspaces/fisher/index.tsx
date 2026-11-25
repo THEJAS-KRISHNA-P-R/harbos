@@ -6,6 +6,7 @@ import {
   DataTable,
   Modal,
   Toast,
+  SkeletonList,
   WorkspaceSkeleton,
   StatutoryLedgerWaterfallSvgDecor,
   type DataTableColumn,
@@ -24,7 +25,8 @@ import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 export const FisherWorkspace: React.FC<{
   data: BootstrapData;
   loading?: boolean;
-}> = ({ data, loading = false }) => {
+  refreshing?: boolean;
+}> = ({ data, loading = false, refreshing = false }) => {
   const { t } = useI18n();
   const fisherman = data.fishermen[0];
   const vessel = data.vessels.find((v) => v.owner_fisherman_id === fisherman?.fisherman_id);
@@ -272,6 +274,16 @@ export const FisherWorkspace: React.FC<{
             />
           ))}
         </div>
+        {refreshing ? (
+          <div className="mt-4">
+            <SkeletonList
+              items={5}
+              variant="key-value"
+              surface="plain"
+              label="Refreshing settlement split…"
+            />
+          </div>
+        ) : (
         <ul className="mt-4 flex flex-col divide-y divide-[var(--border-hair)]">
           {[
             {
@@ -326,6 +338,7 @@ export const FisherWorkspace: React.FC<{
             </li>
           ))}
         </ul>
+        )}
       </Card>
 
       {/* Today's Catch Sales Table */}
@@ -349,6 +362,7 @@ export const FisherWorkspace: React.FC<{
           caption="Fisherman Passbook Sales"
           columns={columns}
           rows={data.allocations}
+          loading={refreshing}
           getRowKey={(r) => r.allocation_id}
         />
       </Card>

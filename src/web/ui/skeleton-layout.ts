@@ -207,3 +207,40 @@ export function resolveSkeletonCardGridColumnsClass(
   return CARD_GRID_COLUMN_CLASSES[columns] ?? CARD_GRID_COLUMN_CLASSES[2];
 }
 
+export type SkeletonRowColumnKind = 'primary' | 'text' | 'numeric' | 'badge';
+
+export function resolveSkeletonRowColumnKind(
+  colIndex: number,
+  totalColumns: number,
+  options?: { hasLeadingPrimary?: boolean; hasTrailingBadge?: boolean }
+): SkeletonRowColumnKind {
+  const safeTotal = Math.max(1, Math.floor(totalColumns));
+  const hasLeadingPrimary = options?.hasLeadingPrimary ?? true;
+  const hasTrailingBadge = options?.hasTrailingBadge ?? true;
+
+  if (hasLeadingPrimary && colIndex === 0) {
+    return 'primary';
+  }
+  if (hasTrailingBadge && safeTotal >= 3 && colIndex === safeTotal - 1) {
+    return 'badge';
+  }
+  if (safeTotal >= 4 && colIndex >= safeTotal - 2) {
+    return 'numeric';
+  }
+  return 'text';
+}
+
+export function resolveSkeletonRowCount(
+  existingRowCount: number,
+  minRows = 3,
+  maxRows = 5
+): number {
+  const safeMin = Math.max(1, Math.floor(minRows));
+  const safeMax = Math.max(safeMin, Math.floor(maxRows));
+  if (!Number.isFinite(existingRowCount) || existingRowCount <= 0) {
+    return safeMin;
+  }
+  return Math.max(safeMin, Math.min(safeMax, Math.floor(existingRowCount)));
+}
+
+

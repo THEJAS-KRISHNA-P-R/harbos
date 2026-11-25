@@ -53,6 +53,7 @@ import {
   SkeletonMetric,
   SkeletonCard,
   SkeletonList,
+  SkeletonListRow,
   SkeletonCardGrid,
   SkeletonTable,
   PerformanceDashboardSkeleton,
@@ -61,23 +62,42 @@ import {
   type SkeletonTone,
   type SkeletonVariant,
   type SkeletonListProps,
+  type SkeletonListRowProps,
   type SkeletonCardGridProps,
 } from './Skeleton.tsx';
 import {
-  getSkeletonCellWidthClass,
+  resolveSkeletonRowCount,
   shouldShowWorkspaceSkeleton,
   type SkeletonCardGridColumns,
   type SkeletonCardGridVariant,
   type SkeletonListVariant,
+  type SkeletonRowColumnKind,
   type WorkspaceSkeletonKind,
 } from './skeleton-layout.ts';
+import {
+  TopProgressBar,
+  type TopProgressBarProps,
+} from './TopProgressBar.tsx';
+import {
+  ErrorBoundary,
+  type ErrorBoundaryFallbackProps,
+  type ErrorBoundaryProps,
+  type ErrorBoundarySecondaryAction,
+} from './ErrorBoundary.tsx';
 
 export {
   humanizeCode,
+  TopProgressBar,
+  type TopProgressBarProps,
+  ErrorBoundary,
+  type ErrorBoundaryProps,
+  type ErrorBoundaryFallbackProps,
+  type ErrorBoundarySecondaryAction,
   Skeleton,
   SkeletonMetric,
   SkeletonCard,
   SkeletonList,
+  SkeletonListRow,
   SkeletonCardGrid,
   SkeletonTable,
   PerformanceDashboardSkeleton,
@@ -87,7 +107,9 @@ export {
   type SkeletonTone,
   type SkeletonVariant,
   type SkeletonListProps,
+  type SkeletonListRowProps,
   type SkeletonListVariant,
+  type SkeletonRowColumnKind,
   type SkeletonCardGridProps,
   type SkeletonCardGridVariant,
   type SkeletonCardGridColumns,
@@ -648,6 +670,9 @@ export function DataTable<T>({
   const trailingCol = columns.length > 2 ? columns[columns.length - 1] : undefined;
   const detailCols = columns.slice(1, trailingCol ? -1 : undefined);
 
+  const skeletonRowCount = resolveSkeletonRowCount(rows.length, 3, 5);
+  const columnAlignments = columns.map((col) => col.align);
+
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-hair)] rounded-[var(--radius-card)] overflow-hidden">
       {/* Mobile stacked card-row view (< 768px): zero horizontal scrolling */}
@@ -656,21 +681,17 @@ export function DataTable<T>({
         className="md:hidden divide-y divide-[var(--border-hair)] overflow-x-hidden"
       >
         {loading ? (
-          Array.from({ length: 3 }).map((_, idx) => (
-            <div
-              key={`mobile-skeleton-${idx}`}
-              role="status"
-              aria-busy="true"
-              aria-label="Loading records…"
-              className="p-3 flex flex-col gap-2"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton variant="pill" className="h-5 w-16" />
-              </div>
-              <Skeleton variant="text" lines={2} />
-            </div>
-          ))
+          <div role="status" aria-busy="true" aria-label="Loading records…">
+            <span className="sr-only">Loading records…</span>
+            {Array.from({ length: Math.min(skeletonRowCount, 4) }).map((_, idx) => (
+              <SkeletonListRow
+                key={`mobile-skeleton-${idx}`}
+                mode="mobile"
+                rowIndex={idx}
+                testId="datatable-mobile-skeleton-row"
+              />
+            ))}
+          </div>
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState title={emptyTitle} description={emptyDescription} />
@@ -769,14 +790,15 @@ export function DataTable<T>({
           </thead>
           <tbody className="divide-y divide-[var(--border-hair)]">
             {loading ? (
-              Array.from({ length: 4 }).map((_, idx) => (
-                <tr key={`skeleton-${idx}`} aria-busy="true">
-                  {columns.map((col, colIdx) => (
-                    <td key={col.key} className="px-3 py-3 lg:px-4">
-                      <Skeleton className={`h-4 ${getSkeletonCellWidthClass(idx, colIdx)}`} />
-                    </td>
-                  ))}
-                </tr>
+              Array.from({ length: skeletonRowCount }).map((_, idx) => (
+                <SkeletonListRow
+                  key={`skeleton-${idx}`}
+                  mode="table"
+                  columns={columns.length}
+                  rowIndex={idx}
+                  columnAlignments={columnAlignments}
+                  testId="datatable-skeleton-row"
+                />
               ))
             ) : rows.length === 0 ? (
               <tr>
@@ -1308,6 +1330,10 @@ export interface ShellLayoutProps {
   lang: 'en' | 'ml';
   headerRight: React.ReactNode;
   operatorCard?: OperatorCardSummary | undefined;
+  /** Shows a subtle slim indeterminate progress bar along the top edge during background data sync */
+  refreshing?: boolean | undefined;
+  /** Accessible status label announced while synchronizing */
+  refreshingLabel?: string | undefined;
   children: React.ReactNode;
 }
 
@@ -1319,6 +1345,8 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
   lang,
   headerRight,
   operatorCard,
+  refreshing = false,
+  refreshingLabel,
   children,
 }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -1342,7 +1370,12 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
   const showBottomNav = navItems.length > 1;
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[var(--bg-app)] text-[var(--text-primary)] overflow-x-hidden">
+    <div className="min-h-screen flex flex-col md:flex-row bg-[var(--bg-app)] text-[var(--text-primary)] overflow-x-clip">
+      <TopProgressBar
+        active={refreshing}
+        label={refreshingLabel}
+        placement="fixed"
+      />
       <SpeciesGlyphSprite />
       {/* Mobile Slide-Over Navigation Drawer (< 768px) */}
       {mobileNavOpen && (
@@ -1464,11 +1497,11 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
       {/* Collapsible Left Sidebar on Tablet (md: 768px+) & MacBook/Desktop (lg/xl/2xl) */}
       <aside
         aria-label="Primary Sidebar"
-        className={`hidden md:flex shrink-0 bg-[var(--bg-sunken)] border-r border-[var(--border-hair)] flex-col justify-between sticky top-0 h-screen transition-all duration-200 no-print ${
+        className={`hidden md:flex shrink-0 bg-[var(--bg-sunken)] border-r border-[var(--border-hair)] flex-col justify-between sticky top-0 self-start h-screen h-dvh transition-[width,padding] duration-200 no-print ${
           sidebarCollapsed ? 'w-[76px] p-3 items-center' : 'w-[252px] xl:w-[268px] p-4'
         }`}
       >
-        <div className="flex flex-col gap-5 w-full overflow-y-auto">
+        <div className="flex flex-col gap-5 w-full min-h-0 flex-1 overflow-y-auto">
           <div
             className={`pt-1 flex items-center ${
               sidebarCollapsed ? 'flex-col gap-2.5 justify-center' : 'px-2 justify-between gap-2'
@@ -1708,12 +1741,19 @@ export const DocksideShell: React.FC<ShellLayoutProps> = ({
   onSelectNav,
   lang,
   headerRight,
+  refreshing = false,
+  refreshingLabel,
   children,
 }) => {
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)] pb-24 overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)] pb-24 overflow-x-clip">
+      <TopProgressBar
+        active={refreshing}
+        label={refreshingLabel}
+        placement="fixed"
+      />
       <SpeciesGlyphSprite />
-      <header className="px-3 sm:px-6 lg:px-8 py-3 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex flex-wrap items-center justify-between gap-3 no-print">
+      <header className="sticky top-0 z-30 px-3 sm:px-6 lg:px-8 py-3 bg-[var(--bg-surface)]/95 backdrop-blur-sm border-b border-[var(--border-hair)] flex flex-wrap items-center justify-between gap-3 no-print">
         <div className="flex items-center gap-2.5">
           <MaritimeCrestSvgEmblem size={36} />
           <div>

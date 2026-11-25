@@ -29,8 +29,9 @@ export const BuyerWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
   loading?: boolean;
+  refreshing?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, loading = false, onRefresh }) => {
+}> = ({ data, token, loading = false, refreshing = false, onRefresh }) => {
   const { t } = useI18n();
   const buyer = data.buyers[0];
   const [bidPriceRupees, setBidPriceRupees] = useState('760');
@@ -402,6 +403,7 @@ export const BuyerWorkspace: React.FC<{
           caption="Live Harbour Lot Watchlist"
           columns={lotColumns}
           rows={data.lots}
+          loading={refreshing || submittingLotId !== null}
           getRowKey={(r) => r.lot_id}
         />
       </Card>
@@ -412,6 +414,7 @@ export const BuyerWorkspace: React.FC<{
           caption="Buyer Purchases and Export Dossiers"
           columns={purchaseColumns}
           rows={data.allocations}
+          loading={refreshing || submittingLotId !== null}
           getRowKey={(r) => r.allocation_id}
         />
       </Card>

@@ -21,6 +21,7 @@ import {
   Select,
   Toast,
   SpeciesGlyph,
+  SkeletonList,
   WorkspaceSkeleton,
   humanizeCode,
   type DataTableColumn,
@@ -48,10 +49,12 @@ export const HarbourWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
   loading?: boolean;
+  refreshing?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, loading = false, onRefresh }) => {
+}> = ({ data, token, loading = false, refreshing = false, onRefresh }) => {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'today' | 'masterdata' | 'accounting' | 'reports' | 'audit'>('today');
+  const [mutating, setMutating] = useState(false);
   const [utrInput, setUtrInput] = useState('UTR-FEDB-20261106-994182');
   const [floorEditSpeciesId, setFloorEditSpeciesId] = useState(
     data.species[0]?.species_id ?? 'SPC-01'
@@ -83,8 +86,11 @@ export const HarbourWorkspace: React.FC<{
     0n
   );
 
+  const isFetchingRows = refreshing || mutating;
+
   const handleUpdateFloorSchedule = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
+    setMutating(true);
     try {
       const floorPaise = BigInt(Math.round((Number(floorEditRupees) || 0) * 100));
       await apiRequest('/api/v1/floor-prices', {
@@ -108,10 +114,13 @@ export const HarbourWorkspace: React.FC<{
         title: 'Update Failed',
         msg: err instanceof Error ? err.message : 'Error updating floor price',
       });
+    } finally {
+      setMutating(false);
     }
   };
 
   const handleGenerateBatch = async (): Promise<void> => {
+    setMutating(true);
     try {
       const res = await apiRequest<{ batchCode: string }>('/api/v1/payout-batches', {
         method: 'POST',
@@ -129,10 +138,13 @@ export const HarbourWorkspace: React.FC<{
         title: 'Batch Generation Failed',
         msg: err instanceof Error ? err.message : 'Error',
       });
+    } finally {
+      setMutating(false);
     }
   };
 
   const handleReconcileBatch = async (batchId: string): Promise<void> => {
+    setMutating(true);
     try {
       await apiRequest(`/api/v1/payout-batches/${batchId}/reconcile`, {
         method: 'POST',
@@ -151,10 +163,13 @@ export const HarbourWorkspace: React.FC<{
         title: 'UTR Reconciliation Failed',
         msg: err instanceof Error ? err.message : 'Error',
       });
+    } finally {
+      setMutating(false);
     }
   };
 
   const handleApproveDualKeyReversal = async (reversalId: string): Promise<void> => {
+    setMutating(true);
     try {
       const res = await apiRequest<{ compensatingJournalId: string }>(
         '/api/v1/ledger/reversals',
@@ -179,6 +194,8 @@ export const HarbourWorkspace: React.FC<{
             ? err.message
             : 'Approver must be a different user than requester',
       });
+    } finally {
+      setMutating(false);
     }
   };
 
@@ -520,6 +537,7 @@ export const HarbourWorkspace: React.FC<{
           caption="Statutory Harbour Audit Logs"
           columns={auditColumns}
           rows={filteredAuditLogs}
+          loading={isFetchingRows}
           getRowKey={(r) => r.audit_id}
           emptyTitle="No matching audit log entries"
           emptyDescription="No audit records matched your actor, action code, or target ID query. Try clearing the search filter."
@@ -632,6 +650,7 @@ export const HarbourWorkspace: React.FC<{
                 caption="Payout Batches"
                 columns={batchColumns}
                 rows={data.payoutBatches}
+                loading={isFetchingRows}
                 getRowKey={(r) => r.batch_id}
               />
             </Card>
@@ -649,6 +668,7 @@ export const HarbourWorkspace: React.FC<{
                 caption="Species Floor Schedule"
                 columns={speciesColumns}
                 rows={data.species}
+                loading={isFetchingRows}
                 getRowKey={(r) => r.species_id}
               />
             </Card>
@@ -658,6 +678,7 @@ export const HarbourWorkspace: React.FC<{
                 caption="Licensed Auctioneers Registry"
                 columns={licenceColumns}
                 rows={data.licences}
+                loading={isFetchingRows}
                 getRowKey={(r) => r.licence_id}
               />
             </Card>
@@ -741,6 +762,15 @@ export const HarbourWorkspace: React.FC<{
                 <Badge tone="info" label={String(allAuditLogs.length)} />
               }
             >
+              {isFetchingRows ? (
+                <SkeletonList
+                  items={4}
+                  variant="activity"
+                  surface="sunken"
+                  testId="harbour-recent-activity-skeleton"
+                  label="Refreshing recent harbour activity…"
+                />
+              ) : (
               <div className="flex flex-col gap-2.5">
                 {allAuditLogs.slice(0, 5).map((log) => (
                   <div
@@ -772,6 +802,7 @@ export const HarbourWorkspace: React.FC<{
                   {t('harbour.openFullAudit')}
                 </Button>
               </div>
+              )}
             </Card>
           </aside>
         </div>
@@ -809,6 +840,7 @@ export const HarbourWorkspace: React.FC<{
                 caption="Payout Batches and UTR Reconciliation"
                 columns={batchColumns}
                 rows={data.payoutBatches}
+                loading={isFetchingRows}
                 getRowKey={(r) => r.batch_id}
               />
             </Card>
@@ -821,6 +853,7 @@ export const HarbourWorkspace: React.FC<{
                 caption="Dual-Key Reversal Queue"
                 columns={reversalColumns}
                 rows={data.reversals}
+                loading={isFetchingRows}
                 getRowKey={(r) => r.reversal_id}
               />
             </Card>
@@ -835,6 +868,7 @@ export const HarbourWorkspace: React.FC<{
                 caption="Statutory Ledger Accounts"
                 columns={accountColumns}
                 rows={data.accounts}
+                loading={isFetchingRows}
                 getRowKey={(r) => r.account_id}
               />
             </Card>
