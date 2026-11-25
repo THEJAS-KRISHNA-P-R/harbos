@@ -260,7 +260,7 @@
     "gradeUnfitDetail": "Quarantine and prevent auction"
   },
   "fisher": {
-    "listenBtn": "കേൾക്കുക (Listen)",
+    "listenBtn": "Listen",
     "passbookCsvBtn": "Passbook CSV",
     "salesSubtitle": "Verified against the append-only harbour ledger",
     "saleRefHeader": "Sale Reference",
@@ -309,7 +309,7 @@
     "changeNumber": "Change number",
     "help": "Trouble signing in? Ask your harbour office to confirm your number is registered.",
     "backToWorkspace": "Back to workspace",
-    "language": "മലയാളം"
+    "language": "English"
   },
   "errors": {
     "workspaceTitle": "This workspace encountered an unexpected error",

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { QrCode, Scale, Printer, RefreshCw, ShieldAlert, ScanLine } from 'lucide-react';
 import {
   Button,
@@ -14,7 +14,6 @@ import {
   Modal,
   Toast,
   WorkspaceSkeleton,
-  DocksideWeighingScaleSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
 import {
@@ -24,6 +23,7 @@ import {
   type BootstrapData,
   type LotRow,
 } from '@web/lib/api.ts';
+import { extractManglishName } from '@web/lib/ui-formatters.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 import { BarcodeScannerModal } from '@web/shared/BarcodeScannerModal.tsx';
@@ -68,6 +68,24 @@ export const WeighingWorkspace: React.FC<{
     qrSignature: string;
     createdAt: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (
+      data.vessels.length > 0 &&
+      !data.vessels.some((v) => v.vessel_id === selectedVesselId)
+    ) {
+      setSelectedVesselId(data.vessels[0]!.vessel_id);
+    }
+  }, [data.vessels, selectedVesselId]);
+
+  useEffect(() => {
+    if (
+      data.species.length > 0 &&
+      !data.species.some((s) => s.species_id === selectedSpeciesId)
+    ) {
+      setSelectedSpeciesId(data.species[0]!.species_id);
+    }
+  }, [data.species, selectedSpeciesId]);
 
   const handleVesselQrScan = (rawCode: string): void => {
     const q = rawCode.trim().toUpperCase();
@@ -156,7 +174,9 @@ export const WeighingWorkspace: React.FC<{
       setStickerModalLot({
         lotCode: res.lotCode,
         vesselName: v ? `${v.vessel_name_en} (${v.registration_no})` : selectedVesselId,
-        speciesName: s ? `${s.name_en} / ${s.name_ml}` : selectedSpeciesId,
+        speciesName: s
+          ? `${s.name_en} (${extractManglishName(s.name_ml, s.code)})`
+          : selectedSpeciesId,
         boxes: res.totalBoxes,
         netGrams: res.netGrams,
         qrSignature: res.qrSignature,
@@ -237,14 +257,15 @@ export const WeighingWorkspace: React.FC<{
       header: t('weighing.species'),
       render: (r) => {
         const s = data.species.find((x) => x.species_id === r.species_id);
+        const manglish = extractManglishName(s?.name_ml, s?.code);
         return (
           <div className="flex items-center gap-2 min-w-0">
-            <SpeciesGlyph code={`${s?.code ?? ''} ${s?.name_en ?? ''}`} size={20} className="shrink-0" />
+            <SpeciesGlyph code={`${s?.code ?? ''} ${s?.name_en ?? ''}`} size={18} className="shrink-0" />
             <div className="min-w-0">
               <div className="font-medium">{s?.name_en ?? r.species_id}</div>
-              <div lang="ml" className="text-xs text-[var(--text-secondary)]">
-                {s?.name_ml}
-              </div>
+              {manglish && (
+                <div className="text-xs text-[var(--text-muted)]">{manglish}</div>
+              )}
             </div>
           </div>
         );
@@ -293,28 +314,23 @@ export const WeighingWorkspace: React.FC<{
   }
 
   return (
-    <div className="flex flex-col gap-3.5 sm:gap-5">
-      {/* Top Status & Connectivity Banner */}
-      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          <div className="hidden sm:block shrink-0">
-            <DocksideWeighingScaleSvgDecor size={36} />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              {t('workspaces.weighingTitle')}
-            </h1>
-            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
-              {data.vessels.length} {t('dockside.vessel')} · Secure QR code
-            </p>
-          </div>
+    <div className="flex flex-col gap-4 sm:gap-5">
+      {/* Lightweight Action Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            {t('workspaces.weighingTitle')}
+          </h1>
+          <p className="text-xs text-[var(--text-muted)] truncate">
+            {data.vessels.length} registered vessel{data.vessels.length === 1 ? '' : 's'} · {data.species.length} catch species
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <Button
             variant="outline"
             size="sm"
             aria-label="Refresh landed lots"
-            icon={<RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            icon={<RefreshCw className="w-3.5 h-3.5" />}
             loading={refreshing}
             onClick={() => void onRefresh()}
           >
@@ -323,7 +339,7 @@ export const WeighingWorkspace: React.FC<{
           <Button
             variant="secondary"
             size="sm"
-            icon={<ScanLine className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            icon={<ScanLine className="w-3.5 h-3.5" />}
             onClick={() => setScannerOpen(true)}
           >
             {t('actions.scanVesselQr')}
@@ -337,11 +353,11 @@ export const WeighingWorkspace: React.FC<{
             <Button
               variant="primary"
               size="sm"
-              icon={<RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+              icon={<RefreshCw className="w-3.5 h-3.5" />}
               onClick={handleSyncOfflineQueue}
               loading={submitting}
             >
-              Sync {offlineQueue.length} Queued Lots Now
+              Sync {offlineQueue.length} Queued
             </Button>
           )}
         </div>
@@ -356,8 +372,8 @@ export const WeighingWorkspace: React.FC<{
         />
       )}
 
-      {/* Metrics Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+      {/* Clean 3-Metric Strip (zero decorative pill clutter) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="col-span-2 sm:col-span-1">
           <Metric
             featured
@@ -365,23 +381,20 @@ export const WeighingWorkspace: React.FC<{
             value={formatKgFromGrams(
               data.lots.reduce((acc, l) => acc + BigInt(l.net_grams), 0n)
             )}
-            status={{ tone: 'info', label: 'EXACT TO THE GRAM' }}
+            sublabel="Exact gram precision"
           />
         </div>
         <Metric
           label={t('weighing.taggedLotsToday')}
           value={String(data.lots.length)}
           unit="LOTS"
-          status={{ tone: 'ok', label: 'TAMPER-PROOF' }}
+          sublabel="Signed dockside QR tags"
         />
         <Metric
           label={t('weighing.offlineQueue')}
           value={String(offlineQueue.length)}
           unit="PENDING"
-          status={{
-            tone: simulateOffline ? 'warn' : 'ok',
-            label: simulateOffline ? 'OFFLINE' : 'SYNCED',
-          }}
+          sublabel={simulateOffline ? 'Offline capture active' : 'Live sync active'}
         />
       </div>
 
@@ -529,7 +542,9 @@ export const WeighingWorkspace: React.FC<{
             setStickerModalLot({
               lotCode: r.lot_code,
               vesselName: v ? `${v.vessel_name_en} (${v.registration_no})` : r.vessel_id,
-              speciesName: s ? `${s.name_en} / ${s.name_ml}` : r.species_id,
+              speciesName: s
+                ? `${s.name_en} (${extractManglishName(s.name_ml, s.code)})`
+                : r.species_id,
               boxes: r.total_boxes,
               netGrams: r.net_grams,
               qrSignature: r.qr_signature,

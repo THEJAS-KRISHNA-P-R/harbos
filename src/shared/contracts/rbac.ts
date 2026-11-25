@@ -73,7 +73,7 @@ export const WORKSPACES: ReadonlyArray<WorkspaceDefinition> = [
     path: '/w/fisher',
     titleEn: 'Fisher Passbook',
     titleMl: 'മത്സ്യത്തൊഴിലാളി പാസ്ബുക്ക്', // TODO-REVIEW-ML
-    subtitleEn: 'Transparent 5% Act split card, 40% bonus escrow balance, Malayalam voice & statements',
+    subtitleEn: 'Transparent 5% Act split card, 40% bonus escrow balance, voice readout & statements',
     allowedRoles: ['FISHERMAN_BOAT_OWNER', 'SUPER_ADMIN'],
     docksideMobile: true,
   },
@@ -125,6 +125,7 @@ export const ROUTE_RBAC_MATRIX: ReadonlyArray<RoutePolicy> = [
   { method: 'POST', pattern: '/api/v1/auth/refresh', roles: 'PUBLIC' },
   { method: 'POST', pattern: '/api/v1/auth/logout', roles: 'PUBLIC' },
   { method: 'POST', pattern: '/api/v1/auth/persona-switch', roles: 'PUBLIC' },
+  { method: 'POST', pattern: '/api/v1/auth/tenant-switch', roles: ['SUPER_ADMIN'] },
   { method: 'GET', pattern: '/api/v1/me', roles: ALL_ROLES },
   { method: 'GET', pattern: '/api/v1/auth/profile', roles: ALL_ROLES },
   { method: 'POST', pattern: '/api/v1/auth/profile', roles: ALL_ROLES },

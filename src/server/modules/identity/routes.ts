@@ -16,6 +16,7 @@ import {
   PersonaSwitchBodySchema,
   PrivacyEraseBodySchema,
   RecordConsentBodySchema,
+  TenantSwitchBodySchema,
   UpdateLocaleBodySchema,
   UpdateProfileBodySchema,
 } from './schemas.ts';
@@ -27,6 +28,7 @@ import {
   recordOperatorConsent,
   requestOtpForPhone,
   switchDemoPersona,
+  switchSuperAdminTenant,
   updateOperatorLocale,
   updateOperatorProfile,
   verifyOtpAndIssueSession,
@@ -180,6 +182,25 @@ export const identityRoutes = [
   }),
 
   route({
+    method: 'POST',
+    path: '/api/v1/auth/tenant-switch',
+    roles: ['SUPER_ADMIN'],
+    summary: 'Switch active tenant context for an authenticated SUPER_ADMIN',
+    tags: ['identity'],
+    body: TenantSwitchBodySchema,
+    audit: 'SUPER_ADMIN_TENANT_SWITCHED',
+    handler: async (ctx) => {
+      const out = await switchSuperAdminTenant(
+        ctx.platformDb,
+        ctx.auth!,
+        ctx.body.tenantId
+      );
+      setRefreshTokenCookie(ctx.res, out.rawRefreshToken);
+      return out.body;
+    },
+  }),
+
+  route({
     method: 'GET',
     path: '/api/v1/me',
     roles: ALL_ROLES,
@@ -194,7 +215,7 @@ export const identityRoutes = [
     roles: ALL_ROLES,
     summary: 'Fetch operator profile and personal audit trail',
     tags: ['identity'],
-    handler: async (ctx) => getOperatorProfile(ctx.db, ctx.auth!),
+    handler: async (ctx) => getOperatorProfile(ctx.db, ctx.auth!, ctx.platformDb),
   }),
 
   route({

@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Globe,
+  Building2,
   CheckCircle2,
   BookOpen,
+  Plus,
   Search,
 } from 'lucide-react';
 import {
@@ -26,14 +27,27 @@ import {
 import {
   apiRequest,
   formatOperatorInitials,
+  getInMemoryAccessToken,
   getRoleDisplayMeta,
   resolveGlobalKeyboardShortcut,
+  setInMemoryAccessToken,
   type BootstrapData,
   type CommandPaletteItem,
   type OperatorProfileResponse,
   type OperatorRow,
   type SessionUser,
 } from '@web/lib/api.ts';
+import {
+  clearStoredSession,
+  extractWorkspaceFromPathname,
+  getBrowserLocalStorage,
+  isWorkspaceAuthorizedForRole,
+  persistStoredJwt,
+  persistStoredWorkspace,
+  readStoredJwt,
+  readStoredWorkspace,
+  resolveRehydratedWorkspace,
+} from '@web/lib/session-storage.ts';
 import { WORKSPACES, type Role, type WorkspaceId } from '@shared/contracts/rbac.ts';
 import {
   LedgerInspectorDrawer,
@@ -42,6 +56,7 @@ import {
 import { OperatorProfileDrawer } from '@web/app/components/OperatorProfileDrawer.tsx';
 import { LoginPortalScreen } from '@web/app/components/LoginPortalScreen.tsx';
 import { CommandPaletteModal } from '@web/app/components/CommandPaletteModal.tsx';
+import { TenantOnboardingWizard } from '@web/app/components/TenantOnboardingWizard.tsx';
 import { useI18n } from '@web/i18n/index.tsx';
 
 const WeighingWorkspace = React.lazy(async () => {
@@ -160,17 +175,23 @@ const GOLDEN_VECTOR_ROWS: ReadonlyArray<GoldenVectorRow> = [
 ];
 
 export const App: React.FC = () => {
-  const { locale: lang, setLocale: setLang, t } = useI18n();
+  const { locale: lang, t } = useI18n();
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
   const [bootstrapRefreshing, setBootstrapRefreshing] = useState(false);
   const [personaSwitching, setPersonaSwitching] = useState(false);
+  const [tenantSwitching, setTenantSwitching] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const activeTenantIdRef = useRef<string | undefined>(undefined);
+  activeTenantIdRef.current = user?.tenantId;
+  const didMountBootstrapRef = useRef(false);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(() => {
     if (typeof window !== 'undefined') {
-      const m = window.location.pathname.match(/^\/w\/([a-z]+)$/);
-      const ws = m?.[1] as WorkspaceId | undefined;
-      if (ws && ws in DEV_DEEP_LINK_ROLE) return ws;
+      const pathWs = extractWorkspaceFromPathname(window.location.pathname);
+      if (pathWs) return pathWs;
+      const storedWs = readStoredWorkspace(getBrowserLocalStorage());
+      if (storedWs) return storedWs;
     }
     return 'harbour';
   });
@@ -238,21 +259,41 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  const commitAccessToken = useCallback((nextToken: string | null): void => {
+    setToken(nextToken);
+    persistStoredJwt(getBrowserLocalStorage(), nextToken);
+    setInMemoryAccessToken(nextToken, (refreshedToken) => {
+      setToken(refreshedToken);
+      persistStoredJwt(getBrowserLocalStorage(), refreshedToken);
+    });
+  }, []);
+
+  const commitActiveWorkspace = useCallback((nextWorkspace: WorkspaceId): void => {
+    setActiveWorkspace(nextWorkspace);
+    persistStoredWorkspace(getBrowserLocalStorage(), nextWorkspace);
+  }, []);
+
   const handlePersonaSwitch = useCallback(
     async (
       role: Role,
-      options?: { silentFallbackToLogin?: boolean; preservePathIfAllowed?: boolean }
+      options?: {
+        silentFallbackToLogin?: boolean;
+        preservePathIfAllowed?: boolean;
+        preferredWorkspace?: WorkspaceId | null;
+        tenantId?: string;
+      }
     ): Promise<void> => {
       setPersonaSwitching(true);
       try {
+        const targetTenantId = options?.tenantId ?? activeTenantIdRef.current;
         const res = await apiRequest<{ accessToken: string; user: SessionUser }>(
           '/api/v1/auth/persona-switch',
           {
             method: 'POST',
-            body: { role },
+            body: targetTenantId ? { role, tenantId: targetTenantId } : { role },
           }
         );
-        setToken(res.accessToken);
+        commitAccessToken(res.accessToken);
         setUser(res.user);
         setPhoneInput(res.user.phoneE164);
         setEditFullName(res.user.fullName);
@@ -260,21 +301,18 @@ export const App: React.FC = () => {
         if (!LEDGER_ALLOWED_ROLES.has(res.user.role)) {
           setLedgerDrawerOpen(false);
         }
-        const pathMatch =
+        const pathWs =
           typeof window !== 'undefined'
-            ? window.location.pathname.match(/^\/w\/([a-z]+)$/)
+            ? extractWorkspaceFromPathname(window.location.pathname)
             : null;
-        const requestedWs = pathMatch?.[1] as WorkspaceId | undefined;
-        const requestedDef = requestedWs
-          ? WORKSPACES.find((w) => w.id === requestedWs)
-          : undefined;
+        const candidateWs = options?.preservePathIfAllowed
+          ? (pathWs ?? options?.preferredWorkspace ?? null)
+          : null;
         const targetWorkspace =
-          options?.preservePathIfAllowed &&
-          requestedDef &&
-          requestedDef.allowedRoles.includes(res.user.role)
-            ? requestedDef.id
+          candidateWs && isWorkspaceAuthorizedForRole(candidateWs, res.user.role)
+            ? candidateWs
             : (ROLE_DEFAULT_WORKSPACE[res.user.role] ?? 'harbour');
-        setActiveWorkspace(targetWorkspace);
+        commitActiveWorkspace(targetWorkspace);
         if (typeof window !== 'undefined' && window.location.pathname !== '/ui') {
           window.history.replaceState({}, '', `/w/${targetWorkspace}`);
         }
@@ -293,32 +331,196 @@ export const App: React.FC = () => {
         setPersonaSwitching(false);
       }
     },
-    [loadBootstrap, loadOperatorProfile]
+    [commitAccessToken, commitActiveWorkspace, loadBootstrap, loadOperatorProfile]
+  );
+
+  const handleSwitchTenant = useCallback(
+    async (tenantId: string, targetWorkspace?: WorkspaceId): Promise<void> => {
+      if (!tenantId) return;
+      setTenantSwitching(true);
+      try {
+        let nextToken: string;
+        let nextUser: SessionUser;
+        if (user?.role === 'SUPER_ADMIN' && token) {
+          const res = await apiRequest<{ accessToken: string; user: SessionUser }>(
+            '/api/v1/auth/tenant-switch',
+            {
+              method: 'POST',
+              token,
+              body: { tenantId },
+            }
+          );
+          nextToken = res.accessToken;
+          nextUser = res.user;
+        } else {
+          const res = await apiRequest<{ accessToken: string; user: SessionUser }>(
+            '/api/v1/auth/persona-switch',
+            {
+              method: 'POST',
+              body: { role: user?.role ?? 'SUPER_ADMIN', tenantId },
+            }
+          );
+          nextToken = res.accessToken;
+          nextUser = res.user;
+        }
+        commitAccessToken(nextToken);
+        setUser(nextUser);
+        setPhoneInput(nextUser.phoneE164);
+        setEditFullName(nextUser.fullName);
+        setEditPhoneE164(nextUser.phoneE164);
+        if (targetWorkspace) {
+          commitActiveWorkspace(targetWorkspace);
+          if (typeof window !== 'undefined' && window.location.pathname !== '/ui') {
+            window.history.replaceState({}, '', `/w/${targetWorkspace}`);
+          }
+        }
+        setScreenMode((prev) => (prev === 'gallery' ? 'gallery' : 'workspace'));
+        await Promise.all([
+          loadBootstrap(nextToken),
+          loadOperatorProfile(nextToken),
+        ]);
+      } catch (err) {
+        setAuthError(err instanceof Error ? err.message : 'Failed to switch tenant');
+      } finally {
+        setTenantSwitching(false);
+      }
+    },
+    [
+      user?.role,
+      token,
+      commitAccessToken,
+      commitActiveWorkspace,
+      loadBootstrap,
+      loadOperatorProfile,
+    ]
+  );
+
+  const handleOnboardingComplete = useCallback(
+    async (result: {
+      accessToken: string;
+      user: SessionUser;
+      tenantId: string;
+      tenantName: string;
+      targetWorkspace: WorkspaceId;
+    }): Promise<void> => {
+      setOnboardingOpen(false);
+      commitAccessToken(result.accessToken);
+      setUser(result.user);
+      setPhoneInput(result.user.phoneE164);
+      setEditFullName(result.user.fullName);
+      setEditPhoneE164(result.user.phoneE164);
+      commitActiveWorkspace(result.targetWorkspace);
+      setScreenMode('workspace');
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', `/w/${result.targetWorkspace}`);
+      }
+      await Promise.all([
+        loadBootstrap(result.accessToken),
+        loadOperatorProfile(result.accessToken),
+      ]);
+    },
+    [commitAccessToken, commitActiveWorkspace, loadBootstrap, loadOperatorProfile]
   );
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+    if (didMountBootstrapRef.current) return;
+    didMountBootstrapRef.current = true;
+
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+    if (pathname === '/login') {
       setScreenMode('login');
       return;
     }
-    if (!import.meta.env.PROD) {
-      const pathMatch =
-        typeof window !== 'undefined'
-          ? window.location.pathname.match(/^\/w\/([a-z]+)$/)
-          : null;
-      const requestedWs = pathMatch?.[1] as WorkspaceId | undefined;
-      const initialRole: Role =
-        requestedWs && requestedWs in DEV_DEEP_LINK_ROLE
-          ? DEV_DEEP_LINK_ROLE[requestedWs]
-          : 'HARBOUR_ADMIN';
-      void handlePersonaSwitch(initialRole, {
-        silentFallbackToLogin: true,
-        preservePathIfAllowed: true,
-      });
-    } else {
-      setScreenMode('login');
-    }
-  }, [handlePersonaSwitch]);
+
+    const storage = getBrowserLocalStorage();
+    const storedJwt = readStoredJwt(storage);
+    const storedWorkspace = readStoredWorkspace(storage);
+    const pathWorkspace = extractWorkspaceFromPathname(pathname);
+
+    const runInitialBootstrap = async (): Promise<void> => {
+      if (storedJwt) {
+        setBootstrapRefreshing(true);
+        try {
+          setInMemoryAccessToken(storedJwt, (refreshedToken) => {
+            setToken(refreshedToken);
+            persistStoredJwt(storage, refreshedToken);
+          });
+          const [profileRes, bootstrapRes] = await Promise.all([
+            apiRequest<OperatorProfileResponse>('/api/v1/auth/profile', {
+              method: 'GET',
+              token: storedJwt,
+            }),
+            apiRequest<BootstrapData>('/api/v1/bootstrap', {
+              method: 'GET',
+              token: storedJwt,
+            }),
+          ]);
+
+          const restoredUser: SessionUser = {
+            userId: profileRes.profile.user_id,
+            tenantId: bootstrapRes.tenant?.tenant_id ?? profileRes.profile.tenant_id,
+            phoneE164: profileRes.profile.phone_e164,
+            fullName: profileRes.profile.full_name,
+            role: profileRes.profile.role,
+            entityRefId: profileRes.profile.entity_ref_id,
+          };
+
+          const shouldUseDevDeepLinkInstead =
+            !import.meta.env.PROD &&
+            Boolean(pathWorkspace) &&
+            !isWorkspaceAuthorizedForRole(pathWorkspace!, restoredUser.role);
+
+          if (!shouldUseDevDeepLinkInstead) {
+            const effectiveJwt = getInMemoryAccessToken() ?? storedJwt;
+            const targetWorkspace = resolveRehydratedWorkspace({
+              pathname,
+              storedWorkspace,
+              role: restoredUser.role,
+              roleDefaultWorkspace: ROLE_DEFAULT_WORKSPACE[restoredUser.role] ?? 'harbour',
+            });
+            commitAccessToken(effectiveJwt);
+            setUser(restoredUser);
+            setPhoneInput(restoredUser.phoneE164);
+            setEditFullName(restoredUser.fullName);
+            setEditPhoneE164(restoredUser.phoneE164);
+            setProfileData(profileRes);
+            setBootstrap(bootstrapRes);
+            commitActiveWorkspace(targetWorkspace);
+            if (!LEDGER_ALLOWED_ROLES.has(restoredUser.role)) {
+              setLedgerDrawerOpen(false);
+            }
+            if (typeof window !== 'undefined' && pathname !== '/ui') {
+              window.history.replaceState({}, '', `/w/${targetWorkspace}`);
+            }
+            setScreenMode((prev) => (prev === 'gallery' ? 'gallery' : 'workspace'));
+            return;
+          }
+        } catch {
+          clearStoredSession(storage, { clearWorkspace: false });
+          setInMemoryAccessToken(null);
+        } finally {
+          setBootstrapRefreshing(false);
+        }
+      }
+
+      if (!import.meta.env.PROD) {
+        const preferredWs = pathWorkspace ?? storedWorkspace;
+        const initialRole: Role =
+          preferredWs && preferredWs in DEV_DEEP_LINK_ROLE
+            ? DEV_DEEP_LINK_ROLE[preferredWs]
+            : 'HARBOUR_ADMIN';
+        await handlePersonaSwitch(initialRole, {
+          silentFallbackToLogin: true,
+          preservePathIfAllowed: true,
+          preferredWorkspace: preferredWs,
+        });
+      } else {
+        setScreenMode('login');
+      }
+    };
+
+    void runInitialBootstrap();
+  }, [commitAccessToken, commitActiveWorkspace, handlePersonaSwitch]);
 
   const allowedWorkspaces = useMemo(
     () => (user ? WORKSPACES.filter((w) => w.allowedRoles.includes(user.role)) : []),
@@ -374,7 +576,7 @@ export const App: React.FC = () => {
         const ws = allowedWorkspaces[intent.workspaceIndex];
         if (ws) {
           e.preventDefault();
-          setActiveWorkspace(ws.id);
+          commitActiveWorkspace(ws.id);
           setScreenMode('workspace');
           if (typeof window !== 'undefined') {
             window.history.replaceState({}, '', `/w/${ws.id}`);
@@ -390,6 +592,7 @@ export const App: React.FC = () => {
     profileDrawerOpen,
     allowedWorkspaces,
     canAccessLedger,
+    commitActiveWorkspace,
   ]);
 
   const handleRequestOtp = async (e: React.FormEvent): Promise<void> => {
@@ -426,11 +629,20 @@ export const App: React.FC = () => {
           body: { phoneE164: phoneInput, otpCode: otpInput },
         }
       );
-      setToken(res.accessToken);
+      commitAccessToken(res.accessToken);
       setUser(res.user);
       setEditFullName(res.user.fullName);
       setEditPhoneE164(res.user.phoneE164);
-      setActiveWorkspace(ROLE_DEFAULT_WORKSPACE[res.user.role]);
+      const nextWs = resolveRehydratedWorkspace({
+        pathname: typeof window !== 'undefined' ? window.location.pathname : '/',
+        storedWorkspace: readStoredWorkspace(getBrowserLocalStorage()),
+        role: res.user.role,
+        roleDefaultWorkspace: ROLE_DEFAULT_WORKSPACE[res.user.role],
+      });
+      commitActiveWorkspace(nextWs);
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', `/w/${nextWs}`);
+      }
       setScreenMode('workspace');
       await Promise.all([
         loadBootstrap(res.accessToken),
@@ -458,7 +670,7 @@ export const App: React.FC = () => {
           },
         }
       );
-      setToken(res.accessToken);
+      commitAccessToken(res.accessToken);
       setUser(res.user);
       await Promise.all([
         loadBootstrap(res.accessToken),
@@ -535,7 +747,7 @@ export const App: React.FC = () => {
     if (user && !allowedWorkspaceIds.has(target)) {
       return;
     }
-    setActiveWorkspace(target);
+    commitActiveWorkspace(target);
     setScreenMode('workspace');
     if (typeof window !== 'undefined') {
       window.history.replaceState({}, '', `/w/${target}`);
@@ -604,26 +816,16 @@ export const App: React.FC = () => {
       )}
 
       {canAccessLedger && (
-        <Button
-          variant="primary"
-          size="sm"
-          icon={<BookOpen className="w-4 h-4" />}
+        <button
+          type="button"
           onClick={() => setLedgerDrawerOpen(true)}
           aria-label="Open Ledger Inspector"
+          className="h-8 w-8 sm:w-auto sm:h-9 sm:px-3.5 rounded-[var(--radius-pill)] bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-[var(--brand-fg)] inline-flex items-center justify-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer shrink-0"
         >
+          <BookOpen className="w-4 h-4 shrink-0" />
           <span className="hidden sm:inline">Ledger</span>
-        </Button>
+        </button>
       )}
-
-      <Button
-        variant="outline"
-        size="sm"
-        icon={<Globe className="w-3.5 h-3.5 hidden sm:inline-block" />}
-        onClick={() => setLang(lang === 'en' ? 'ml' : 'en')}
-        aria-label={lang === 'en' ? 'Switch to Malayalam' : 'Switch to English'}
-      >
-        {lang === 'en' ? 'മലയാളം' : 'EN'}
-      </Button>
 
       <button
         type="button"
@@ -647,30 +849,100 @@ export const App: React.FC = () => {
   );
 
   const displayedOperators: ReadonlyArray<OperatorRow> = bootstrap?.users ?? [];
+  const allTenants = bootstrap?.allTenants ?? [];
+  const canOnboardTenant = user?.role === 'SUPER_ADMIN' || !import.meta.env.PROD;
+
+  const sidebarTenantSwitcher = (
+    <div className="px-2 flex flex-col gap-2">
+      <div className="p-2.5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+            <Building2 className="w-3 h-3" />
+            Active Harbour
+          </span>
+          {allTenants.length > 1 && (
+            <span className="text-[10px] font-mono-code text-[var(--text-muted)]">
+              {allTenants.length} sites
+            </span>
+          )}
+        </div>
+
+        {allTenants.length > 1 ? (
+          <select
+            aria-label="Switch active harbour tenant"
+            disabled={tenantSwitching}
+            value={bootstrap?.tenant?.tenant_id ?? user?.tenantId ?? ''}
+            onChange={(e) => {
+              const nextId = e.target.value;
+              if (nextId && nextId !== bootstrap?.tenant?.tenant_id) {
+                void handleSwitchTenant(nextId);
+              }
+            }}
+            className="w-full h-8 px-2 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-strong)]/60 text-xs font-semibold text-[var(--text-primary)] cursor-pointer focus:outline-none focus:border-[var(--brand)]"
+          >
+            {allTenants.map((ten) => (
+              <option key={ten.tenant_id} value={ten.tenant_id}>
+                {ten.name_en}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
+            {bootstrap?.tenant?.name_en ?? 'Munambam Fishing Harbour'}
+          </div>
+        )}
+
+        {canOnboardTenant && (
+          <button
+            type="button"
+            data-testid="sidebar-onboard-harbour-btn"
+            onClick={() => setOnboardingOpen(true)}
+            className="w-full h-7 px-2.5 rounded-[var(--radius-pill)] bg-[var(--brand-soft)] hover:bg-[var(--brand)] text-[var(--brand-soft-fg)] hover:text-[var(--brand-fg)] text-[11px] font-semibold inline-flex items-center justify-center gap-1 transition-colors cursor-pointer"
+          >
+            <Plus className="w-3 h-3" />
+            Onboard New Harbour
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   if (screenMode === 'login') {
     return (
-      <LoginPortalScreen
-        user={user}
-        phoneInput={phoneInput}
-        onChangePhoneInput={setPhoneInput}
-        otpInput={otpInput}
-        onChangeOtpInput={setOtpInput}
-        devEchoOtp={devEchoOtp}
-        authError={authError}
-        onDismissAuthError={() => setAuthError(null)}
-        authSuccess={authSuccess}
-        onDismissAuthSuccess={() => setAuthSuccess(null)}
-        onRequestOtp={handleRequestOtp}
-        onVerifyOtp={handleVerifyOtp}
-        displayedOperators={displayedOperators}
-        onPersonaSwitch={handlePersonaSwitch}
-        onBackToWorkspace={() => setScreenMode('workspace')}
-        onOpenActiveProfile={() => {
-          setScreenMode('workspace');
-          setProfileDrawerOpen(true);
-        }}
-      />
+      <>
+        <LoginPortalScreen
+          user={user}
+          phoneInput={phoneInput}
+          onChangePhoneInput={setPhoneInput}
+          otpInput={otpInput}
+          onChangeOtpInput={setOtpInput}
+          devEchoOtp={devEchoOtp}
+          authError={authError}
+          onDismissAuthError={() => setAuthError(null)}
+          authSuccess={authSuccess}
+          onDismissAuthSuccess={() => setAuthSuccess(null)}
+          onRequestOtp={handleRequestOtp}
+          onVerifyOtp={handleVerifyOtp}
+          displayedOperators={displayedOperators}
+          onPersonaSwitch={handlePersonaSwitch}
+          onBackToWorkspace={() => setScreenMode('workspace')}
+          onOpenActiveProfile={() => {
+            setScreenMode('workspace');
+            setProfileDrawerOpen(true);
+          }}
+          {...(canOnboardTenant
+            ? { onOpenOnboarding: () => setOnboardingOpen(true) }
+            : {})}
+        />
+        <TenantOnboardingWizard
+          open={onboardingOpen}
+          onClose={() => setOnboardingOpen(false)}
+          token={token}
+          currentUserRole={user?.role ?? null}
+          existingTenants={allTenants}
+          onProvisionComplete={handleOnboardingComplete}
+        />
+      </>
     );
   }
 
@@ -679,8 +951,8 @@ export const App: React.FC = () => {
   const activeNavLabel = useMemo(() => {
     const item = navItems.find((n) => n.id === activeWorkspace);
     if (!item) return activeWorkspace;
-    return lang === 'ml' ? item.labelMl : item.labelEn;
-  }, [navItems, activeWorkspace, lang]);
+    return item.labelEn;
+  }, [navItems, activeWorkspace]);
 
   return (
     <ShellComponent
@@ -690,7 +962,8 @@ export const App: React.FC = () => {
       onSelectNav={handleSelectWorkspace}
       lang={lang}
       headerRight={headerControls}
-      refreshing={bootstrapRefreshing}
+      sidebarHeaderExtra={sidebarTenantSwitcher}
+      refreshing={bootstrapRefreshing || tenantSwitching}
       refreshingLabel={t('workspaces.syncingData')}
       operatorCard={{
         initials: activeInitials,
@@ -820,8 +1093,11 @@ export const App: React.FC = () => {
               <PlatformWorkspace
                 data={bootstrap}
                 token={token}
-                loading={personaSwitching}
+                loading={personaSwitching || tenantSwitching}
                 onRefresh={() => loadBootstrap(token)}
+                onSwitchTenant={handleSwitchTenant}
+                onSwitchRoleDashboard={(role) => handlePersonaSwitch(role)}
+                onOpenOnboarding={() => setOnboardingOpen(true)}
               />
             )}
           </React.Suspense>
@@ -879,6 +1155,7 @@ export const App: React.FC = () => {
         onClose={() => setCommandPaletteOpen(false)}
         bootstrap={bootstrap}
         allowedWorkspaceIds={allowedWorkspaceIds}
+        activeWorkspace={activeWorkspace}
         canAccessLedger={canAccessLedger}
         onExecuteItem={handleExecuteCommandItem}
       />
@@ -901,6 +1178,14 @@ export const App: React.FC = () => {
           </p>
         </div>
       </Modal>
+      <TenantOnboardingWizard
+        open={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+        token={token}
+        currentUserRole={user?.role ?? null}
+        existingTenants={allTenants}
+        onProvisionComplete={handleOnboardingComplete}
+      />
     </ShellComponent>
   );
 };

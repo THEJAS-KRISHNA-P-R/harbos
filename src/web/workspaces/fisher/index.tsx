@@ -8,7 +8,6 @@ import {
   Toast,
   SkeletonList,
   WorkspaceSkeleton,
-  StatutoryLedgerWaterfallSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
 import {
@@ -56,28 +55,28 @@ export const FisherWorkspace: React.FC<{
   );
   const totalCommissionPaise = totalHammerPaise - totalNetPaise;
 
-  const handleListenMalayalam = (): void => {
-    const mlSummary = `ഇന്നത്തെ ലേല തുക ${formatInrFromPaise(
+  const handleListenSummary = (): void => {
+    const summary = `Total catch sale value ${formatInrFromPaise(
       totalHammerPaise
-    )}. അഞ്ച് ശതമാനം കമ്മീഷൻ കഴിഞ്ഞ് നിങ്ങളുടെ അക്കൗണ്ടിൽ ലഭിക്കുന്ന തുക ${formatInrFromPaise(
+    )}. After 5 percent statutory commission, your net payout is ${formatInrFromPaise(
       totalNetPaise
-    )}. വാർഷിക ബോണസ് എസ്ക്രോ ബാലൻസ് ${formatInrFromPaise(totalBonusPaise)}.`;
+    )}. Annual bonus escrow balance is ${formatInrFromPaise(totalBonusPaise)}.`;
 
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try {
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(mlSummary);
-        utterance.lang = 'ml-IN';
+        const utterance = new SpeechSynthesisUtterance(summary);
+        utterance.lang = 'en-IN';
         window.speechSynthesis.speak(utterance);
-        setSpeechNotice(mlSummary);
+        setSpeechNotice(summary);
         return;
       } catch (err: unknown) {
         if (err instanceof Error) {
-          setSpeechNotice(mlSummary);
+          setSpeechNotice(summary);
         }
       }
     }
-    setSpeechNotice(mlSummary);
+    setSpeechNotice(summary);
   };
 
   const handleExportPassbookCsv = (): void => {
@@ -163,33 +162,29 @@ export const FisherWorkspace: React.FC<{
 
   return (
     <div className="flex flex-col gap-3.5 sm:gap-5">
-      <div className="p-3 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-4">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          <div className="hidden sm:block shrink-0">
-            <StatutoryLedgerWaterfallSvgDecor size={36} />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              {t('workspaces.fisherTitle')}
-            </h1>
-            <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
-              {fisherman?.full_name} · {vessel?.vessel_name_en} ({vessel?.registration_no})
-            </p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            {t('workspaces.fisherTitle')}
+          </h1>
+          <p className="text-xs text-[var(--text-muted)] truncate">
+            {fisherman?.full_name ?? 'Vessel Owner'}
+            {vessel ? ` · ${vessel.vessel_name_en} (${vessel.registration_no})` : ''}
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <Button
             variant="primary"
             size="sm"
-            icon={<Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-            onClick={handleListenMalayalam}
+            icon={<Volume2 className="w-3.5 h-3.5" />}
+            onClick={handleListenSummary}
           >
             {t('fisher.listenBtn')}
           </Button>
           <Button
             variant="secondary"
             size="sm"
-            icon={<Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            icon={<Printer className="w-3.5 h-3.5" />}
             onClick={() => {
               setIsReprint(false);
               setVoucherModalOpen(true);
@@ -200,7 +195,7 @@ export const FisherWorkspace: React.FC<{
           <Button
             variant="outline"
             size="sm"
-            icon={<FileDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            icon={<FileDown className="w-3.5 h-3.5" />}
             onClick={handleExportPassbookCsv}
           >
             {t('fisher.passbookCsvBtn')}
@@ -211,7 +206,7 @@ export const FisherWorkspace: React.FC<{
       {speechNotice && (
         <Toast
           tone="info"
-          title="മലയാളം ശബ്ദ വിവരണം (Malayalam Passbook Readout)"
+          title="Passbook Audio Readout"
           message={speechNotice}
           onDismiss={() => setSpeechNotice(null)}
         />

@@ -36,7 +36,11 @@ import {
   type BootstrapData,
   type AllocationRow,
 } from '@web/lib/api.ts';
-import { clampBoxCount, computePitSalePreview } from '@web/lib/ui-formatters.ts';
+import {
+  clampBoxCount,
+  computePitSalePreview,
+  extractManglishName,
+} from '@web/lib/ui-formatters.ts';
 import type { AuctionMode } from '@shared/ids.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
@@ -389,7 +393,7 @@ export const PitWorkspace: React.FC<{
                           </div>
                           <div className="text-[11px] font-mono-code text-[var(--text-secondary)] truncate">
                             {lot.lot_code}
-                            {sp?.name_ml ? ` · ${sp.name_ml}` : ''}
+                            {sp ? ` · ${extractManglishName(sp.name_ml, sp.code)}` : ''}
                           </div>
                         </div>
                       </div>
@@ -835,7 +839,7 @@ export const PitWorkspace: React.FC<{
                     },
                     {
                       label: t('dockside.species'),
-                      value: sp ? `${sp.name_en} / ${sp.name_ml}` : 'Catch',
+                      value: sp ? `${sp.name_en} (${extractManglishName(sp.name_ml, sp.code)})` : 'Catch',
                     },
                     {
                       label: t('dockside.buyerPaddle'),

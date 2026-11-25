@@ -9,7 +9,6 @@ import {
   Toast,
   SpeciesGlyph,
   WorkspaceSkeleton,
-  StatutoryLedgerWaterfallSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
 import {
@@ -24,6 +23,7 @@ import {
 import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
+import { extractManglishName } from '@web/lib/ui-formatters.ts';
 
 export const BuyerWorkspace: React.FC<{
   data: BootstrapData;
@@ -143,14 +143,15 @@ export const BuyerWorkspace: React.FC<{
       header: t('buyer.speciesGradeHeader'),
       render: (r) => {
         const sp = data.species.find((s) => s.species_id === r.species_id);
+        const manglish = extractManglishName(sp?.name_ml, sp?.code);
         return (
           <div className="flex items-center gap-2 flex-wrap">
-            <SpeciesGlyph code={`${sp?.code ?? ''} ${sp?.name_en ?? ''}`} size={20} />
+            <SpeciesGlyph code={`${sp?.code ?? ''} ${sp?.name_en ?? ''}`} size={18} />
             <div>
               <div className="font-medium">{sp?.name_en}</div>
-              <div lang="ml" className="text-xs text-[var(--text-secondary)]">
-                {sp?.name_ml}
-              </div>
+              {manglish && (
+                <div className="text-xs text-[var(--text-muted)]">{manglish}</div>
+              )}
             </div>
             <Badge
               tone={
@@ -265,23 +266,21 @@ export const BuyerWorkspace: React.FC<{
 
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
-      <div className="p-3.5 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="hidden sm:block shrink-0">
-            <StatutoryLedgerWaterfallSvgDecor size={36} />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              {t('workspaces.buyerTitle')}
-            </h1>
-            <p className="text-xs text-[var(--text-secondary)] truncate">
-              {buyer?.buyer_name} · Paddle #{buyer?.paddle_no} · GSTIN {buyer?.gstin}
-            </p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            {t('workspaces.buyerTitle')}
+          </h1>
+          <p className="text-xs text-[var(--text-muted)] truncate">
+            {buyer?.buyer_name ?? 'No wholesale buyer registered yet'}
+            {buyer ? ` · Paddle #${buyer.paddle_no}${buyer.gstin ? ` · GSTIN ${buyer.gstin}` : ''}` : ''}
+          </p>
         </div>
-        <span className="text-xs font-mono-code font-bold text-[var(--brand)] shrink-0">
-          Paddle #{buyer?.paddle_no ?? 101}
-        </span>
+        {buyer && (
+          <span className="text-xs font-mono-code font-bold text-[var(--brand)] shrink-0">
+            Paddle #{buyer.paddle_no}
+          </span>
+        )}
       </div>
 
       {feedback && (
@@ -475,7 +474,7 @@ export const BuyerWorkspace: React.FC<{
                     },
                     {
                       label: t('dockside.species'),
-                      value: sp ? `${sp.name_en} / ${sp.name_ml}` : 'Catch',
+                      value: sp ? `${sp.name_en} (${extractManglishName(sp.name_ml, sp.code)})` : 'Catch',
                     },
                     {
                       label: t('dockside.buyerPaddle'),

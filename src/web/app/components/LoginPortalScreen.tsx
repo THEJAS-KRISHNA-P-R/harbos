@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, MessageSquareText, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Building2, MessageSquareText, ShieldCheck } from 'lucide-react';
 import {
   Button,
   Input,
@@ -34,6 +34,7 @@ export interface LoginPortalScreenProps {
   onPersonaSwitch: (role: Role) => Promise<void>;
   onBackToWorkspace: () => void;
   onOpenActiveProfile: () => void;
+  onOpenOnboarding?: () => void;
 }
 
 export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
@@ -52,9 +53,10 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
   displayedOperators,
   onPersonaSwitch,
   onBackToWorkspace,
+  onOpenOnboarding,
 }) => {
   const isDevSandbox = !import.meta.env.PROD;
-  const { locale, setLocale, t } = useI18n();
+  const { t } = useI18n();
   const [editingNumber, setEditingNumber] = useState(false);
   const otpStep = (Boolean(authSuccess) || Boolean(devEchoOtp)) && !editingNumber;
   const [fetchedDemoOperators, setFetchedDemoOperators] = useState<ReadonlyArray<OperatorRow>>([]);
@@ -107,23 +109,22 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
               HarbourOS
             </span>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setLocale(locale === 'en' ? 'ml' : 'en')}
-            aria-label={locale === 'en' ? 'Switch to Malayalam' : 'Switch to English'}
-          >
-            {t('login.language')}
-          </Button>
+          {onOpenOnboarding && isDevSandbox && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Building2 className="w-3.5 h-3.5" />}
+              onClick={onOpenOnboarding}
+            >
+              Onboard Harbour
+            </Button>
+          )}
         </div>
         <DawnHarbourHeroScene className="mt-5 w-[min(300px,78vw)]" />
         <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--brand)]">
           {t('login.harbour')}
         </p>
-        <p
-          lang={locale}
-          className="mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-[var(--text-secondary)]"
-        >
+        <p className="mt-1.5 max-w-[320px] text-center text-[15px] leading-snug text-[var(--text-secondary)]">
           {t('login.tagline')}
         </p>
       </header>
@@ -135,10 +136,10 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
           className="rounded-[28px] bg-[var(--bg-surface)] border border-[var(--border-hair)] shadow-[var(--shadow-overlay)] p-5 sm:p-6 flex flex-col gap-5"
         >
           <div>
-            <h1 id="login-title" lang={locale} className="text-2xl font-bold tracking-tight">
+            <h1 id="login-title" className="text-2xl font-bold tracking-tight">
               {t('login.welcome')}
             </h1>
-            <p lang={locale} className="mt-1 text-sm text-[var(--text-secondary)]">
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               {t('login.subtitle')}
             </p>
           </div>
@@ -186,7 +187,7 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
             <form onSubmit={(e) => void onVerifyOtp(e)} className="flex flex-col gap-4">
               <div className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] bg-[var(--bg-tint)] px-3.5 py-3">
                 <div className="min-w-0">
-                  <div lang={locale} className="text-xs text-[var(--text-secondary)]">
+                  <div className="text-xs text-[var(--text-secondary)]">
                     {t('login.codeSentTo')}
                   </div>
                   <div className="font-mono-code text-sm font-bold truncate">{phoneInput}</div>
@@ -231,7 +232,7 @@ export const LoginPortalScreen: React.FC<LoginPortalScreenProps> = ({
             </form>
           )}
 
-          <p lang={locale} className="flex items-start gap-2 text-xs text-[var(--text-muted)]">
+          <p className="flex items-start gap-2 text-xs text-[var(--text-muted)]">
             <ShieldCheck className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
             <span>{t('login.help')}</span>
           </p>

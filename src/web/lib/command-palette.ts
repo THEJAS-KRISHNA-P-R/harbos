@@ -1,7 +1,9 @@
-import type { WorkspaceId } from '@shared/contracts/rbac.ts';
+import { WORKSPACES, type WorkspaceId } from '@shared/contracts/rbac.ts';
 import { formatInrFromPaise, formatKgFromGrams } from '@shared/domain/money.ts';
 import type { BootstrapData } from '@web/lib/api.ts';
 import { humanizeCode } from '@web/lib/ui-formatters.ts';
+
+export type WorkspaceGroup = 'operations' | 'clearing' | 'governance';
 
 export type CommandPaletteCategory =
   | 'QUICK_ACTION'
@@ -10,6 +12,39 @@ export type CommandPaletteCategory =
   | 'PAYOUT_BATCH'
   | 'JOURNAL'
   | 'PARTY';
+
+export type CommandPaletteFilterScope = 'all' | 'workspaces' | WorkspaceGroup;
+
+export const WORKSPACE_GROUP_MAP: Record<WorkspaceId, WorkspaceGroup> = {
+  weighing: 'operations',
+  pit: 'operations',
+  inspector: 'operations',
+  buyer: 'clearing',
+  fisher: 'clearing',
+  harbour: 'governance',
+  platform: 'governance',
+};
+
+export const WORKSPACE_GROUP_META: Record<
+  WorkspaceGroup,
+  { label: string; navTitle: string; shortLabel: string }
+> = {
+  operations: {
+    label: 'Operations',
+    navTitle: 'Dockside & Pit',
+    shortLabel: 'OPERATIONS',
+  },
+  clearing: {
+    label: 'Clearing',
+    navTitle: 'Clearing & Passbooks',
+    shortLabel: 'CLEARING',
+  },
+  governance: {
+    label: 'Governance',
+    navTitle: 'Governance & Engine',
+    shortLabel: 'GOVERNANCE',
+  },
+};
 
 export interface CommandPaletteItem {
   id: string;
@@ -26,13 +61,164 @@ export interface CommandPaletteItem {
     | 'OPEN_LOGIN'
     | 'OPEN_UI_KIT';
   targetWorkspace?: WorkspaceId | undefined;
+  workspaceGroup?: WorkspaceGroup | undefined;
+  keywords?: ReadonlyArray<string> | undefined;
+}
+
+const WORKSPACE_QUICK_JUMP_COPY: Record<
+  WorkspaceId,
+  { title: string; subtitle: string; keywords: ReadonlyArray<string> }
+> = {
+  weighing: {
+    title: 'Weighing & Lots',
+    subtitle: 'Dockside vessel intake, catch species tagging, exact gram weights & signed QR stickers',
+    keywords: ['weighing', 'dockside', 'scale', 'qr', 'lots', 'vessels', 'species', 'operations'],
+  },
+  pit: {
+    title: 'Auction Pit Pad',
+    subtitle: 'Live pit shout, Dutch clock bids, partial box splits & atomic 5% commission clearing',
+    keywords: ['pit', 'auction', 'auctioneer', 'dutch', 'hammer', 'bids', 'operations'],
+  },
+  inspector: {
+    title: 'Quality Inspection',
+    subtitle: 'Organoleptic grading, core temperature check, unfit lot quarantine & section 21 QC',
+    keywords: ['inspector', 'quality', 'qc', 'grade', 'temperature', 's21', 'operations'],
+  },
+  buyer: {
+    title: 'Buyer Clearing',
+    subtitle: 'Real-time escrow trading limit, remote lot bidding, buyer invoices & export dossiers',
+    keywords: ['buyer', 'wholesale', 'paddle', 'escrow', 'credit', 'invoices', 'clearing'],
+  },
+  fisher: {
+    title: 'Fisher Passbook',
+    subtitle: '95% fisherman net catch settlements, 40% annual bonus escrow & printable statements',
+    keywords: ['fisher', 'fisherman', 'boat', 'vessel', 'passbook', 'bonus', 'clearing'],
+  },
+  harbour: {
+    title: 'Harbour & Ledger',
+    subtitle: 'Floor price schedules, licensed auctioneers, payout batches, UTR clearing & dual-key reversals',
+    keywords: ['harbour', 'hms', 'admin', 'accountant', 'ledger', 'floor', 'payout', 'governance'],
+  },
+  platform: {
+    title: 'Platform Admin',
+    subtitle: 'Multi-tenant harbour provisioning, role dashboards, SQL migrations & system telemetry',
+    keywords: ['platform', 'super', 'tenant', 'onboarding', 'migrations', 'sdk', 'governance'],
+  },
+};
+
+const GROUP_SORT_ORDER: Record<WorkspaceGroup, number> = {
+  operations: 0,
+  clearing: 1,
+  governance: 2,
+};
+
+export function buildWorkspaceQuickJumpItems(
+  allowedWorkspaceIds?: ReadonlySet<WorkspaceId>
+): ReadonlyArray<CommandPaletteItem> {
+  return WORKSPACES.filter(
+    (ws) => !allowedWorkspaceIds || allowedWorkspaceIds.has(ws.id)
+  )
+    .slice()
+    .sort(
+      (a, b) =>
+        GROUP_SORT_ORDER[WORKSPACE_GROUP_MAP[a.id]] -
+        GROUP_SORT_ORDER[WORKSPACE_GROUP_MAP[b.id]]
+    )
+    .map((ws) => {
+      const group = WORKSPACE_GROUP_MAP[ws.id];
+      const groupMeta = WORKSPACE_GROUP_META[group];
+      const copy = WORKSPACE_QUICK_JUMP_COPY[ws.id];
+      return {
+        id: `ws-${ws.id}`,
+        category: 'WORKSPACE',
+        title: copy.title,
+        subtitle: copy.subtitle,
+        badgeLabel: groupMeta.shortLabel,
+        badgeTone: group === 'operations' ? 'info' : group === 'clearing' ? 'ok' : 'neutral',
+        actionType: 'OPEN_WORKSPACE',
+        targetWorkspace: ws.id,
+        workspaceGroup: group,
+        keywords: [
+          ws.id,
+          ws.path,
+          ws.titleEn,
+          group,
+          groupMeta.label,
+          groupMeta.navTitle,
+          ...copy.keywords,
+        ],
+      };
+    });
+}
+
+function scoreCommandPaletteMatch(item: CommandPaletteItem, tokens: ReadonlyArray<string>): number {
+  const titleLower = item.title.toLowerCase();
+  const subtitleLower = item.subtitle.toLowerCase();
+  const badgeLower = item.badgeLabel.toLowerCase();
+  const categoryLower = item.category.toLowerCase();
+  const groupLower = (item.workspaceGroup ?? '').toLowerCase();
+  const targetLower = (item.targetWorkspace ?? '').toLowerCase();
+  const keywordsLower = (item.keywords ?? []).join(' ').toLowerCase();
+  const haystack = `${titleLower} ${subtitleLower} ${badgeLower} ${categoryLower} ${groupLower} ${targetLower} ${keywordsLower}`;
+
+  for (const token of tokens) {
+    if (!haystack.includes(token)) {
+      return -1;
+    }
+  }
+
+  let score = item.category === 'WORKSPACE' ? 40 : 10;
+  const fullQuery = tokens.join(' ');
+  if (targetLower === fullQuery || titleLower === fullQuery) {
+    score += 100;
+  } else if (titleLower.startsWith(fullQuery) || targetLower.startsWith(fullQuery)) {
+    score += 70;
+  } else if (groupLower === fullQuery || badgeLower === fullQuery) {
+    score += 60;
+  } else if (titleLower.includes(fullQuery)) {
+    score += 45;
+  } else if (keywordsLower.includes(fullQuery)) {
+    score += 25;
+  }
+  return score;
+}
+
+export function filterCommandPaletteItems(
+  items: ReadonlyArray<CommandPaletteItem>,
+  query: string,
+  scope: CommandPaletteFilterScope = 'all'
+): ReadonlyArray<CommandPaletteItem> {
+  const scoped = items.filter((item) => {
+    if (scope === 'all') return true;
+    if (scope === 'workspaces') return item.category === 'WORKSPACE';
+    return item.category === 'WORKSPACE' && item.workspaceGroup === scope;
+  });
+
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return scoped;
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  const scored: Array<{ item: CommandPaletteItem; score: number; index: number }> = [];
+
+  for (let i = 0; i < scoped.length; i += 1) {
+    const item = scoped[i]!;
+    const score = scoreCommandPaletteMatch(item, tokens);
+    if (score >= 0) {
+      scored.push({ item, score, index: i });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score || a.index - b.index);
+  return scored.map((entry) => entry.item);
 }
 
 export function buildCommandPaletteItems(
   bootstrap: BootstrapData | null,
-  query: string
+  query: string,
+  scope: CommandPaletteFilterScope = 'all'
 ): ReadonlyArray<CommandPaletteItem> {
   const items: CommandPaletteItem[] = [
+    ...buildWorkspaceQuickJumpItems(),
     {
       id: 'act-utr-import',
       category: 'QUICK_ACTION',
@@ -41,6 +227,7 @@ export function buildCommandPaletteItems(
       badgeLabel: 'CSV RECONCILE',
       badgeTone: 'ok',
       actionType: 'OPEN_UTR_CSV_IMPORT',
+      keywords: ['utr', 'csv', 'bank', 'reconcile', 'payout', 'clearing'],
     },
     {
       id: 'act-ledger-drawer',
@@ -50,6 +237,7 @@ export function buildCommandPaletteItems(
       badgeLabel: 'SHA-256 LEDGER',
       badgeTone: 'info',
       actionType: 'OPEN_LEDGER_DRAWER',
+      keywords: ['ledger', 'sha256', 'chain', 'journals', 'audit', 'governance'],
     },
     {
       id: 'act-profile-drawer',
@@ -59,46 +247,7 @@ export function buildCommandPaletteItems(
       badgeLabel: 'IDENTITY · RBAC',
       badgeTone: 'neutral',
       actionType: 'OPEN_PROFILE_DRAWER',
-    },
-    {
-      id: 'ws-harbour',
-      category: 'WORKSPACE',
-      title: 'Harbour Command & Statutory Accounting Workspace',
-      subtitle: 'Floor price schedules, Nodal payout batches, Dual-key reversals & statutory returns',
-      badgeLabel: 'WORKSPACE',
-      badgeTone: 'info',
-      actionType: 'OPEN_WORKSPACE',
-      targetWorkspace: 'harbour',
-    },
-    {
-      id: 'ws-pit',
-      category: 'WORKSPACE',
-      title: 'Live Auction Pit Pad & Statutory Clearing',
-      subtitle: 'Pit shout, remote hybrid & Dutch clock allocation with atomic 5% commission split',
-      badgeLabel: 'WORKSPACE',
-      badgeTone: 'info',
-      actionType: 'OPEN_WORKSPACE',
-      targetWorkspace: 'pit',
-    },
-    {
-      id: 'ws-weighing',
-      category: 'WORKSPACE',
-      title: 'Dockside Weighing & Signed QR Lot Tagging',
-      subtitle: 'Capture exact gram catch weights and queue offline dockside lots',
-      badgeLabel: 'WORKSPACE',
-      badgeTone: 'info',
-      actionType: 'OPEN_WORKSPACE',
-      targetWorkspace: 'weighing',
-    },
-    {
-      id: 'ws-platform',
-      category: 'WORKSPACE',
-      title: 'Platform Governance, Telemetry & Schema Migrations',
-      subtitle: 'Inspect Node.js 22 observability metrics, SQL migrations & provision harbour tenants',
-      badgeLabel: 'NODE 22 + PG 16',
-      badgeTone: 'ok',
-      actionType: 'OPEN_WORKSPACE',
-      targetWorkspace: 'platform',
+      keywords: ['profile', 'persona', 'role', 'switch', 'session', 'identity'],
     },
   ];
 
@@ -131,6 +280,7 @@ export function buildCommandPaletteItems(
               : 'info',
         actionType: 'OPEN_WORKSPACE',
         targetWorkspace: 'pit',
+        workspaceGroup: 'operations',
       });
     }
 
@@ -156,18 +306,10 @@ export function buildCommandPaletteItems(
         badgeTone: 'info',
         actionType: 'OPEN_WORKSPACE',
         targetWorkspace: 'buyer',
+        workspaceGroup: 'clearing',
       });
     }
   }
 
-  const q = query.trim().toLowerCase();
-  if (!q) return items;
-
-  return items.filter(
-    (item) =>
-      item.title.toLowerCase().includes(q) ||
-      item.subtitle.toLowerCase().includes(q) ||
-      item.badgeLabel.toLowerCase().includes(q) ||
-      item.category.toLowerCase().includes(q)
-  );
+  return filterCommandPaletteItems(items, query, scope);
 }

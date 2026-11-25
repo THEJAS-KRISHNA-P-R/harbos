@@ -16,8 +16,10 @@ import {
   executePersonalDataErasureInTx,
   exportCallerPrivacyData,
   fetchOperatorProfileAndAudit,
+  fetchUserByIdInTx,
   findActiveUserByPhoneInTx,
   findActiveUserByRoleInTx,
+  findTenantByIdInTx,
   insertOtpOutboxEventInTx,
   listDemoOperatorsInTx,
   updateOperatorConsentInTx,
@@ -139,7 +141,7 @@ export async function verifyOtpAndIssueSession(
 
 export async function switchDemoPersona(
   platformDb: DbPort,
-  baseDb: DbPort,
+  _baseDb: DbPort,
   roleInput?: string,
   tenantIdInput?: string
 ) {
@@ -174,7 +176,7 @@ export async function switchDemoPersona(
     entityRefId: user.entity_ref_id,
   });
 
-  const refresh = await issueRefreshToken(baseDb, {
+  const refresh = await issueRefreshToken(platformDb, {
     userId: user.user_id,
     tenantId: effectiveTenantId,
   });
@@ -195,27 +197,121 @@ export async function switchDemoPersona(
   };
 }
 
+export async function switchSuperAdminTenant(
+  platformDb: DbPort,
+  claims: AuthSessionClaims,
+  targetTenantIdInput: string
+) {
+  if (claims.role !== 'SUPER_ADMIN') {
+    throw new AppError(
+      'FORBIDDEN',
+      'Only SUPER_ADMIN may switch active tenant context',
+      403
+    );
+  }
+  const targetTenantId = targetTenantIdInput.trim();
+  const { targetTenant, adminUser } = await withPlatform(
+    platformDb,
+    async (tx) => {
+      const [tenantRow, userRow] = await Promise.all([
+        findTenantByIdInTx(tx, targetTenantId),
+        fetchUserByIdInTx(tx, claims.sub),
+      ]);
+      return { targetTenant: tenantRow, adminUser: userRow };
+    }
+  );
+
+  if (!targetTenant) {
+    throw new AppError(
+      'NOT_FOUND',
+      `Tenant ${targetTenantId} does not exist`,
+      404
+    );
+  }
+  if (adminUser && !adminUser.is_active) {
+    throw new AppError('UNAUTHORIZED', 'Operator account is deactivated', 401);
+  }
+
+  const accessToken = await signAccessJwt({
+    sub: claims.sub,
+    tenantId: targetTenant.tenant_id,
+    role: 'SUPER_ADMIN',
+    fullName: adminUser?.full_name ?? claims.fullName,
+    phoneE164: adminUser?.phone_e164 ?? claims.phoneE164,
+    entityRefId: adminUser?.entity_ref_id ?? claims.entityRefId ?? null,
+  });
+
+  const refresh = await issueRefreshToken(platformDb, {
+    userId: claims.sub,
+    tenantId: targetTenant.tenant_id,
+  });
+
+  return {
+    rawRefreshToken: refresh.rawToken,
+    body: {
+      accessToken,
+      tenant: targetTenant,
+      user: {
+        userId: claims.sub,
+        tenantId: targetTenant.tenant_id,
+        phoneE164: adminUser?.phone_e164 ?? claims.phoneE164,
+        fullName: adminUser?.full_name ?? claims.fullName,
+        role: 'SUPER_ADMIN' as Role,
+        entityRefId: adminUser?.entity_ref_id ?? claims.entityRefId ?? null,
+      },
+    },
+  };
+}
+
 export async function getOperatorProfile(
   db: DbPort,
-  claims: AuthSessionClaims
+  claims: AuthSessionClaims,
+  platformDb?: DbPort
 ) {
   const { profile, recentAudit } = await fetchOperatorProfileAndAudit(
     db,
     claims.tenantId,
     claims.sub
   );
-  if (!profile) {
-    throw new AppError(
-      'NOT_FOUND',
-      'Authenticated operator record not found',
-      404
-    );
+  if (profile) {
+    return {
+      profile,
+      claims,
+      recentAudit,
+    };
   }
-  return {
-    profile,
-    claims,
-    recentAudit,
-  };
+  if (claims.role === 'SUPER_ADMIN' && platformDb) {
+    const fallback = await withPlatform(platformDb, async (tx) => {
+      const [userRow, tenantRow] = await Promise.all([
+        fetchUserByIdInTx(tx, claims.sub),
+        findTenantByIdInTx(tx, claims.tenantId),
+      ]);
+      return { userRow, tenantRow };
+    });
+    if (fallback.userRow) {
+      return {
+        profile: {
+          user_id: fallback.userRow.user_id,
+          tenant_id: claims.tenantId,
+          tenant_name_en: fallback.tenantRow?.name_en ?? claims.tenantId,
+          tenant_name_ml: fallback.tenantRow?.name_ml ?? '',
+          phone_e164: fallback.userRow.phone_e164,
+          full_name: fallback.userRow.full_name,
+          role: fallback.userRow.role,
+          entity_ref_id: fallback.userRow.entity_ref_id,
+          is_active: fallback.userRow.is_active,
+          preferred_locale: 'en',
+        },
+        claims,
+        recentAudit,
+      };
+    }
+  }
+  throw new AppError(
+    'NOT_FOUND',
+    'Authenticated operator record not found',
+    404
+  );
 }
 
 export async function updateOperatorProfile(

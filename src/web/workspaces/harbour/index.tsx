@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   FileDown,
   Printer,
@@ -40,6 +40,7 @@ import {
   type AccountRow,
   type AuditLogRow,
 } from '@web/lib/api.ts';
+import { extractManglishName } from '@web/lib/ui-formatters.ts';
 import type { FloorEnforcement } from '@shared/ids.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 import { MasterdataCsvPanel } from './MasterdataCsvPanel.tsx';
@@ -70,6 +71,21 @@ export const HarbourWorkspace: React.FC<{
     title: string;
     msg: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (
+      data.species.length > 0 &&
+      !data.species.some((s) => s.species_id === floorEditSpeciesId)
+    ) {
+      setFloorEditSpeciesId(data.species[0]!.species_id);
+    }
+  }, [data.species, floorEditSpeciesId]);
+
+  useEffect(() => {
+    if (data.tenant?.floor_enforcement) {
+      setFloorEnforcement(data.tenant.floor_enforcement);
+    }
+  }, [data.tenant?.floor_enforcement]);
 
   const allAuditLogs = data.auditLogs ?? [];
   const filteredAuditLogs = filterAuditLogs(allAuditLogs, auditSearchQuery, auditRoleFilter);
@@ -253,8 +269,8 @@ export const HarbourWorkspace: React.FC<{
           <SpeciesGlyph code={`${r.code} ${r.name_en}`} size={20} className="shrink-0" />
           <div className="min-w-0">
             <span className="font-semibold">{r.name_en}</span>{' '}
-            <span lang="ml" className="text-[var(--text-secondary)]">
-              ({r.name_ml})
+            <span className="text-[var(--text-secondary)]">
+              ({extractManglishName(r.name_ml, r.code)})
             </span>
           </div>
         </div>
@@ -558,7 +574,8 @@ export const HarbourWorkspace: React.FC<{
             {data.tenant?.name_en ?? 'Harbour Operations'}
           </h1>
           <p className="text-[11px] sm:text-xs text-[var(--text-muted)] truncate">
-            Policy {data.tenant?.active_policy_id} · <span lang="ml">{data.tenant?.name_ml}</span>
+            {humanizeCode(data.tenant?.centre_type ?? 'KERALA_HARBOUR')} · Policy{' '}
+            {data.tenant?.active_policy_id} · Floor {humanizeCode(data.tenant?.floor_enforcement ?? 'WARN')}
           </p>
         </div>
         <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto min-w-0">
@@ -606,23 +623,20 @@ export const HarbourWorkspace: React.FC<{
             label={t('harbour.gtv')}
             value={formatInrFromPaise(totalGtvPaise)}
             sublabel={`${data.allocations.length} ${t('harbour.allocationsSettled')}`}
-            status={{ tone: 'ok', label: 'BALANCED' }}
           />
         </div>
         <Metric
           label={t('harbour.fisherBonus')}
           value={formatInrFromPaise(totalBonusEscrowPaise)}
           sublabel={t('harbour.bonusSub')}
-          status={{ tone: 'info', label: 'ESCROW' }}
         />
         <Metric
           label={t('harbour.ledger')}
           value={`${data.ledgerVerification.entryCount} ${t('harbour.ledgerRows')}`}
           sublabel={`Head ${data.ledgerVerification.headHash.slice(0, 12)}…`}
-          status={{
-            tone: data.ledgerVerification.verified ? 'ok' : 'danger',
-            label: data.ledgerVerification.verified ? 'VERIFIED' : 'ALERT',
-          }}
+          {...(!data.ledgerVerification.verified
+            ? { status: { tone: 'danger' as const, label: 'ALERT' } }
+            : {})}
         />
       </div>
 

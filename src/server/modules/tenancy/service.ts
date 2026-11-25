@@ -13,8 +13,9 @@ import {
 import { GENESIS_PREV_HASH } from '@shared/domain/ledger-hash.ts';
 import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 import type { Role } from '@shared/contracts/rbac.ts';
-import type { CentreType, CommercialMode } from '@shared/ids.ts';
+import type { CentreType, CommercialMode, FloorEnforcement } from '@shared/ids.ts';
 import {
+  fetchAllTenantsPlatformInTx,
   fetchWorkspaceBootstrapCollectionsInTx,
   insertCommissionPolicyVersionInTx,
   insertHonestTenantInTx,
@@ -37,14 +38,17 @@ export async function provisionHonestTenant(
     nameEn?: string | undefined;
     nameMl?: string | undefined;
     centreType?: CentreType | undefined;
+    floorEnforcement?: FloorEnforcement | undefined;
   }
 ) {
   const slug = String(input.slug ?? '')
     .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-');
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
   const nameEn = String(input.nameEn ?? '').trim();
   const nameMl = String(input.nameMl ?? nameEn).trim();
   const preset = String(input.centreType ?? 'KERALA_HARBOUR') as CentreType;
+  const floorEnforcement = (input.floorEnforcement ?? 'WARN') as FloorEnforcement;
 
   if (!slug || !nameEn) {
     throw new AppError('VALIDATION_ERROR', 'slug and nameEn are required', 400);
@@ -71,8 +75,10 @@ export async function provisionHonestTenant(
       ? explicitShortCode.slice(0, 6)
       : (slug.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 4) || 'TEN').padEnd(3, 'X');
 
+  let resolvedShortCode = baseShortCode;
   await withPlatform(platformDb, async (tx) => {
     const shortCode = await resolveUniqueShortCodeInTx(tx, baseShortCode);
+    resolvedShortCode = shortCode;
 
     await insertHonestTenantInTx(tx, {
       tenantId,
@@ -81,6 +87,7 @@ export async function provisionHonestTenant(
       nameEn,
       nameMl,
       preset,
+      floorEnforcement,
       policyId,
       hmsAcc,
       coopAcc,
@@ -103,7 +110,9 @@ export async function provisionHonestTenant(
   return {
     tenantId,
     slug,
+    shortCode: resolvedShortCode,
     preset,
+    floorEnforcement,
     policyId,
     accounts: {
       hmsAccountId: hmsAcc,
@@ -165,7 +174,7 @@ export async function provisionTenantUser(
       pinCode,
       pinHash,
       entityRefId,
-      preferredLocale: input.preferredLocale ?? 'ml',
+      preferredLocale: input.preferredLocale ?? 'en',
     });
 
   if (claims.role === 'SUPER_ADMIN') {
@@ -274,11 +283,17 @@ export async function createCommissionPolicy(
 
 export async function getWorkspaceBootstrap(
   db: DbPort,
-  claims: AuthSessionClaims
+  claims: AuthSessionClaims,
+  platformDb?: DbPort
 ) {
   const tenantId = claims.tenantId;
   const role = claims.role;
   const entityRefId = claims.entityRefId ?? null;
+
+  const platformAllTenants =
+    role === 'SUPER_ADMIN' && platformDb
+      ? await withPlatform(platformDb, fetchAllTenantsPlatformInTx)
+      : null;
 
   return db.transaction(async (tx) => {
     const [collections, cachedAuditAndBatches, chainVerification] =
@@ -288,8 +303,13 @@ export async function getWorkspaceBootstrap(
         verifyTenantLedgerChain(tx, tenantId),
       ]);
 
+    const resolvedAllTenants =
+      role === 'SUPER_ADMIN'
+        ? (platformAllTenants ?? collections.allTenantsRows)
+        : collections.tenantRows;
+
     updateObservedDbCounts({
-      tenantsCount: collections.allTenantsRows.length,
+      tenantsCount: resolvedAllTenants.length,
       usersCount: collections.usersRows.length,
     });
 
@@ -394,7 +414,7 @@ export async function getWorkspaceBootstrap(
       cacheStatus: cachedAuditAndBatches.cacheStatus,
       body: {
         tenant: collections.tenantRows[0] ?? null,
-        allTenants: role === 'SUPER_ADMIN' ? collections.allTenantsRows : collections.tenantRows,
+        allTenants: resolvedAllTenants,
         policies: collections.policiesRows,
         users: scopedUsers,
         societies: collections.societiesRows,

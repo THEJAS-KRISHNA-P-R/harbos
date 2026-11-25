@@ -14,6 +14,10 @@ export const PersonaSwitchBodySchema = z.object({
   tenantId: z.string().optional(),
 });
 
+export const TenantSwitchBodySchema = z.object({
+  tenantId: z.string().min(1),
+});
+
 export const UpdateProfileBodySchema = z.object({
   fullName: z.string().optional(),
   phoneE164: z.string().optional(),

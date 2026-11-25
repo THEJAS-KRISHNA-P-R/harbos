@@ -20,7 +20,6 @@ import {
   Skeleton,
   SkeletonCardGrid,
   WorkspaceSkeleton,
-  ColdChainInspectorSvgDecor,
   humanizeCode,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
@@ -30,7 +29,7 @@ import {
   type BootstrapData,
   type LotRow,
 } from '@web/lib/api.ts';
-import { stepTemperatureC } from '@web/lib/ui-formatters.ts';
+import { extractManglishName, stepTemperatureC } from '@web/lib/ui-formatters.ts';
 import type { InspectionGrade } from '@shared/ids.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 
@@ -190,14 +189,15 @@ export const InspectorWorkspace: React.FC<{
       header: t('inspector.speciesHeader'),
       render: (r) => {
         const sp = data.species.find((s) => s.species_id === r.species_id);
+        const manglish = extractManglishName(sp?.name_ml, sp?.code);
         return (
           <div className="flex items-center gap-2">
             <SpeciesGlyph code={`${sp?.code ?? ''} ${sp?.name_en ?? ''}`} size={18} />
             <div>
               <div className="font-medium">{sp?.name_en}</div>
-              <div lang="ml" className="text-xs text-[var(--text-secondary)]">
-                {sp?.name_ml}
-              </div>
+              {manglish && (
+                <div className="text-xs text-[var(--text-muted)]">{manglish}</div>
+              )}
             </div>
           </div>
         );
@@ -250,19 +250,14 @@ export const InspectorWorkspace: React.FC<{
 
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
-      <div className="p-3.5 sm:p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="hidden sm:block shrink-0">
-            <ColdChainInspectorSvgDecor size={36} />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              {t('workspaces.inspectorTitle')}
-            </h1>
-            <p className="text-xs text-[var(--text-secondary)] truncate">
-              {t('workspaces.inspectorSubtitle')} · Target ≤ 2.5°C
-            </p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
+            {t('workspaces.inspectorTitle')}
+          </h1>
+          <p className="text-xs text-[var(--text-muted)] truncate">
+            {t('workspaces.inspectorSubtitle')} · Cold-chain target ≤ 2.5°C
+          </p>
         </div>
         <Button
           variant="secondary"
@@ -284,13 +279,13 @@ export const InspectorWorkspace: React.FC<{
         />
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="col-span-2 sm:col-span-1">
           <Metric
             label={t('inspector.exportGradeA')}
             value={String(data.lots.filter((l) => l.inspection_grade === 'A_EXPORT').length)}
             unit="LOTS"
-            status={{ tone: 'ok', label: 'Certified' }}
+            sublabel="Export certified"
           />
         </div>
         <Metric
@@ -302,7 +297,7 @@ export const InspectorWorkspace: React.FC<{
             ).length
           )}
           unit="LOTS"
-          status={{ tone: 'info', label: 'Cleared' }}
+          sublabel="Cleared for auction"
         />
         <Metric
           label={t('inspector.rejectedUnfit')}
@@ -310,7 +305,7 @@ export const InspectorWorkspace: React.FC<{
             data.lots.filter((l) => l.inspection_grade === 'REJECTED_UNFIT').length
           )}
           unit="BLOCKED"
-          status={{ tone: 'danger', label: 'Quarantined' }}
+          sublabel="Quarantined unfit"
         />
       </div>
 

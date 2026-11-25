@@ -100,7 +100,7 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
                 <Badge tone="ok" label={activeRoleMeta.shortBadge} />
               </div>
               <div className="text-xs font-semibold text-[var(--brand-soft-fg)] mt-0.5">
-                {activeRoleMeta.titleEn} · <span lang="ml">{activeRoleMeta.titleMl}</span>
+                {activeRoleMeta.titleEn}
               </div>
               <div className="text-xs font-mono-code text-[var(--text-secondary)] mt-1">
                 ID: {user?.userId ?? 'USR-ADM-01'} · Phone: {user?.phoneE164 ?? '—'} · Tenant:{' '}

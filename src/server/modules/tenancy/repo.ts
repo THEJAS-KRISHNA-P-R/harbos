@@ -1,6 +1,13 @@
 import type { DbPort } from '@server/ports/db.ts';
 import type { Role } from '@shared/contracts/rbac.ts';
-import type { CentreType, CommercialMode } from '@shared/ids.ts';
+import type { CentreType, CommercialMode, FloorEnforcement } from '@shared/ids.ts';
+
+export async function fetchAllTenantsPlatformInTx(tx: DbPort) {
+  const res = await tx.query<Record<string, unknown>>(
+    `SELECT * FROM core.tenants ORDER BY name_en ASC`
+  );
+  return res.rows;
+}
 
 export async function resolveUniqueShortCodeInTx(
   tx: DbPort,
@@ -28,6 +35,7 @@ export async function insertHonestTenantInTx(
     nameEn: string;
     nameMl: string;
     preset: CentreType;
+    floorEnforcement: FloorEnforcement;
     policyId: string;
     hmsAcc: string;
     coopAcc: string;
@@ -48,7 +56,7 @@ export async function insertHonestTenantInTx(
       tenant_id, slug, short_code, name_en, name_ml, centre_type, floor_enforcement,
       active_policy_id, hms_account_id, coop_pool_account_id,
       harbouros_revenue_account_id, gst_payable_account_id
-    ) VALUES ($1, $2, $3, $4, $5, $6, 'WARN', $7, $8, $9, $10, $11)`,
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [
       params.tenantId,
       params.slug,
@@ -56,6 +64,7 @@ export async function insertHonestTenantInTx(
       params.nameEn,
       params.nameMl,
       params.preset,
+      params.floorEnforcement,
       params.policyId,
       params.hmsAcc,
       params.coopAcc,

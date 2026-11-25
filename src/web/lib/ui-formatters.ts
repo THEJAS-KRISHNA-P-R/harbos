@@ -127,3 +127,62 @@ export function stepTemperatureC(current: string, delta: number): string {
   const next = Math.min(35, Math.max(-2, Math.round((base + delta) * 10) / 10));
   return next.toFixed(1);
 }
+
+const MALAYALAM_UNICODE_RE = /[\u0D00-\u0D7F]+/g;
+
+function toTitleCaseWord(word: string): string {
+  const lower = word.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/**
+ * Removes any Malayalam Unicode script characters and cleans stray delimiters.
+ */
+export function stripMalayalamText(value: string | null | undefined): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(MALAYALAM_UNICODE_RE, ' ')
+    .replace(/\(\s*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Extracts the clean Manglish local species name for the top-left corner of species cards.
+ * Examples:
+ *   "ആവോലി (Avoli)" -> "Avoli"
+ *   "നാരൻ ചെമ്മീൻ (Naran Chemmeen)" -> "Naran Chemmeen"
+ *   "Naran Chemmeen" -> "Naran Chemmeen"
+ *   ("", "NEYMEEN") -> "Neymeen"
+ */
+export function extractManglishName(
+  nameMl: string | null | undefined,
+  fallbackCode?: string | null | undefined
+): string {
+  const raw = typeof nameMl === 'string' ? nameMl.trim() : '';
+  if (raw) {
+    // Prefer explicit parenthetical Manglish if present alongside Malayalam script
+    const parenMatches = [...raw.matchAll(/\(([^)]+)\)/g)];
+    for (const match of parenMatches) {
+      const candidate = stripMalayalamText(match[1]);
+      if (candidate && /[A-Za-z]/.test(candidate)) {
+        return candidate;
+      }
+    }
+    const stripped = stripMalayalamText(raw)
+      .replace(/^[\s()\-/,]+|[\s()\-/,]+$/g, '')
+      .trim();
+    if (stripped && /[A-Za-z]/.test(stripped)) {
+      return stripped;
+    }
+  }
+
+  const code = typeof fallbackCode === 'string' ? fallbackCode.trim() : '';
+  if (!code) return '';
+  return code
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map(toTitleCaseWord)
+    .join(' ');
+}
+

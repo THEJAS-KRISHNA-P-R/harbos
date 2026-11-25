@@ -43,11 +43,7 @@ export function I18nProvider({
   children: React.ReactNode;
   initialLocale?: Locale;
 }) {
-  const [locale, setLocaleState] = useState<Locale>(() => {
-    const saved = localStorage.getItem('harbouros_locale');
-    if (saved === 'en' || saved === 'ml') return saved;
-    return initialLocale;
-  });
+  const [locale, setLocaleState] = useState<Locale>(initialLocale);
 
   const setLocale = (loc: Locale) => {
     setLocaleState(loc);

@@ -21,7 +21,11 @@ export const tenancyRoutes = [
     summary: 'Fetch role-scoped workspace bootstrap state (bounded to 50 rows)',
     tags: ['tenancy'],
     handler: async (ctx) => {
-      const payload = await getWorkspaceBootstrap(ctx.db, ctx.auth!);
+      const payload = await getWorkspaceBootstrap(
+        ctx.db,
+        ctx.auth!,
+        ctx.platformDb
+      );
       return {
         status: 200,
         headers: { 'X-SQL-LRU-Cache': payload.cacheStatus },

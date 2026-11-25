@@ -51,8 +51,14 @@ export {
 } from '@web/lib/utr-reconciliation.ts';
 export {
   buildCommandPaletteItems,
+  buildWorkspaceQuickJumpItems,
+  filterCommandPaletteItems,
+  WORKSPACE_GROUP_MAP,
+  WORKSPACE_GROUP_META,
   type CommandPaletteCategory,
+  type CommandPaletteFilterScope,
   type CommandPaletteItem,
+  type WorkspaceGroup,
 } from '@web/lib/command-palette.ts';
 
 export interface TenantRow {

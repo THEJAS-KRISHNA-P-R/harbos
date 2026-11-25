@@ -270,6 +270,20 @@ export async function findActiveUserByRoleInTx(
   return res.rows[0] ?? null;
 }
 
+export async function findTenantByIdInTx(tx: DbPort, tenantId: string) {
+  const res = await tx.query<{
+    tenant_id: string;
+    slug: string;
+    name_en: string;
+    name_ml: string;
+  }>(
+    `SELECT tenant_id, slug, name_en, name_ml
+     FROM core.tenants WHERE tenant_id = $1 LIMIT 1`,
+    [tenantId]
+  );
+  return res.rows[0] ?? null;
+}
+
 export async function listDemoOperatorsInTx(tx: DbPort, tenantId: string) {
   const res = await tx.query<{
     user_id: string;

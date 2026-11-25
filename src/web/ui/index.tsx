@@ -47,7 +47,7 @@ import {
   type KeralaSpeciesGlyphId,
   type MomentIllustrationVariant,
 } from './illustrations/index.tsx';
-import { humanizeCode } from '@web/lib/ui-formatters.ts';
+import { extractManglishName, humanizeCode } from '@web/lib/ui-formatters.ts';
 import {
   Skeleton,
   SkeletonMetric,
@@ -1211,7 +1211,7 @@ export const Keypad: React.FC<KeypadProps> = ({
 };
 
 /* ============================================================================
- * 12. SpeciesTile (Weighing Workspace Species Selector — Malayalam + English)
+ * 12. SpeciesTile (Weighing Workspace Species Selector — Manglish corner + English)
  * ============================================================================ */
 export interface SpeciesTileProps {
   code: string;
@@ -1230,32 +1230,28 @@ export const SpeciesTile: React.FC<SpeciesTileProps> = ({
   selected,
   onSelect,
 }) => {
+  const manglishName = extractManglishName(nameMl, code);
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`min-h-[64px] sm:min-h-[80px] p-2.5 sm:p-4 rounded-[var(--radius-card)] border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 sm:gap-2 ${
+      className={`min-h-[68px] sm:min-h-[78px] px-2.5 py-2.5 sm:px-3.5 sm:py-3 rounded-[var(--radius-card)] border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 sm:gap-2 ${
         selected
-          ? 'bg-[var(--brand-soft)] border-[var(--brand)] ring-2 ring-[var(--brand)]'
-          : 'bg-[var(--bg-surface)] border-[var(--border-strong)] hover:bg-[var(--bg-tint)]'
+          ? 'bg-[var(--brand-soft)] border-[var(--brand)] ring-1 ring-[var(--brand)]'
+          : 'bg-[var(--bg-surface)] border-[var(--border-hair)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-tint)]'
       }`}
     >
       <div className="flex items-center justify-between gap-1.5 w-full">
-        <span className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold font-mono-code uppercase px-2 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] text-[var(--text-secondary)]">
-          <SpeciesGlyph code={`${code} ${nameEn}`} size={14} />
-          <span>{code}</span>
+        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--text-secondary)] truncate">
+          <SpeciesGlyph code={`${code} ${nameEn}`} size={13} className="shrink-0 opacity-80" />
+          <span className="truncate">{manglishName}</span>
         </span>
-        <span className="text-[10px] sm:text-xs font-mono-code font-semibold text-[var(--text-secondary)] truncate">
+        <span className="text-[10px] sm:text-[11px] font-mono-code font-medium tabular-nums text-[var(--text-muted)] shrink-0">
           {floorPriceFormatted}/kg
         </span>
       </div>
-      <div>
-        <div className="text-sm sm:text-base font-bold text-[var(--text-primary)] leading-tight">
-          {nameEn}
-        </div>
-        <div lang="ml" className="text-xs sm:text-sm font-medium text-[var(--text-secondary)] mt-0.5">
-          {nameMl}
-        </div>
+      <div className="text-[13px] sm:text-[15px] font-semibold text-[var(--text-primary)] leading-snug">
+        {nameEn}
       </div>
     </button>
   );
@@ -1329,6 +1325,7 @@ export interface ShellLayoutProps {
   onSelectNav: (id: string) => void;
   lang: 'en' | 'ml';
   headerRight: React.ReactNode;
+  sidebarHeaderExtra?: React.ReactNode;
   operatorCard?: OperatorCardSummary | undefined;
   /** Shows a subtle slim indeterminate progress bar along the top edge during background data sync */
   refreshing?: boolean | undefined;
@@ -1342,8 +1339,8 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
   navItems,
   activeNavId,
   onSelectNav,
-  lang,
   headerRight,
+  sidebarHeaderExtra,
   operatorCard,
   refreshing = false,
   refreshingLabel,
@@ -1414,6 +1411,10 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
                 </button>
               </div>
 
+              {sidebarHeaderExtra && (
+                <div className="w-full">{sidebarHeaderExtra}</div>
+              )}
+
               <nav className="flex flex-col gap-4" aria-label="Mobile Grouped Navigation">
                 {navGroups.map((grp) => {
                   const groupItems = navItems.filter(
@@ -1427,7 +1428,7 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
                       </div>
                       {groupItems.map((item) => {
                         const active = item.id === activeNavId;
-                        const labelText = lang === 'ml' ? item.labelMl : item.labelEn;
+                        const labelText = item.labelEn;
                         return (
                           <button
                             key={item.id}
@@ -1536,6 +1537,10 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
             </button>
           </div>
 
+          {!sidebarCollapsed && sidebarHeaderExtra && (
+            <div className="w-full">{sidebarHeaderExtra}</div>
+          )}
+
           <nav className="flex flex-col gap-4 w-full" aria-label="Workspace Navigation">
             {navGroups.map((grp) => {
               const groupItems = navItems.filter(
@@ -1551,7 +1556,7 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
                   )}
                   {groupItems.map((item) => {
                     const active = item.id === activeNavId;
-                    const labelText = lang === 'ml' ? item.labelMl : item.labelEn;
+                    const labelText = item.labelEn;
                     return (
                       <button
                         key={item.id}
@@ -1576,7 +1581,7 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
                         >
                           <span className="shrink-0">{item.icon}</span>
                           {!sidebarCollapsed && (
-                            <span lang={lang === 'ml' ? 'ml' : 'en'} className="truncate">
+                            <span className="truncate">
                               {labelText}
                             </span>
                           )}
@@ -1638,14 +1643,8 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
             <span className="md:hidden shrink-0" aria-hidden="true">
               <MaritimeCrestSvgEmblem size={30} />
             </span>
-            <span
-              lang={lang === 'ml' ? 'ml' : 'en'}
-              className="text-base sm:text-sm font-bold text-[var(--text-primary)] truncate"
-            >
-              {(lang === 'ml' ? activeItem?.labelMl : activeItem?.labelEn) ?? 'Workspace'}
-            </span>
-            <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-[11px] font-mono-code text-[var(--text-muted)] whitespace-nowrap">
-              1–7 Workspaces · L Ledger · ⌘K Search
+            <span className="text-base sm:text-sm font-bold text-[var(--text-primary)] truncate">
+              {activeItem?.labelEn ?? 'Workspace'}
             </span>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -1663,11 +1662,8 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
             <ul className="flex items-stretch justify-around px-1.5 pt-1.5 pb-1.5 gap-1">
               {(navItems.length > 5 ? navItems.slice(0, 4) : navItems).map((item) => {
                 const active = item.id === activeNavId;
-                const labelText = lang === 'ml' ? item.labelMl : item.labelEn;
-                const shortText =
-                  lang === 'ml'
-                    ? item.shortLabelMl ?? item.labelMl
-                    : item.shortLabelEn ?? item.labelEn;
+                const labelText = item.labelEn;
+                const shortText = item.shortLabelEn ?? item.labelEn;
                 return (
                   <li key={item.id} className="flex-1 min-w-0">
                     <button
@@ -1687,7 +1683,6 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
                         {item.icon}
                       </span>
                       <span
-                        lang={lang === 'ml' ? 'ml' : 'en'}
                         className={`max-w-full truncate px-0.5 text-[11px] leading-none ${
                           active
                             ? 'font-bold text-[var(--brand)]'
@@ -1786,8 +1781,8 @@ export const DocksideShell: React.FC<ShellLayoutProps> = ({
               }`}
             >
               <span className="shrink-0">{item.icon}</span>
-              <span lang={lang === 'ml' ? 'ml' : 'en'} className="truncate">
-                {lang === 'ml' ? item.labelMl : item.labelEn}
+              <span className="truncate">
+                {item.labelEn}
               </span>
             </button>
           );

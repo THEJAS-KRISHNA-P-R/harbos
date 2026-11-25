@@ -2,9 +2,13 @@ import { z } from 'zod';
 
 export const ProvisionTenantBodySchema = z.object({
   slug: z.string().optional(),
+  shortCode: z.string().min(2).max(6).optional(),
   nameEn: z.string().optional(),
   nameMl: z.string().optional(),
-  centreType: z.enum(['KERALA_HARBOUR', 'KERALA_MARKET']).optional(),
+  centreType: z
+    .enum(['KERALA_HARBOUR', 'KERALA_LANDING_CENTRE', 'KERALA_MARKET', 'INDIA_COOP'])
+    .optional(),
+  floorEnforcement: z.enum(['BLOCK', 'WARN', 'OFF']).optional(),
 });
 
 export const ProvisionTenantUserParamsSchema = z.object({
