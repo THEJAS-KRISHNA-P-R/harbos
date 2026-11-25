@@ -17,6 +17,8 @@ import {
   DataTable,
   Toast,
   SpeciesGlyph,
+  Skeleton,
+  WorkspaceSkeleton,
   ColdChainInspectorSvgDecor,
   humanizeCode,
   type DataTableColumn,
@@ -33,29 +35,29 @@ import { useI18n } from '@web/i18n/index.tsx';
 
 const GRADE_CHOICES: ReadonlyArray<{
   value: InspectionGrade;
-  title: string;
-  detail: string;
+  titleKey: string;
+  detailKey: string;
   danger?: boolean;
 }> = [
   {
     value: 'A_EXPORT',
-    title: 'Export Grade A',
-    detail: 'Prime ice-chilled, ready for export',
+    titleKey: 'inspector.gradeExportTitle',
+    detailKey: 'inspector.gradeExportDetail',
   },
   {
     value: 'A_DOMESTIC',
-    title: 'Domestic Grade A',
-    detail: 'Standard fresh wholesale market',
+    titleKey: 'inspector.gradeDomesticTitle',
+    detailKey: 'inspector.gradeDomesticDetail',
   },
   {
     value: 'B_PROCESS',
-    title: 'Processing Grade B',
-    detail: 'Curing, drying or meal processing',
+    titleKey: 'inspector.gradeProcessTitle',
+    detailKey: 'inspector.gradeProcessDetail',
   },
   {
     value: 'REJECTED_UNFIT',
-    title: 'Unfit — Block Sale',
-    detail: 'Quarantine and prevent auction',
+    titleKey: 'inspector.gradeUnfitTitle',
+    detailKey: 'inspector.gradeUnfitDetail',
     danger: true,
   },
 ];
@@ -63,8 +65,9 @@ const GRADE_CHOICES: ReadonlyArray<{
 export const InspectorWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
+  loading?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, onRefresh }) => {
+}> = ({ data, token, loading = false, onRefresh }) => {
   const { t } = useI18n();
   const [selectedLotId, setSelectedLotId] = useState(
     data.lots[0]?.lot_id ?? 'LOT-2026-001'
@@ -75,6 +78,7 @@ export const InspectorWorkspace: React.FC<{
     'Clear cornea, bright red gills, firm elastic flesh, core temp <= 2.5°C'
   );
   const [submitting, setSubmitting] = useState(false);
+  const [loadingAiAssist, setLoadingAiAssist] = useState(false);
   const [aiAdvisory, setAiAdvisory] = useState<{
     available: boolean;
     suggestedGrade?: string;
@@ -144,33 +148,44 @@ export const InspectorWorkspace: React.FC<{
 
   const handleRequestAiAssist = async (): Promise<void> => {
     if (!selectedLot) return;
-    const res = await apiRequest<{
-      available: boolean;
-      suggestedGrade?: string;
-      confidenceNote?: string;
-      advisoryDisclaimer: string;
-    }>(`/api/v1/lots/${selectedLot.lot_id}/ai-assist`, {
-      method: 'POST',
-      token,
-      body: {
-        speciesNameEn: selectedSpecies?.name_en ?? 'Marine Catch',
-        coreTempC: Number(coreTempC) || 2.0,
-        inspectorNotes: notes,
-      },
-    });
-    setAiAdvisory(res);
+    setLoadingAiAssist(true);
+    try {
+      const res = await apiRequest<{
+        available: boolean;
+        suggestedGrade?: string;
+        confidenceNote?: string;
+        advisoryDisclaimer: string;
+      }>(`/api/v1/lots/${selectedLot.lot_id}/ai-assist`, {
+        method: 'POST',
+        token,
+        body: {
+          speciesNameEn: selectedSpecies?.name_en ?? 'Marine Catch',
+          coreTempC: Number(coreTempC) || 2.0,
+          inspectorNotes: notes,
+        },
+      });
+      setAiAdvisory(res);
+    } catch (err) {
+      setFeedback({
+        tone: 'warn',
+        title: 'Advisory service unavailable',
+        msg: err instanceof Error ? err.message : 'Unable to fetch advisory grading suggestion',
+      });
+    } finally {
+      setLoadingAiAssist(false);
+    }
   };
 
   const columns: ReadonlyArray<DataTableColumn<LotRow>> = [
     {
       key: 'code',
-      header: 'Lot Code',
+      header: t('inspector.lotCodeHeader'),
       mono: true,
       render: (r) => <span className="font-semibold">{r.lot_code}</span>,
     },
     {
       key: 'species',
-      header: 'Species',
+      header: t('inspector.speciesHeader'),
       render: (r) => {
         const sp = data.species.find((s) => s.species_id === r.species_id);
         return (
@@ -188,21 +203,21 @@ export const InspectorWorkspace: React.FC<{
     },
     {
       key: 'temp',
-      header: 'Core Temp',
+      header: t('inspector.coreTempHeader'),
       align: 'right',
       mono: true,
       render: (r) => `${r.core_temp_c}°C`,
     },
     {
       key: 'weight',
-      header: 'Net Weight',
+      header: t('inspector.netWeightHeader'),
       align: 'right',
       mono: true,
       render: (r) => formatKgFromGrams(r.net_grams),
     },
     {
       key: 'grade',
-      header: 'Quality Grade',
+      header: t('inspector.gradeHeader'),
       render: (r) => (
         <Badge
           tone={
@@ -220,12 +235,16 @@ export const InspectorWorkspace: React.FC<{
     },
     {
       key: 'notes',
-      header: 'Notes',
+      header: t('inspector.notesHeader'),
       render: (r) => (
         <span className="text-xs text-[var(--text-secondary)]">{r.inspection_notes}</span>
       ),
     },
   ];
+
+  if (loading) {
+    return <WorkspaceSkeleton workspace="inspector" label={t('workspaces.loadingWorkspace')} />;
+  }
 
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
@@ -246,10 +265,11 @@ export const InspectorWorkspace: React.FC<{
         <Button
           variant="secondary"
           size="sm"
+          loading={loadingAiAssist}
           icon={<Sparkles className="w-4 h-4" />}
           onClick={handleRequestAiAssist}
         >
-          Optional AI Assist
+          {t('inspector.optionalAiAssist')}
         </Button>
       </div>
 
@@ -265,14 +285,14 @@ export const InspectorWorkspace: React.FC<{
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5">
         <div className="col-span-2 sm:col-span-1">
           <Metric
-            label="Export Grade A"
+            label={t('inspector.exportGradeA')}
             value={String(data.lots.filter((l) => l.inspection_grade === 'A_EXPORT').length)}
             unit="LOTS"
             status={{ tone: 'ok', label: 'Certified' }}
           />
         </div>
         <Metric
-          label="Domestic / Processing"
+          label={t('inspector.domesticProcessing')}
           value={String(
             data.lots.filter(
               (l) =>
@@ -283,7 +303,7 @@ export const InspectorWorkspace: React.FC<{
           status={{ tone: 'info', label: 'Cleared' }}
         />
         <Metric
-          label="Rejected Unfit"
+          label={t('inspector.rejectedUnfit')}
           value={String(
             data.lots.filter((l) => l.inspection_grade === 'REJECTED_UNFIT').length
           )}
@@ -294,23 +314,36 @@ export const InspectorWorkspace: React.FC<{
 
       <Card title={t('workspaces.inspectorCard')}>
         <form onSubmit={handleSaveInspection} className="flex flex-col gap-5">
-          {aiAdvisory && (
-            <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 text-[var(--info)] flex flex-col gap-1">
-              <div className="text-xs font-bold tracking-wide">
-                {aiAdvisory.advisoryDisclaimer}
-              </div>
-              {aiAdvisory.available ? (
-                <p className="text-sm font-medium">
-                  Suggested grade:{' '}
-                  <strong>{humanizeCode(aiAdvisory.suggestedGrade ?? '')}</strong> —{' '}
-                  {aiAdvisory.confidenceNote}
-                </p>
-              ) : (
-                <p className="text-xs">
-                  Advisory AI is disabled on this server. No fabricated suggestion is shown — grade the lot directly below.
-                </p>
-              )}
+          {loadingAiAssist ? (
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label="Fetching advisory quality grade…"
+              data-testid="ai-assist-skeleton"
+              className="p-3.5 rounded-[var(--radius-card)] bg-[var(--info-bg)]/60 border border-[var(--info)]/30 flex flex-col gap-2"
+            >
+              <Skeleton className="h-3.5 w-48" />
+              <Skeleton variant="text" lines={2} />
             </div>
+          ) : (
+            aiAdvisory && (
+              <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--info-bg)] border border-[var(--info)]/40 text-[var(--info)] flex flex-col gap-1">
+                <div className="text-xs font-bold tracking-wide">
+                  {aiAdvisory.advisoryDisclaimer}
+                </div>
+                {aiAdvisory.available ? (
+                  <p className="text-sm font-medium">
+                    Suggested grade:{' '}
+                    <strong>{humanizeCode(aiAdvisory.suggestedGrade ?? '')}</strong> —{' '}
+                    {aiAdvisory.confidenceNote}
+                  </p>
+                ) : (
+                  <p className="text-xs">
+                    Advisory AI is disabled on this server. No fabricated suggestion is shown — grade the lot directly below.
+                  </p>
+                )}
+              </div>
+            )
           )}
 
           {/* 1. Tap a lot card */}
@@ -397,7 +430,7 @@ export const InspectorWorkspace: React.FC<{
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1.5">
-                      <span className="text-sm font-bold">{choice.title}</span>
+                      <span className="text-sm font-bold">{t(choice.titleKey)}</span>
                       {selected &&
                         (choice.danger ? (
                           <OctagonAlert className="w-4 h-4 shrink-0" />
@@ -405,7 +438,7 @@ export const InspectorWorkspace: React.FC<{
                           <CheckCircle2 className="w-4 h-4 shrink-0" />
                         ))}
                     </div>
-                    <span className="text-xs opacity-85">{choice.detail}</span>
+                    <span className="text-xs opacity-85">{t(choice.detailKey)}</span>
                   </button>
                 );
               })}
@@ -420,14 +453,14 @@ export const InspectorWorkspace: React.FC<{
                   htmlFor="inspector-core-temp"
                   className="text-xs font-semibold text-[var(--text-secondary)]"
                 >
-                  Core flesh temperature (°C)
+                  {t('inspector.coreTempLabel')}
                 </label>
                 <span
                   className={`text-xs font-semibold ${
                     isTempWarm ? 'text-[var(--warning)]' : 'text-[var(--brand)]'
                   }`}
                 >
-                  {isTempWarm ? 'Warm (> 2.5°C)' : 'Cold-chain OK'}
+                  {isTempWarm ? t('inspector.tempWarm') : t('inspector.coldChainOk')}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -460,7 +493,7 @@ export const InspectorWorkspace: React.FC<{
 
             <div className="md:col-span-8">
               <Input
-                label="Freshness & hygiene inspection remarks"
+                label={t('inspector.remarksLabel')}
                 dockSize
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -484,16 +517,16 @@ export const InspectorWorkspace: React.FC<{
               }
             >
               {grade === 'REJECTED_UNFIT'
-                ? 'Quarantine & block lot from sale'
-                : `Confirm ${humanizeCode(grade)}`}
+                ? t('inspector.quarantineBtn')
+                : `${t('inspector.confirmPrefix')} ${humanizeCode(grade)}`}
             </Button>
           </div>
         </form>
       </Card>
 
       <Card
-        title="Harbour quality inspection log"
-        subtitle="Tap any lot to load into the inspection form"
+        title={t('inspector.logTitle')}
+        subtitle={t('inspector.logSubtitle')}
       >
         <DataTable
           caption="Quality Inspection Log"

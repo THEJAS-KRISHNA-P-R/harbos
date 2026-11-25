@@ -1,6 +1,7 @@
 import type { WorkspaceId } from '@shared/contracts/rbac.ts';
 import { formatInrFromPaise, formatKgFromGrams } from '@shared/domain/money.ts';
 import type { BootstrapData } from '@web/lib/api.ts';
+import { humanizeCode } from '@web/lib/ui-formatters.ts';
 
 export type CommandPaletteCategory =
   | 'QUICK_ACTION'
@@ -53,8 +54,8 @@ export function buildCommandPaletteItems(
     {
       id: 'act-profile-drawer',
       category: 'QUICK_ACTION',
-      title: 'Open Operator Profile, Persona Switcher & JWT Audit',
-      subtitle: 'Edit operator identity in PostgreSQL core.users or switch across 8 statutory harbour roles',
+      title: 'Open Operator Profile, Persona Switcher & Activity',
+      subtitle: 'Edit operator profile details or switch across 8 harbour operator roles',
       badgeLabel: 'IDENTITY · RBAC',
       badgeTone: 'neutral',
       actionType: 'OPEN_PROFILE_DRAWER',
@@ -63,7 +64,7 @@ export function buildCommandPaletteItems(
       id: 'ws-harbour',
       category: 'WORKSPACE',
       title: 'Harbour Command & Statutory Accounting Workspace',
-      subtitle: 'Section 19 basic floor prices, Nodal payout batches, Dual-key reversals & s.22 returns',
+      subtitle: 'Floor price schedules, Nodal payout batches, Dual-key reversals & statutory returns',
       badgeLabel: 'WORKSPACE',
       badgeTone: 'info',
       actionType: 'OPEN_WORKSPACE',
@@ -72,7 +73,7 @@ export function buildCommandPaletteItems(
     {
       id: 'ws-pit',
       category: 'WORKSPACE',
-      title: 'Live Auction Pit Pad & 8-Gate Statutory Clearing',
+      title: 'Live Auction Pit Pad & Statutory Clearing',
       subtitle: 'Pit shout, remote hybrid & Dutch clock allocation with atomic 5% commission split',
       badgeLabel: 'WORKSPACE',
       badgeTone: 'info',
@@ -82,8 +83,8 @@ export function buildCommandPaletteItems(
     {
       id: 'ws-weighing',
       category: 'WORKSPACE',
-      title: 'Dockside Weighing & HMAC-SHA256 QR Lot Tagging',
-      subtitle: 'Capture integer gram catch weights and queue offline dockside lots',
+      title: 'Dockside Weighing & Signed QR Lot Tagging',
+      subtitle: 'Capture exact gram catch weights and queue offline dockside lots',
       badgeLabel: 'WORKSPACE',
       badgeTone: 'info',
       actionType: 'OPEN_WORKSPACE',
@@ -93,7 +94,7 @@ export function buildCommandPaletteItems(
       id: 'ws-platform',
       category: 'WORKSPACE',
       title: 'Platform Governance, Telemetry & Schema Migrations',
-      subtitle: 'Inspect TypeScript/Node 22 observability metrics, 001–009 SQL migrations & provision harbour tenants',
+      subtitle: 'Inspect Node.js 22 observability metrics, SQL migrations & provision harbour tenants',
       badgeLabel: 'NODE 22 + PG 16',
       badgeTone: 'ok',
       actionType: 'OPEN_WORKSPACE',
@@ -120,7 +121,7 @@ export function buildCommandPaletteItems(
         id: `lot-${lot.lot_id}`,
         category: 'LOT',
         title: `Lot ${lot.lot_code} · ${sp?.name_en ?? lot.species_id}`,
-        subtitle: `${lot.available_boxes}/${lot.total_boxes} boxes · ${formatKgFromGrams(lot.available_grams)} · Grade ${lot.inspection_grade}`,
+        subtitle: `${lot.available_boxes}/${lot.total_boxes} boxes · ${formatKgFromGrams(lot.available_grams)} · Grade ${humanizeCode(lot.inspection_grade) || 'Pending'}`,
         badgeLabel: lot.status,
         badgeTone:
           lot.inspection_grade === 'REJECTED_UNFIT'

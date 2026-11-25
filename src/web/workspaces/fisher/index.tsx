@@ -6,6 +6,7 @@ import {
   DataTable,
   Modal,
   Toast,
+  WorkspaceSkeleton,
   StatutoryLedgerWaterfallSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
@@ -22,7 +23,8 @@ import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 
 export const FisherWorkspace: React.FC<{
   data: BootstrapData;
-}> = ({ data }) => {
+  loading?: boolean;
+}> = ({ data, loading = false }) => {
   const { t } = useI18n();
   const fisherman = data.fishermen[0];
   const vessel = data.vessels.find((v) => v.owner_fisherman_id === fisherman?.fisherman_id);
@@ -111,27 +113,27 @@ export const FisherWorkspace: React.FC<{
   const columns: ReadonlyArray<DataTableColumn<AllocationRow>> = [
     {
       key: 'alloc',
-      header: 'Sale Reference',
+      header: t('fisher.saleRefHeader'),
       mono: true,
       render: (r) => <span className="font-semibold">{r.allocation_id}</span>,
     },
     {
       key: 'weight',
-      header: 'Boxes & Weight',
+      header: t('fisher.boxesWeightHeader'),
       align: 'right',
       mono: true,
       render: (r) => `${r.boxes_allocated} boxes (${formatKgFromGrams(r.grams_allocated)})`,
     },
     {
       key: 'hammer',
-      header: 'Gross Hammer (100%)',
+      header: t('fisher.grossHammerHeader'),
       align: 'right',
       mono: true,
       render: (r) => formatInrFromPaise(r.hammer_paise),
     },
     {
       key: 'bonus',
-      header: 'Your 40% Bonus Escrow (2% GTV)',
+      header: t('fisher.bonusEscrowHeader'),
       align: 'right',
       mono: true,
       render: (r) => (
@@ -142,7 +144,7 @@ export const FisherWorkspace: React.FC<{
     },
     {
       key: 'net',
-      header: 'Net Payable (95%)',
+      header: t('fisher.netPayableHeader'),
       align: 'right',
       mono: true,
       render: (r) => (
@@ -152,6 +154,10 @@ export const FisherWorkspace: React.FC<{
       ),
     },
   ];
+
+  if (loading) {
+    return <WorkspaceSkeleton workspace="fisher" label={t('workspaces.loadingWorkspace')} />;
+  }
 
   return (
     <div className="flex flex-col gap-3.5 sm:gap-5">
@@ -176,7 +182,7 @@ export const FisherWorkspace: React.FC<{
             icon={<Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             onClick={handleListenMalayalam}
           >
-            കേൾക്കുക (Listen)
+            {t('fisher.listenBtn')}
           </Button>
           <Button
             variant="secondary"
@@ -195,7 +201,7 @@ export const FisherWorkspace: React.FC<{
             icon={<FileDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             onClick={handleExportPassbookCsv}
           >
-            Passbook CSV
+            {t('fisher.passbookCsvBtn')}
           </Button>
         </div>
       </div>
@@ -325,7 +331,7 @@ export const FisherWorkspace: React.FC<{
       {/* Today's Catch Sales Table */}
       <Card
         title={t('workspaces.fisherSalesTitle')}
-        subtitle="Verified against the append-only harbour ledger"
+        subtitle={t('fisher.salesSubtitle')}
         sunkenFooter={
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5">

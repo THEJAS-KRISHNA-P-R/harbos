@@ -8,6 +8,7 @@ import {
   Modal,
   Toast,
   SpeciesGlyph,
+  WorkspaceSkeleton,
   StatutoryLedgerWaterfallSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
@@ -27,8 +28,9 @@ import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 export const BuyerWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
+  loading?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, onRefresh }) => {
+}> = ({ data, token, loading = false, onRefresh }) => {
   const { t } = useI18n();
   const buyer = data.buyers[0];
   const [bidPriceRupees, setBidPriceRupees] = useState('760');
@@ -131,13 +133,13 @@ export const BuyerWorkspace: React.FC<{
   const lotColumns: ReadonlyArray<DataTableColumn<LotRow>> = [
     {
       key: 'code',
-      header: 'Lot',
+      header: t('buyer.lotHeader'),
       mono: true,
       render: (r) => <span className="font-semibold">{r.lot_code}</span>,
     },
     {
       key: 'species',
-      header: 'Species & grade',
+      header: t('buyer.speciesGradeHeader'),
       render: (r) => {
         const sp = data.species.find((s) => s.species_id === r.species_id);
         return (
@@ -165,14 +167,14 @@ export const BuyerWorkspace: React.FC<{
     },
     {
       key: 'avail',
-      header: 'Available',
+      header: t('buyer.availableHeader'),
       align: 'right',
       mono: true,
       render: (r) => `${r.available_boxes} boxes (${formatKgFromGrams(r.available_grams)})`,
     },
     {
       key: 'floor',
-      header: 'Floor price',
+      header: t('buyer.floorPriceHeader'),
       align: 'right',
       mono: true,
       render: (r) => {
@@ -182,7 +184,7 @@ export const BuyerWorkspace: React.FC<{
     },
     {
       key: 'action',
-      header: 'Remote bid',
+      header: t('buyer.remoteBidHeader'),
       align: 'right',
       render: (r) =>
         r.available_boxes > 0 && r.inspection_grade !== 'REJECTED_UNFIT' ? (
@@ -204,34 +206,34 @@ export const BuyerWorkspace: React.FC<{
   const purchaseColumns: ReadonlyArray<DataTableColumn<AllocationRow>> = [
     {
       key: 'alloc',
-      header: 'Invoice',
+      header: t('buyer.invoiceHeader'),
       mono: true,
       render: (r) => <span className="font-semibold">{r.allocation_id}</span>,
     },
     {
       key: 'boxes',
-      header: 'Volume',
+      header: t('buyer.volumeHeader'),
       align: 'right',
       mono: true,
       render: (r) => `${r.boxes_allocated} boxes (${formatKgFromGrams(r.grams_allocated)})`,
     },
     {
       key: 'hammer',
-      header: 'Sale value',
+      header: t('buyer.saleValueHeader'),
       align: 'right',
       mono: true,
       render: (r) => formatInrFromPaise(r.hammer_paise),
     },
     {
       key: 'payable',
-      header: 'Total payable',
+      header: t('buyer.totalPayableHeader'),
       align: 'right',
       mono: true,
       render: (r) => <span className="font-bold">{formatInrFromPaise(r.buyer_payable_paise)}</span>,
     },
     {
       key: 'dossier',
-      header: 'Documents',
+      header: t('buyer.documentsHeader'),
       align: 'right',
       render: (r) => (
         <div className="flex items-center justify-end gap-2">
@@ -255,6 +257,10 @@ export const BuyerWorkspace: React.FC<{
       ),
     },
   ];
+
+  if (loading) {
+    return <WorkspaceSkeleton workspace="buyer" label={t('workspaces.loadingWorkspace')} />;
+  }
 
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
@@ -305,19 +311,19 @@ export const BuyerWorkspace: React.FC<{
         </p>
         <dl className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 border-t border-[var(--border-hair)] pt-4">
           <div>
-            <dt className="text-xs text-[var(--text-secondary)]">Escrow balance</dt>
+            <dt className="text-xs text-[var(--text-secondary)]">{t('buyer.escrowBalance')}</dt>
             <dd className="mt-0.5 text-base font-bold font-mono-code tabular-nums">
               {formatInrFromPaise(escrowPaise)}
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-[var(--text-secondary)]">Approved credit</dt>
+            <dt className="text-xs text-[var(--text-secondary)]">{t('buyer.approvedCredit')}</dt>
             <dd className="mt-0.5 text-base font-bold font-mono-code tabular-nums">
               {formatInrFromPaise(creditPaise)}
             </dd>
           </div>
           <div className="col-span-2 sm:col-span-1">
-            <dt className="text-xs text-[var(--text-secondary)]">Due today</dt>
+            <dt className="text-xs text-[var(--text-secondary)]">{t('buyer.dueToday')}</dt>
             <dd className="mt-0.5 text-base font-bold font-mono-code tabular-nums text-[var(--brand)]">
               {formatInrFromPaise(payablesPaise)}
             </dd>
@@ -329,7 +335,7 @@ export const BuyerWorkspace: React.FC<{
       <Card title={t('workspaces.buyerWatchlistTitle')}>
         <div className="mb-4 p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-[var(--text-secondary)]">Bid ₹/kg</span>
+            <span className="text-xs font-semibold text-[var(--text-secondary)]">{t('buyer.bidPriceLabel')}</span>
             <button
               type="button"
               aria-label="Decrease remote bid by 10 rupees"
@@ -360,7 +366,7 @@ export const BuyerWorkspace: React.FC<{
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-[var(--text-secondary)]">Boxes</span>
+            <span className="text-xs font-semibold text-[var(--text-secondary)]">{t('buyer.boxesLabel')}</span>
             <button
               type="button"
               aria-label="Decrease remote bid boxes"

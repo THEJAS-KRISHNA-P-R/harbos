@@ -19,7 +19,7 @@ import {
   Terminal,
   Users,
 } from 'lucide-react';
-import { Badge, Button, Card } from '@web/ui/index.tsx';
+import { Badge, Button, Card, PerformanceDashboardSkeleton } from '@web/ui/index.tsx';
 import {
   apiRequest,
   downloadTextFile,
@@ -137,7 +137,7 @@ export const PerformanceDashboard: React.FC<{
   onMetricsRefreshed?: (snapshot: SystemObservabilityMetrics) => void;
 }> = ({ token, onMetricsRefreshed }) => {
   const [metrics, setMetrics] = useState<SystemObservabilityMetrics | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedService, setSelectedService] = useState<'ALL' | ServiceComponentId>('ALL');
   const [logSearchQuery, setLogSearchQuery] = useState('');
 
@@ -265,6 +265,10 @@ export const PerformanceDashboard: React.FC<{
     downloadTextFile('harbouros-centralized-logs.csv', csv);
   };
 
+  if (loading && !metrics) {
+    return <PerformanceDashboardSkeleton />;
+  }
+
   return (
     <Card
       title="Observability & Performance Dashboard"
@@ -304,16 +308,16 @@ export const PerformanceDashboard: React.FC<{
     >
       <div className="flex flex-col gap-5" data-testid="performance-dashboard-widget">
         {/* 1. Observed Tenant Footprint, DB Statement Timeout & Rate-Limit Protection Banner */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
               <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]">
-                <Users className="w-3.5 h-3.5 text-[var(--brand)]" />
+                <Users className="w-3.5 h-3.5 text-[var(--brand)] shrink-0" />
                 <span>Provisioned Footprint</span>
               </div>
-              <Badge tone="ok" label={`${scale.availabilitySlaPct}% TARGET`} />
+              <Badge tone="ok" label={`${scale.availabilitySlaPct}% SLA`} />
             </div>
-            <div className="text-xl font-bold font-mono-code text-[var(--text-primary)]">
+            <div className="text-lg font-bold font-mono-code text-[var(--text-primary)]">
               {scale.registeredUsers.toLocaleString()} Active Operators
             </div>
             <div className="text-xs text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-hair)]">
@@ -323,18 +327,18 @@ export const PerformanceDashboard: React.FC<{
             </div>
           </div>
 
-          <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2">
+          <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
               <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]">
-                <Database className="w-3.5 h-3.5 text-[var(--info)]" />
-                <span>Statement Timeout Guard</span>
+                <Database className="w-3.5 h-3.5 text-[var(--info)] shrink-0" />
+                <span>Timeout Guard</span>
               </div>
               <Badge
                 tone={dbProt.statementTimeoutsAborted > 0 ? 'warn' : 'ok'}
-                label={`CUTOFF ${dbProt.statementTimeoutMs}MS`}
+                label={`${dbProt.statementTimeoutMs}ms`}
               />
             </div>
-            <div className="text-xl font-bold font-mono-code text-[var(--text-primary)]">
+            <div className="text-lg font-bold font-mono-code text-[var(--text-primary)]">
               {dbProt.totalQueriesTracked.toLocaleString()} Queries Tracked
             </div>
             <div className="text-xs text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-hair)]">
@@ -344,18 +348,18 @@ export const PerformanceDashboard: React.FC<{
             </div>
           </div>
 
-          <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2">
+          <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1.5 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
               <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]">
-                <ShieldCheck className="w-3.5 h-3.5 text-[var(--brand)]" />
+                <ShieldCheck className="w-3.5 h-3.5 text-[var(--brand)] shrink-0" />
                 <span>Edge Rate Limiting</span>
               </div>
               <Badge
                 tone={rateLimit.authBruteForceBlocked > 10 ? 'warn' : 'ok'}
-                label="EXPRESS-RATE-LIMIT"
+                label="Rate Limit"
               />
             </div>
-            <div className="text-xl font-bold font-mono-code text-[var(--text-primary)]">
+            <div className="text-lg font-bold font-mono-code text-[var(--text-primary)]">
               {rateLimit.authBruteForceBlocked.toLocaleString()} Brute-Force Blocked
             </div>
             <div className="text-xs text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-hair)]">

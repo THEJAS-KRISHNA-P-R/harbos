@@ -208,6 +208,35 @@ table th {
   animation: harbouros-status-flip 420ms var(--ease) both;
 }
 
+@keyframes harbouros-skeleton-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-sunken);
+}
+
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 100%
+  );
+  animation: harbouros-skeleton-shimmer 1.5s var(--ease) infinite;
+}
+
 .transition-utr-pill {
   transition:
     background-color 200ms var(--ease),
@@ -223,6 +252,9 @@ table th {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+  .skeleton-shimmer::after {
+    display: none;
   }
 }
 

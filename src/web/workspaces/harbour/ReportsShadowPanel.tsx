@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FileDown, FileCheck2, Scale } from 'lucide-react';
-import { Button, Card, Badge, Select, Toast } from '@web/ui/index.tsx';
+import { Button, Card, Badge, Select, Toast, Skeleton, SkeletonTable } from '@web/ui/index.tsx';
 import { apiRequest, downloadTextFile, type BootstrapData } from '@web/lib/api.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 
@@ -179,9 +179,24 @@ export const ReportsShadowPanel: React.FC<{
             </Button>
           </div>
 
-          {reportData && (
+          {loadingReport ? (
             <div
-              data-testid="statutory-report-preview"
+              role="status"
+              aria-busy="true"
+              aria-label="Loading statutory report…"
+              data-testid="report-preview-skeleton"
+              className="flex flex-col gap-3 p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <Skeleton className="h-4 w-56" />
+                <Skeleton variant="pill" className="h-5 w-16" />
+              </div>
+              <SkeletonTable rows={4} columns={5} />
+            </div>
+          ) : (
+            reportData && (
+              <div
+                data-testid="statutory-report-preview"
               className="flex flex-col gap-3 p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -232,7 +247,8 @@ export const ReportsShadowPanel: React.FC<{
                   </tbody>
                 </table>
               </div>
-            </div>
+              </div>
+            )
           )}
         </div>
       </Card>
@@ -281,9 +297,24 @@ export const ReportsShadowPanel: React.FC<{
             </Button>
           </div>
 
-          {diffResult && (
+          {loadingDiff ? (
             <div
-              data-testid="shadow-diff-result"
+              role="status"
+              aria-busy="true"
+              aria-label="Running shadow-pilot diff…"
+              data-testid="shadow-diff-skeleton"
+              className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <Skeleton className="h-4 w-48" />
+                <Skeleton variant="pill" className="h-5 w-24" />
+              </div>
+              <SkeletonTable rows={3} columns={5} />
+            </div>
+          ) : (
+            diffResult && (
+              <div
+                data-testid="shadow-diff-result"
               className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-3"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -351,7 +382,8 @@ export const ReportsShadowPanel: React.FC<{
                   </tbody>
                 </table>
               </div>
-            </div>
+              </div>
+            )
           )}
         </div>
       </Card>

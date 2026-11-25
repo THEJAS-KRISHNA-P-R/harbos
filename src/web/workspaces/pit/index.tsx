@@ -22,6 +22,7 @@ import {
   Modal,
   Toast,
   SpeciesGlyph,
+  WorkspaceSkeleton,
   AuctionPitAmphitheatreSvgDecor,
   humanizeCode,
   type DataTableColumn,
@@ -50,8 +51,9 @@ const AUCTION_MODE_OPTIONS: ReadonlyArray<{ value: AuctionMode; label: string }>
 export const PitWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
+  loading?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, onRefresh }) => {
+}> = ({ data, token, loading = false, onRefresh }) => {
   const { t } = useI18n();
   const openLots = useMemo(
     () =>
@@ -210,7 +212,7 @@ export const PitWorkspace: React.FC<{
   const allocColumns: ReadonlyArray<DataTableColumn<AllocationRow>> = [
     {
       key: 'id',
-      header: 'Sale / Lot',
+      header: t('pit.saleLotHeader'),
       render: (r) => {
         const lot = data.lots.find((l) => l.lot_id === r.lot_id);
         const sp = data.species.find((s) => s.species_id === lot?.species_id);
@@ -229,33 +231,33 @@ export const PitWorkspace: React.FC<{
     },
     {
       key: 'mode',
-      header: 'Mode',
+      header: t('pit.modeHeader'),
       render: (r) => <Badge tone="info" label={r.auction_mode} />,
     },
     {
       key: 'boxes',
-      header: 'Boxes & Weight',
+      header: t('pit.boxesWeightHeader'),
       align: 'right',
       mono: true,
       render: (r) => `${r.boxes_allocated} boxes (${formatKgFromGrams(r.grams_allocated)})`,
     },
     {
       key: 'hammer',
-      header: 'Sale Value',
+      header: t('pit.saleValueHeader'),
       align: 'right',
       mono: true,
       render: (r) => <span className="font-bold">{formatInrFromPaise(r.hammer_paise)}</span>,
     },
     {
       key: 'fisherman',
-      header: 'Fisher Receives (95%)',
+      header: t('pit.fisherReceivesHeader'),
       align: 'right',
       mono: true,
       render: (r) => formatInrFromPaise(r.fisherman_net_paise),
     },
     {
       key: 'slip',
-      header: 'Sale Slip',
+      header: t('pit.saleSlipHeader'),
       align: 'right',
       render: (r) => (
         <Button
@@ -278,6 +280,10 @@ export const PitWorkspace: React.FC<{
   const activeModeLabel =
     AUCTION_MODE_OPTIONS.find((m) => m.value === auctionMode)?.label ?? humanizeCode(auctionMode);
 
+  if (loading) {
+    return <WorkspaceSkeleton workspace="pit" label={t('workspaces.loadingWorkspace')} />;
+  }
+
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
       {/* Compact Pit Top Header */}
@@ -291,7 +297,7 @@ export const PitWorkspace: React.FC<{
               {t('workspaces.pitTitle')}
             </h1>
             <p className="text-xs text-[var(--text-secondary)] truncate">
-              {openLots.length} open lots · {activeModeLabel} · {lastLatencyMs} ms
+              {openLots.length} {t('pit.openLotsLabel')} · {activeModeLabel} · {lastLatencyMs} ms
             </p>
           </div>
         </div>
@@ -370,28 +376,28 @@ export const PitWorkspace: React.FC<{
                           {lot.available_boxes}/{lot.total_boxes}
                         </span>
                         <span className="block text-[10px] font-semibold text-[var(--text-muted)]">
-                          boxes
+                          {t('dockside.boxes')}
                         </span>
                       </span>
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-[var(--text-secondary)]">
                       <span className="font-mono-code tabular-nums">
-                        {formatKgFromGrams(lot.available_grams)} · Floor{' '}
+                        {formatKgFromGrams(lot.available_grams)} · {t('pit.floorLabel')}{' '}
                         {formatInrFromPaise(sp?.floor_price_paise_per_kg ?? '0')}/kg
                       </span>
                       <span className="flex items-center gap-1.5">
                         {vessel?.has_active_society_loan && (
-                          <span className="font-semibold text-[var(--warning)]">Loan tied</span>
+                          <span className="font-semibold text-[var(--warning)]">{t('pit.loanTied')}</span>
                         )}
                         {unfit ? (
                           <span className="font-semibold text-[var(--danger-fg)]">
-                            Rejected unfit
+                            {t('pit.rejectedUnfit')}
                           </span>
                         ) : soldOut ? (
-                          <span className="font-semibold text-[var(--text-muted)]">Sold out</span>
+                          <span className="font-semibold text-[var(--text-muted)]">{t('pit.soldOut')}</span>
                         ) : !lot.inspection_grade ? (
-                          <span className="font-semibold text-[var(--warning)]">Awaiting QC</span>
+                          <span className="font-semibold text-[var(--warning)]">{t('pit.awaitingQc')}</span>
                         ) : null}
                       </span>
                     </div>
@@ -458,13 +464,13 @@ export const PitWorkspace: React.FC<{
               <div className="pt-3 border-t border-[var(--border-hair)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <div className="text-xs font-semibold text-[var(--text-secondary)]">
-                    Boxes to allocate
+                    {t('pit.boxesToAllocate')}
                   </div>
                   <div className="text-xs text-[var(--text-muted)] font-mono-code tabular-nums">
                     {currentLot
-                      ? `${currentLot.available_boxes} available · ${formatKgFromGrams(
+                      ? `${currentLot.available_boxes} ${t('pit.availableLabel')} · ${formatKgFromGrams(
                           salePreview?.gramsAllocated ?? 0n
-                        )} selected`
+                        )} ${t('pit.selectedLabel')}`
                       : ''}
                   </div>
                 </div>
@@ -508,7 +514,9 @@ export const PitWorkspace: React.FC<{
                           variant={numericBoxes === preset ? 'primary' : 'outline'}
                           onClick={() => setBoxesRequested(String(preset))}
                         >
-                          {preset === maxBoxes && maxBoxes > 2 ? `All (${maxBoxes})` : `${preset}`}
+                          {preset === maxBoxes && maxBoxes > 2
+                            ? `${t('pit.allLabel')} (${maxBoxes})`
+                            : `${preset}`}
                         </Button>
                       ))}
                   </div>
@@ -645,7 +653,7 @@ export const PitWorkspace: React.FC<{
                   }
                   label={
                     isLotBlocked
-                      ? 'Rejected unfit'
+                      ? t('pit.rejectedUnfit')
                       : salePreview.floorStatus === 'BELOW'
                       ? t('workspaces.pitBelowFloor')
                       : salePreview.floorStatus === 'AT'
@@ -672,17 +680,17 @@ export const PitWorkspace: React.FC<{
                     {numericBoxes} {numericBoxes === 1 ? 'box' : 'boxes'} · {formatKgFromGrams(salePreview.gramsAllocated)}
                   </div>
                   <div>
-                    Floor {formatInrFromPaise(currentSpecies?.floor_price_paise_per_kg ?? '0')}/kg
+                    {t('pit.floorLabel')} {formatInrFromPaise(currentSpecies?.floor_price_paise_per_kg ?? '0')}/kg
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] bg-[var(--bg-surface)]/80 rounded-[var(--radius-control)] px-3 py-2">
                 <span>
-                  Buyer: <strong>#{currentBuyer?.paddle_no}</strong> {currentBuyer?.buyer_name}
+                  {t('pit.buyerLabel')}: <strong>#{currentBuyer?.paddle_no}</strong> {currentBuyer?.buyer_name}
                 </span>
                 <span className="font-mono-code tabular-nums font-semibold text-[var(--brand)]">
-                  Fisher 95%: {formatInrFromPaise(salePreview.fishermanNetPaise)}
+                  {t('pit.fisherShareLabel')}: {formatInrFromPaise(salePreview.fishermanNetPaise)}
                 </span>
               </div>
 
@@ -695,7 +703,7 @@ export const PitWorkspace: React.FC<{
             </section>
           )}
 
-          <Card title="3. Bid Price & Confirm">
+          <Card title={t('pit.bidAndConfirmTitle')}>
             <div className="flex flex-col gap-3">
               <Keypad
                 value={bidPriceRupeesPerKg}
@@ -725,7 +733,7 @@ export const PitWorkspace: React.FC<{
       {/* Confirmed Allocations Table */}
       <Card
         title={t('workspaces.pitAllocationsTitle')}
-        subtitle="Corrections require a two-person reversal approved by Accountant and Harbour Admin"
+        subtitle={t('pit.allocationsSubtitle')}
       >
         <DataTable
           caption="Confirmed Pit Sale Allocations"

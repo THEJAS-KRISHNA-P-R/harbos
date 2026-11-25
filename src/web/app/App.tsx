@@ -163,7 +163,15 @@ export const App: React.FC = () => {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
-  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>('harbour');
+  const [personaSwitching, setPersonaSwitching] = useState(false);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(() => {
+    if (typeof window !== 'undefined') {
+      const m = window.location.pathname.match(/^\/w\/([a-z]+)$/);
+      const ws = m?.[1] as WorkspaceId | undefined;
+      if (ws && ws in DEV_DEEP_LINK_ROLE) return ws;
+    }
+    return 'harbour';
+  });
   const [screenMode, setScreenMode] = useState<'workspace' | 'login' | 'gallery'>(() => {
     if (typeof window !== 'undefined' && window.location.pathname === '/ui') return 'gallery';
     if (typeof window !== 'undefined' && window.location.pathname === '/login') return 'login';
@@ -224,6 +232,7 @@ export const App: React.FC = () => {
       role: Role,
       options?: { silentFallbackToLogin?: boolean; preservePathIfAllowed?: boolean }
     ): Promise<void> => {
+      setPersonaSwitching(true);
       try {
         const res = await apiRequest<{ accessToken: string; user: SessionUser }>(
           '/api/v1/auth/persona-switch',
@@ -269,6 +278,8 @@ export const App: React.FC = () => {
           return;
         }
         setAuthError(err instanceof Error ? err.message : 'Failed to switch persona');
+      } finally {
+        setPersonaSwitching(false);
       }
     },
     [loadBootstrap, loadOperatorProfile]
@@ -690,7 +701,7 @@ export const App: React.FC = () => {
           />
         </React.Suspense>
       ) : !bootstrap || !token ? (
-        <WorkspaceSkeleton label={t('workspaces.loadingHarbour')} />
+        <WorkspaceSkeleton workspace={activeWorkspace} label={t('workspaces.loadingHarbour')} />
       ) : !isActiveWorkspaceAuthorized && user ? (
         <div data-testid="rbac-access-restricted">
           <EmptyState
@@ -709,12 +720,15 @@ export const App: React.FC = () => {
         </div>
       ) : (
         <React.Suspense
-          fallback={<WorkspaceSkeleton label={t('workspaces.loadingWorkspace')} />}
+          fallback={
+            <WorkspaceSkeleton workspace={activeWorkspace} label={t('workspaces.loadingWorkspace')} />
+          }
         >
           {activeWorkspace === 'weighing' && (
             <WeighingWorkspace
               data={bootstrap}
               token={token}
+              loading={personaSwitching}
               onRefresh={() => loadBootstrap(token)}
             />
           )}
@@ -722,6 +736,7 @@ export const App: React.FC = () => {
             <PitWorkspace
               data={bootstrap}
               token={token}
+              loading={personaSwitching}
               onRefresh={() => loadBootstrap(token)}
             />
           )}
@@ -729,14 +744,18 @@ export const App: React.FC = () => {
             <BuyerWorkspace
               data={bootstrap}
               token={token}
+              loading={personaSwitching}
               onRefresh={() => loadBootstrap(token)}
             />
           )}
-          {activeWorkspace === 'fisher' && <FisherWorkspace data={bootstrap} />}
+          {activeWorkspace === 'fisher' && (
+            <FisherWorkspace data={bootstrap} loading={personaSwitching} />
+          )}
           {activeWorkspace === 'inspector' && (
             <InspectorWorkspace
               data={bootstrap}
               token={token}
+              loading={personaSwitching}
               onRefresh={() => loadBootstrap(token)}
             />
           )}
@@ -744,6 +763,7 @@ export const App: React.FC = () => {
             <HarbourWorkspace
               data={bootstrap}
               token={token}
+              loading={personaSwitching}
               onRefresh={() => loadBootstrap(token)}
             />
           )}
@@ -751,6 +771,7 @@ export const App: React.FC = () => {
             <PlatformWorkspace
               data={bootstrap}
               token={token}
+              loading={personaSwitching}
               onRefresh={() => loadBootstrap(token)}
             />
           )}

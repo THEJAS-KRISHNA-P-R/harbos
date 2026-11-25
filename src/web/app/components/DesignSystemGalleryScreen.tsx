@@ -5,6 +5,9 @@ import {
   Badge,
   Metric,
   DataTable,
+  Skeleton,
+  SkeletonMetric,
+  SkeletonTable,
   WorkflowStepStrip,
   HarbourCrestIcon,
   DockScaleIcon,
@@ -154,6 +157,29 @@ export const DesignSystemGalleryScreen: React.FC<DesignSystemGalleryScreenProps>
             <Badge tone="danger" label="Rejected Unfit" code="s.21" />
             <Badge tone="neutral" label="Pending Sync" />
           </div>
+        </div>
+      </Card>
+
+      <Card
+        stepBadge="LOADING"
+        kicker="Perceived Performance"
+        title="Skeleton Loading Primitives & Workspace Wireframes"
+        subtitle="Compositor-only shimmer placeholders matched to each workspace geometry"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <Skeleton variant="circle" className="h-10 w-10" />
+            <div className="flex-1 min-w-[180px]">
+              <Skeleton variant="text" lines={2} />
+            </div>
+            <Skeleton variant="pill" className="h-8 w-24" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <SkeletonMetric featured />
+            <SkeletonMetric />
+            <SkeletonMetric />
+          </div>
+          <SkeletonTable rows={3} columns={4} />
         </div>
       </Card>
 

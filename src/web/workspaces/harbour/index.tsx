@@ -7,6 +7,8 @@ import {
   Landmark,
   ShieldCheck,
   X,
+  ArrowRight,
+  Clock,
 } from 'lucide-react';
 import {
   Button,
@@ -19,6 +21,7 @@ import {
   Select,
   Toast,
   SpeciesGlyph,
+  WorkspaceSkeleton,
   humanizeCode,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
@@ -44,8 +47,9 @@ import { ReportsShadowPanel } from './ReportsShadowPanel.tsx';
 export const HarbourWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
+  loading?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, onRefresh }) => {
+}> = ({ data, token, loading = false, onRefresh }) => {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'today' | 'masterdata' | 'accounting' | 'reports' | 'audit'>('today');
   const [utrInput, setUtrInput] = useState('UTR-FEDB-20261106-994182');
@@ -66,6 +70,9 @@ export const HarbourWorkspace: React.FC<{
 
   const allAuditLogs = data.auditLogs ?? [];
   const filteredAuditLogs = filterAuditLogs(allAuditLogs, auditSearchQuery, auditRoleFilter);
+  const pendingBatchesCount = data.payoutBatches.filter(
+    (b) => b.status === 'GENERATED_CSV'
+  ).length;
 
   const totalGtvPaise = data.allocations.reduce(
     (acc, a) => acc + BigInt(a.hammer_paise),
@@ -92,7 +99,7 @@ export const HarbourWorkspace: React.FC<{
       setFeedback({
         tone: 'ok',
         title: 'Floor price schedule updated',
-        msg: `Enforcement mode set to ${floorEnforcement}; species floor updated to ₹${floorEditRupees}/kg.`,
+        msg: `Enforcement mode set to ${humanizeCode(floorEnforcement)}; species floor updated to ₹${floorEditRupees}/kg.`,
       });
       await onRefresh();
     } catch (err) {
@@ -113,7 +120,7 @@ export const HarbourWorkspace: React.FC<{
       setFeedback({
         tone: 'ok',
         title: `Payout Batch ${res.batchCode} Generated`,
-        msg: 'CSV bank settlement instruction prepared via BankFileFormatter port.',
+        msg: 'CSV bank settlement instruction prepared for nodal bank upload.',
       });
       await onRefresh();
     } catch (err) {
@@ -220,10 +227,10 @@ export const HarbourWorkspace: React.FC<{
   };
 
   const speciesColumns: ReadonlyArray<DataTableColumn<SpeciesRow>> = [
-    { key: 'code', header: 'Code', mono: true, render: (r) => r.code },
+    { key: 'code', header: t('harbour.code'), mono: true, render: (r) => r.code },
     {
       key: 'name',
-      header: 'Species',
+      header: t('harbour.species'),
       render: (r) => (
         <div className="flex items-center gap-2 min-w-0">
           <SpeciesGlyph code={`${r.code} ${r.name_en}`} size={20} className="shrink-0" />
@@ -238,12 +245,12 @@ export const HarbourWorkspace: React.FC<{
     },
     {
       key: 'sci',
-      header: 'Scientific Name',
+      header: t('harbour.scientificName'),
       render: (r) => <span className="italic text-[var(--text-muted)]">{r.scientific_name}</span>,
     },
     {
       key: 'floor',
-      header: 'Floor Price',
+      header: t('harbour.floorPrice'),
       align: 'right',
       mono: true,
       render: (r) => (
@@ -253,23 +260,23 @@ export const HarbourWorkspace: React.FC<{
   ];
 
   const licenceColumns: ReadonlyArray<DataTableColumn<LicenceRow>> = [
-    { key: 'no', header: 'Licence No.', mono: true, render: (r) => r.licence_no },
-    { key: 'name', header: 'Auctioneer Name', render: (r) => <span className="font-semibold">{r.auctioneer_name}</span> },
+    { key: 'no', header: t('harbour.licenceNo'), mono: true, render: (r) => r.licence_no },
+    { key: 'name', header: t('harbour.auctioneerName'), render: (r) => <span className="font-semibold">{r.auctioneer_name}</span> },
     {
       key: 'soc',
-      header: 'Co-op Society',
+      header: t('harbour.coopSociety'),
       mono: true,
       render: (r) => r.deputed_by_society_id ?? 'Independent (Non-Loan Vessels Only)',
     },
     {
       key: 'validity',
-      header: 'Validity Window',
+      header: t('harbour.validityWindow'),
       mono: true,
       render: (r) => `${r.valid_from} → ${r.valid_until}`,
     },
     {
       key: 'status',
-      header: 'Status',
+      header: t('harbour.status'),
       render: (r) => (
         <Badge
           tone={r.status === 'ACTIVE' ? 'ok' : 'danger'}
@@ -280,18 +287,26 @@ export const HarbourWorkspace: React.FC<{
   ];
 
   const batchColumns: ReadonlyArray<DataTableColumn<PayoutBatchRow>> = [
-    { key: 'code', header: 'Batch Code', mono: true, render: (r) => <span className="font-semibold">{r.batch_code}</span> },
-    { key: 'kind', header: 'Beneficiary Pool', render: (r) => humanizeCode(r.beneficiary_kind) },
+    {
+      key: 'code',
+      header: t('harbour.batchCode'),
+      render: (r) => (
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="font-semibold font-mono-code text-xs sm:text-sm">{r.batch_code}</span>
+          <span className="text-xs text-[var(--text-secondary)]">{humanizeCode(r.beneficiary_kind)}</span>
+        </div>
+      ),
+    },
     {
       key: 'amt',
-      header: 'Total Batch Amount',
+      header: t('harbour.totalAmount'),
       align: 'right',
       mono: true,
-      render: (r) => <span className="font-bold">{formatInrFromPaise(r.total_amount_paise)}</span>,
+      render: (r) => <span className="font-bold whitespace-nowrap">{formatInrFromPaise(r.total_amount_paise)}</span>,
     },
     {
       key: 'status',
-      header: 'Reconciliation Status',
+      header: t('harbour.reconciliationStatus'),
       render: (r) => (
         <Badge
           tone={r.status === 'RECONCILED_UTR' ? 'ok' : 'warn'}
@@ -302,7 +317,7 @@ export const HarbourWorkspace: React.FC<{
     },
     {
       key: 'action',
-      header: 'Bank UTR Action',
+      header: t('harbour.bankUtrAction'),
       align: 'right',
       render: (r) =>
         r.status === 'GENERATED_CSV' ? (
@@ -311,11 +326,11 @@ export const HarbourWorkspace: React.FC<{
             size="sm"
             onClick={() => handleReconcileBatch(r.batch_id)}
           >
-            Reconcile UTR
+            {t('harbour.reconcileUtr')}
           </Button>
         ) : (
           <span className="text-xs font-mono-code text-[var(--text-secondary)]">
-            Verified: {r.bank_utr}
+            {t('harbour.verifiedUtr')}: {r.bank_utr}
           </span>
         ),
     },
@@ -328,7 +343,7 @@ export const HarbourWorkspace: React.FC<{
     { key: 'req', header: 'Key 1 (Requested By)', render: (r) => r.requested_by_name },
     {
       key: 'status',
-      header: 'Dual-Key Status',
+      header: t('harbour.status'),
       render: (r) => (
         <Badge
           tone={r.status === 'EXECUTED' ? 'ok' : 'warn'}
@@ -339,7 +354,7 @@ export const HarbourWorkspace: React.FC<{
     },
     {
       key: 'act',
-      header: 'Key 2 Approval (Harbour Admin)',
+      header: 'Key 2 Approval',
       align: 'right',
       render: (r) =>
         r.status === 'PENDING_SECOND_APPROVAL' ? (
@@ -360,12 +375,12 @@ export const HarbourWorkspace: React.FC<{
   ];
 
   const accountColumns: ReadonlyArray<DataTableColumn<AccountRow>> = [
-    { key: 'code', header: 'Ledger Code', mono: true, render: (r) => r.code },
-    { key: 'name', header: 'Account Name', render: (r) => <span className="font-semibold">{r.name_en}</span> },
-    { key: 'kind', header: 'Account Kind', render: (r) => <Badge tone="info" label={r.kind} /> },
+    { key: 'code', header: t('harbour.ledgerCode'), mono: true, render: (r) => r.code },
+    { key: 'name', header: t('harbour.accountName'), render: (r) => <span className="font-semibold">{r.name_en}</span> },
+    { key: 'kind', header: t('harbour.accountKind'), render: (r) => <Badge tone="info" label={r.kind} /> },
     {
       key: 'bal',
-      header: 'Current Balance',
+      header: t('harbour.currentBalance'),
       align: 'right',
       mono: true,
       render: (r) => <span className="font-bold">{formatInrFromPaise(r.balance_paise)}</span>,
@@ -375,13 +390,13 @@ export const HarbourWorkspace: React.FC<{
   const auditColumns: ReadonlyArray<DataTableColumn<AuditLogRow>> = [
     {
       key: 'time',
-      header: 'Timestamp (UTC)',
+      header: t('harbour.timestamp'),
       mono: true,
       render: (r) => r.created_at.replace('T', ' ').slice(0, 19),
     },
     {
       key: 'actor',
-      header: 'Actor',
+      header: t('harbour.actor'),
       render: (r) => (
         <div className="flex flex-col gap-0.5">
           <span className="font-semibold text-[var(--text-primary)]">
@@ -395,7 +410,7 @@ export const HarbourWorkspace: React.FC<{
     },
     {
       key: 'action',
-      header: 'Action Code',
+      header: t('harbour.actionCode'),
       render: (r) => (
         <Badge
           tone={
@@ -411,7 +426,7 @@ export const HarbourWorkspace: React.FC<{
     },
     {
       key: 'target',
-      header: 'Target ID',
+      header: t('harbour.targetId'),
       mono: true,
       render: (r) => (
         <div>
@@ -422,7 +437,7 @@ export const HarbourWorkspace: React.FC<{
     },
     {
       key: 'details',
-      header: 'Observability Payload',
+      header: t('harbour.details'),
       mono: true,
       render: (r) => (
         <span className="text-xs text-[var(--text-secondary)] break-all">{r.details_json}</span>
@@ -432,7 +447,7 @@ export const HarbourWorkspace: React.FC<{
 
   const auditLogsSection = (
     <Card
-      title="Audit Logs"
+      title={t('harbour.auditLogsTitle')}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Badge
@@ -449,7 +464,7 @@ export const HarbourWorkspace: React.FC<{
                 setAuditRoleFilter('ALL');
               }}
             >
-              Reset
+              {t('harbour.reset')}
             </Button>
           )}
         </div>
@@ -459,7 +474,7 @@ export const HarbourWorkspace: React.FC<{
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <div className="md:col-span-2">
             <Input
-              label="Search Audit Logs"
+              label={t('harbour.searchAuditLogs')}
               type="search"
               placeholder="Actor, action code, or target ID…"
               value={auditSearchQuery}
@@ -467,7 +482,7 @@ export const HarbourWorkspace: React.FC<{
             />
           </div>
           <Select
-            label="Role"
+            label={t('harbour.roleFilter')}
             value={auditRoleFilter}
             onChange={(e) => setAuditRoleFilter(e.target.value)}
             options={[
@@ -513,6 +528,10 @@ export const HarbourWorkspace: React.FC<{
     </Card>
   );
 
+  if (loading) {
+    return <WorkspaceSkeleton workspace="harbour" label={t('workspaces.loadingWorkspace')} />;
+  }
+
   return (
     <div className="flex flex-col gap-3.5 sm:gap-5">
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-2.5 sm:gap-3">
@@ -532,7 +551,7 @@ export const HarbourWorkspace: React.FC<{
             onClick={handleExportSection22ReturnCsv}
             className="self-start sm:self-auto"
           >
-            Export Return CSV
+            {t('harbour.exportReturnCsv')}
           </Button>
           <div className="w-full sm:w-auto min-w-0">
             <Tabs
@@ -566,21 +585,21 @@ export const HarbourWorkspace: React.FC<{
         <div className="col-span-2 sm:col-span-1">
           <Metric
             featured
-            label="Gross Turnover (GTV)"
+            label={t('harbour.gtv')}
             value={formatInrFromPaise(totalGtvPaise)}
-            sublabel={`${data.allocations.length} allocations settled`}
+            sublabel={`${data.allocations.length} ${t('harbour.allocationsSettled')}`}
             status={{ tone: 'ok', label: 'BALANCED' }}
           />
         </div>
         <Metric
-          label="Fisher Bonus"
+          label={t('harbour.fisherBonus')}
           value={formatInrFromPaise(totalBonusEscrowPaise)}
-          sublabel="2.00% GTV escrow"
+          sublabel={t('harbour.bonusSub')}
           status={{ tone: 'info', label: 'ESCROW' }}
         />
         <Metric
-          label="Ledger"
-          value={`${data.ledgerVerification.entryCount} rows`}
+          label={t('harbour.ledger')}
+          value={`${data.ledgerVerification.entryCount} ${t('harbour.ledgerRows')}`}
           sublabel={`Head ${data.ledgerVerification.headHash.slice(0, 12)}…`}
           status={{
             tone: data.ledgerVerification.verified ? 'ok' : 'danger',
@@ -590,93 +609,171 @@ export const HarbourWorkspace: React.FC<{
       </div>
 
       {activeTab === 'today' && (
-        <div className="flex flex-col gap-3.5 sm:gap-5">
-          {/* 1-Click Payout Batch & UTR Reconciliation surfaced directly on Overview */}
-          <Card
-            title="Payout Batches & UTR Clearing"
-            actions={
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                <input
-                  type="text"
-                  value={utrInput}
-                  onChange={(e) => setUtrInput(e.target.value)}
-                  aria-label="Bank UTR Reference"
-                  placeholder="UTR reference…"
-                  className="h-8 sm:h-9 px-2.5 sm:px-3 flex-1 sm:flex-none min-w-0 w-full sm:w-48 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-xs font-mono-code text-[var(--text-primary)]"
-                />
+        <div
+          data-testid="harbour-office-grid"
+          className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-5 items-start"
+        >
+          {/* Main Office Column: Clearing Table, Floor Schedule Table, Licensed Auctioneers */}
+          <div className="xl:col-span-8 flex flex-col gap-4 sm:gap-5 min-w-0">
+            <Card
+              title={t('harbour.payoutBatchesTitle')}
+              actions={
                 <Button
                   variant="primary"
                   size="sm"
                   icon={<Landmark className="w-3.5 h-3.5" />}
                   onClick={handleGenerateBatch}
                 >
-                  New Batch
+                  {t('harbour.newBatch')}
+                </Button>
+              }
+            >
+              <DataTable
+                caption="Payout Batches"
+                columns={batchColumns}
+                rows={data.payoutBatches}
+                getRowKey={(r) => r.batch_id}
+              />
+            </Card>
+
+            <Card
+              title={t('harbour.floorScheduleTitle')}
+              actions={
+                <Badge
+                  tone={floorEnforcement === 'BLOCK' ? 'warn' : 'info'}
+                  label={floorEnforcement}
+                />
+              }
+            >
+              <DataTable
+                caption="Species Floor Schedule"
+                columns={speciesColumns}
+                rows={data.species}
+                getRowKey={(r) => r.species_id}
+              />
+            </Card>
+
+            <Card title={t('harbour.licensedAuctioneersTitle')}>
+              <DataTable
+                caption="Licensed Auctioneers Registry"
+                columns={licenceColumns}
+                rows={data.licences}
+                getRowKey={(r) => r.licence_id}
+              />
+            </Card>
+          </div>
+
+          {/* Sticky Desktop Office Side Panel: Quick Clearing, Quick Floor Price Update & Recent Activity */}
+          <aside className="xl:col-span-4 flex flex-col gap-4 xl:sticky xl:top-20 min-w-0">
+            <Card
+              title={t('harbour.utrClearingPanelTitle')}
+              subtitle={t('harbour.utrClearingPanelSub')}
+            >
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-[var(--text-secondary)]">
+                    {t('harbour.pendingBatches')}
+                  </span>
+                  <Badge
+                    tone={pendingBatchesCount > 0 ? 'warn' : 'ok'}
+                    label={String(pendingBatchesCount)}
+                  />
+                </div>
+                <Input
+                  label={t('harbour.bankUtrReference')}
+                  mono
+                  value={utrInput}
+                  onChange={(e) => setUtrInput(e.target.value)}
+                  placeholder="UTR reference…"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Landmark className="w-3.5 h-3.5" />}
+                  onClick={handleGenerateBatch}
+                  className="w-full"
+                >
+                  {t('harbour.newBatch')}
                 </Button>
               </div>
-            }
-          >
-            <DataTable
-              caption="Payout Batches"
-              columns={batchColumns}
-              rows={data.payoutBatches}
-              getRowKey={(r) => r.batch_id}
-            />
-          </Card>
+            </Card>
 
-          <Card title="Floor Price Schedule">
-            <form
-              onSubmit={handleUpdateFloorSchedule}
-              className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end mb-4 pb-4 border-b border-[var(--border-hair)]"
+            <Card
+              title={t('harbour.quickFloorTitle')}
+              subtitle={t('harbour.quickFloorSubtitle')}
             >
-              <Select
-                label="Enforcement"
-                value={floorEnforcement}
-                onChange={(e) => setFloorEnforcement(e.target.value as FloorEnforcement)}
-                options={[
-                  { value: 'WARN', label: 'Warn — flag sales below floor' },
-                  { value: 'BLOCK', label: 'Block — reject sales below floor' },
-                  { value: 'OFF', label: 'Off — advisory only' },
-                ]}
-              />
-              <Select
-                label="Species to Update"
-                value={floorEditSpeciesId}
-                onChange={(e) => setFloorEditSpeciesId(e.target.value)}
-                options={data.species.map((s) => ({
-                  value: s.species_id,
-                  label: `${s.name_en} (${s.code})`,
-                }))}
-              />
-              <Input
-                label="New Floor Price (₹ / kg)"
-                type="number"
-                mono
-                value={floorEditRupees}
-                onChange={(e) => setFloorEditRupees(e.target.value)}
-              />
-              <Button type="submit" variant="primary">
-                Save Floor Schedule
-              </Button>
-            </form>
+              <form onSubmit={handleUpdateFloorSchedule} className="flex flex-col gap-3">
+                <Select
+                  label={t('harbour.enforcementLabel')}
+                  value={floorEnforcement}
+                  onChange={(e) => setFloorEnforcement(e.target.value as FloorEnforcement)}
+                  options={[
+                    { value: 'WARN', label: 'Warn — flag sales below floor' },
+                    { value: 'BLOCK', label: 'Block — reject sales below floor' },
+                    { value: 'OFF', label: 'Off — advisory only' },
+                  ]}
+                />
+                <Select
+                  label={t('harbour.speciesToUpdate')}
+                  value={floorEditSpeciesId}
+                  onChange={(e) => setFloorEditSpeciesId(e.target.value)}
+                  options={data.species.map((s) => ({
+                    value: s.species_id,
+                    label: `${s.name_en} (${s.code})`,
+                  }))}
+                />
+                <Input
+                  label={t('harbour.newFloorPrice')}
+                  type="number"
+                  mono
+                  value={floorEditRupees}
+                  onChange={(e) => setFloorEditRupees(e.target.value)}
+                />
+                <Button type="submit" variant="primary" className="w-full">
+                  {t('harbour.saveFloorSchedule')}
+                </Button>
+              </form>
+            </Card>
 
-            <DataTable
-              caption="Species Floor Schedule"
-              columns={speciesColumns}
-              rows={data.species}
-              getRowKey={(r) => r.species_id}
-            />
-          </Card>
-
-          <Card title="Licensed Auctioneers">
-            <DataTable
-              caption="Licensed Auctioneers Registry"
-              columns={licenceColumns}
-              rows={data.licences}
-              getRowKey={(r) => r.licence_id}
-            />
-          </Card>
-
-          {auditLogsSection}
+            <Card
+              title={t('harbour.recentActivityTitle')}
+              actions={
+                <Badge tone="info" label={String(allAuditLogs.length)} />
+              }
+            >
+              <div className="flex flex-col gap-2.5">
+                {allAuditLogs.slice(0, 5).map((log) => (
+                  <div
+                    key={log.audit_id}
+                    className="p-2.5 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-1 text-xs"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-[var(--text-primary)] truncate">
+                        {humanizeCode(log.action_code)}
+                      </span>
+                      <span className="inline-flex items-center gap-1 font-mono-code text-[11px] text-[var(--text-muted)] shrink-0">
+                        <Clock className="w-3 h-3" />
+                        {log.created_at.slice(11, 16)}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[var(--text-secondary)] truncate">
+                      {log.actor_name ?? log.actor_user_id} · {humanizeCode(log.actor_role)} ·{' '}
+                      <span className="font-mono-code">{log.target_id}</span>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={<ArrowRight className="w-3.5 h-3.5" />}
+                  onClick={() => setActiveTab('audit')}
+                  className="w-full mt-1"
+                >
+                  {t('harbour.openFullAudit')}
+                </Button>
+              </div>
+            </Card>
+          </aside>
         </div>
       )}
 
@@ -685,59 +782,63 @@ export const HarbourWorkspace: React.FC<{
       )}
 
       {activeTab === 'accounting' && (
-        <div className="flex flex-col gap-6">
-          <Card
-            title="Nodal Bank Payout Batches & UTR Reconciliation"
-            subtitle="Close the harbour day: generate CSV payout batch → import bank UTR → zero unexplained difference"
-            actions={
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  label="Bank UTR Reference"
-                  mono
-                  value={utrInput}
-                  onChange={(e) => setUtrInput(e.target.value)}
-                />
-                <Button
-                  variant="primary"
-                  icon={<Landmark className="w-4 h-4" />}
-                  onClick={handleGenerateBatch}
-                >
-                  Generate New Payout Batch
-                </Button>
-              </div>
-            }
-          >
-            <DataTable
-              caption="Payout Batches and UTR Reconciliation"
-              columns={batchColumns}
-              rows={data.payoutBatches}
-              getRowKey={(r) => r.batch_id}
-            />
-          </Card>
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+          <div className="xl:col-span-7 flex flex-col gap-5 min-w-0">
+            <Card
+              title={t('harbour.payoutBatchesTitle')}
+              subtitle="Close the harbour day: generate CSV payout batch → import bank UTR → zero unexplained difference"
+              actions={
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    label={t('harbour.bankUtrReference')}
+                    mono
+                    value={utrInput}
+                    onChange={(e) => setUtrInput(e.target.value)}
+                  />
+                  <Button
+                    variant="primary"
+                    icon={<Landmark className="w-4 h-4" />}
+                    onClick={handleGenerateBatch}
+                  >
+                    {t('harbour.newBatch')}
+                  </Button>
+                </div>
+              }
+            >
+              <DataTable
+                caption="Payout Batches and UTR Reconciliation"
+                columns={batchColumns}
+                rows={data.payoutBatches}
+                getRowKey={(r) => r.batch_id}
+              />
+            </Card>
 
-          <Card
-            title="Dual-Key Reversal Queue"
-            subtitle="Ledger rows are never edited; corrections post a compensating journal requiring two distinct users (Accountant + Harbour Admin)"
-          >
-            <DataTable
-              caption="Dual-Key Reversal Queue"
-              columns={reversalColumns}
-              rows={data.reversals}
-              getRowKey={(r) => r.reversal_id}
-            />
-          </Card>
+            <Card
+              title={t('harbour.dualKeyReversalsTitle')}
+              subtitle={t('harbour.dualKeyReversalsSub')}
+            >
+              <DataTable
+                caption="Dual-Key Reversal Queue"
+                columns={reversalColumns}
+                rows={data.reversals}
+                getRowKey={(r) => r.reversal_id}
+              />
+            </Card>
+          </div>
 
-          <Card
-            title="Double-Entry Ledger Accounts"
-            subtitle="Per-beneficiary balances computed from append-only journal entries"
-          >
-            <DataTable
-              caption="Statutory Ledger Accounts"
-              columns={accountColumns}
-              rows={data.accounts}
-              getRowKey={(r) => r.account_id}
-            />
-          </Card>
+          <div className="xl:col-span-5 xl:sticky xl:top-20 min-w-0">
+            <Card
+              title={t('harbour.ledgerAccountsTitle')}
+              subtitle={t('harbour.ledgerAccountsSub')}
+            >
+              <DataTable
+                caption="Statutory Ledger Accounts"
+                columns={accountColumns}
+                rows={data.accounts}
+                getRowKey={(r) => r.account_id}
+              />
+            </Card>
+          </div>
         </div>
       )}
 
@@ -821,4 +922,3 @@ export const HarbourWorkspace: React.FC<{
     </div>
   );
 };
-

@@ -362,7 +362,7 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
       setUtrFeedback({
         tone: 'ok',
         title: `Reconciled ${res.reconciledCount} Nodal Payout Batch(es)`,
-        msg: `Updated ledger.payout_batches to RECONCILED_UTR in PostgreSQL: ${codes}`,
+        msg: `Marked payout batches as UTR reconciled: ${codes}`,
       });
     } catch (err) {
       setSessionImportHistory((prev) => [
@@ -472,7 +472,7 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
       setUtrFeedback({
         tone: 'ok',
         title: `Bank Nodal Webhook Verified (${res.bankCode})`,
-        msg: `HMAC-SHA256 (${res.signatureHex.slice(0, 16)}…) verified & auto-reconciled ${res.reconciledCount} batch(es).`,
+        msg: `Signed callback (${res.signatureHex.slice(0, 16)}…) verified & auto-reconciled ${res.reconciledCount} batch(es).`,
       });
     } catch (err) {
       setUtrFeedback({
@@ -617,7 +617,7 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
                     Nodal Bank Clearing · T+0 Settlement
                   </div>
                   <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-                    Payout Batch Bank UTR Reconciliation (`ledger.payout_batches`)
+                    Payout Batch Bank UTR Reconciliation
                   </h4>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">

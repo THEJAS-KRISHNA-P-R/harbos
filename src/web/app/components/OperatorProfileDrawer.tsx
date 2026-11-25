@@ -113,7 +113,7 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
             ...(!import.meta.env.PROD
               ? [{ id: 'switch', label: 'Switch Persona', badge: 8 }]
               : []),
-            { id: 'session', label: 'JWT & Activity', badge: profileData?.recentAudit.length ?? 0 },
+            { id: 'session', label: 'Session & Activity', badge: profileData?.recentAudit.length ?? 0 },
           ]}
           activeId={import.meta.env.PROD && profileTab === 'switch' ? 'identity' : profileTab}
           onChange={(id) => onChangeTab(id as 'identity' | 'switch' | 'session')}
@@ -131,10 +131,8 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
         {profileTab === 'identity' && (
           <div className="flex flex-col gap-5">
             <Card
-              stepBadge="POSTGRESQL"
-              kicker="core.users Record"
               title="Update Operator Profile Details"
-              subtitle="Saves directly to PostgreSQL core.users, logs to core.audit_logs, and refreshes your HS256 JWT"
+              subtitle="Updates your harbour operator profile, records an audit entry, and refreshes your active session"
             >
               <form onSubmit={(e) => void onSaveProfile(e)} className="flex flex-col gap-4">
                 <Input
@@ -154,12 +152,12 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
                 <div className="flex items-center justify-between gap-3 pt-1">
                   <span className="text-xs text-[var(--text-muted)]">
                     Role:{' '}
-                    <strong className="font-mono-code text-[var(--text-primary)]">
-                      {user?.role}
+                    <strong className="text-[var(--text-primary)]">
+                      {activeRoleMeta.titleEn}
                     </strong>
                   </span>
                   <Button type="submit" variant="primary" size="sm" loading={profileSaving}>
-                    Save Profile to PostgreSQL
+                    Save Profile
                   </Button>
                 </div>
               </form>
@@ -202,7 +200,7 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
         {profileTab === 'switch' && (
           <div className="flex flex-col gap-3">
             <p className="text-xs text-[var(--text-secondary)]">
-              Switch between any of the 8 seeded harbour operator personas in <code>core.users</code> to test role-specific statutory workflows:
+              Switch between any of the 8 demo harbour operator personas to test role-specific workflows:
             </p>
             {(
               [
@@ -260,19 +258,19 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
           <div className="flex flex-col gap-4">
             <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2 text-xs">
               <div className="font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-                Verified HS256 JWT Claims (RFC 7519)
+                Active Session Details
               </div>
               <div className="font-mono-code text-[var(--text-primary)] grid grid-cols-2 gap-1.5">
-                <span>sub: {user?.userId}</span>
-                <span>role: {user?.role}</span>
-                <span>tenantId: {user?.tenantId}</span>
-                <span>phone: {user?.phoneE164}</span>
+                <span>Operator ID: {user?.userId}</span>
+                <span>Role: {activeRoleMeta.shortBadge}</span>
+                <span>Harbour: {user?.tenantId}</span>
+                <span>Phone: {user?.phoneE164}</span>
               </div>
             </div>
 
             <div>
               <h4 className="text-sm font-bold text-[var(--text-primary)] mb-2">
-                Recent Operator Audit Trail (`core.audit_logs`)
+                Recent Operator Activity
               </h4>
               {profileData && profileData.recentAudit.length > 0 ? (
                 <div className="flex flex-col gap-2">

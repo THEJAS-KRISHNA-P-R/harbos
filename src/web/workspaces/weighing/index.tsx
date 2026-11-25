@@ -13,6 +13,7 @@ import {
   DataTable,
   Modal,
   Toast,
+  WorkspaceSkeleton,
   DocksideWeighingScaleSvgDecor,
   type DataTableColumn,
 } from '@web/ui/index.tsx';
@@ -39,8 +40,9 @@ interface QueuedLotCommand {
 export const WeighingWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
+  loading?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, onRefresh }) => {
+}> = ({ data, token, loading = false, onRefresh }) => {
   const { t } = useI18n();
   const [selectedVesselId, setSelectedVesselId] = useState(data.vessels[0]?.vessel_id ?? 'VSL-01');
   const [selectedSpeciesId, setSelectedSpeciesId] = useState(data.species[0]?.species_id ?? 'SPC-01');
@@ -208,13 +210,13 @@ export const WeighingWorkspace: React.FC<{
   const columns: ReadonlyArray<DataTableColumn<LotRow>> = [
     {
       key: 'lot_code',
-      header: 'Lot Code',
+      header: t('weighing.lotCode'),
       mono: true,
       render: (r) => <span className="font-semibold">{r.lot_code}</span>,
     },
     {
       key: 'vessel',
-      header: 'Vessel & Society Loan',
+      header: t('weighing.vesselAndLoan'),
       render: (r) => {
         const v = data.vessels.find((x) => x.vessel_id === r.vessel_id);
         return (
@@ -231,7 +233,7 @@ export const WeighingWorkspace: React.FC<{
     },
     {
       key: 'species',
-      header: 'Species',
+      header: t('weighing.species'),
       render: (r) => {
         const s = data.species.find((x) => x.species_id === r.species_id);
         return (
@@ -249,27 +251,27 @@ export const WeighingWorkspace: React.FC<{
     },
     {
       key: 'boxes',
-      header: 'Boxes (Avail/Total)',
+      header: t('weighing.boxesAvail'),
       align: 'right',
       mono: true,
       render: (r) => `${r.available_boxes} / ${r.total_boxes}`,
     },
     {
       key: 'weight',
-      header: 'Net Weight',
+      header: t('weighing.netWeightHeader'),
       align: 'right',
       mono: true,
       render: (r) => formatKgFromGrams(r.net_grams),
     },
     {
       key: 'qr',
-      header: 'QR Verification',
+      header: t('weighing.qrVerification'),
       mono: true,
       render: (r) => <span className="text-xs">{r.qr_signature.slice(0, 12)}…</span>,
     },
     {
       key: 'status',
-      header: 'Status',
+      header: t('weighing.status'),
       render: (r) => (
         <Badge
           tone={
@@ -284,6 +286,10 @@ export const WeighingWorkspace: React.FC<{
       ),
     },
   ];
+
+  if (loading) {
+    return <WorkspaceSkeleton workspace="weighing" label={t('workspaces.loadingWorkspace')} />;
+  }
 
   return (
     <div className="flex flex-col gap-3.5 sm:gap-5">
@@ -344,7 +350,7 @@ export const WeighingWorkspace: React.FC<{
         <div className="col-span-2 sm:col-span-1">
           <Metric
             featured
-            label="Total Landed Weight"
+            label={t('weighing.totalLandedWeight')}
             value={formatKgFromGrams(
               data.lots.reduce((acc, l) => acc + BigInt(l.net_grams), 0n)
             )}
@@ -352,13 +358,13 @@ export const WeighingWorkspace: React.FC<{
           />
         </div>
         <Metric
-          label="Tagged Lots Today"
+          label={t('weighing.taggedLotsToday')}
           value={String(data.lots.length)}
           unit="LOTS"
           status={{ tone: 'ok', label: 'TAMPER-PROOF' }}
         />
         <Metric
-          label="Offline Queue"
+          label={t('weighing.offlineQueue')}
           value={String(offlineQueue.length)}
           unit="PENDING"
           status={{
@@ -373,7 +379,7 @@ export const WeighingWorkspace: React.FC<{
         <form onSubmit={handleTagLot} className="flex flex-col gap-3.5 sm:gap-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <Select
-              label="1. Landed Fishing Vessel (QR Token / Registration)"
+              label={t('weighing.selectVessel')}
               dockSize
               value={selectedVesselId}
               onChange={(e) => setSelectedVesselId(e.target.value)}
@@ -385,7 +391,7 @@ export const WeighingWorkspace: React.FC<{
               }))}
             />
             <Select
-              label="Scale Input Adapter"
+              label={t('weighing.scaleAdapter')}
               dockSize
               value={weightSource}
               onChange={(e) =>
@@ -400,7 +406,7 @@ export const WeighingWorkspace: React.FC<{
 
           <div>
             <div className="text-[11px] sm:text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2 sm:mb-3">
-              2. Select catch species and see today&apos;s floor price
+              {t('weighing.selectSpeciesPrompt')}
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
               {data.species.map((sp) => (
@@ -419,7 +425,7 @@ export const WeighingWorkspace: React.FC<{
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4 pt-2 border-t border-[var(--border-hair)]">
             <Input
-              label="3. Box Count (Boxes)"
+              label={t('weighing.boxCount')}
               type="number"
               mono
               dockSize
@@ -427,7 +433,7 @@ export const WeighingWorkspace: React.FC<{
               onChange={(e) => setTotalBoxes(e.target.value)}
             />
             <Input
-              label="4. Net Catch Weight (kg)"
+              label={t('weighing.netWeight')}
               type="number"
               step="0.001"
               mono
@@ -438,7 +444,7 @@ export const WeighingWorkspace: React.FC<{
             />
             <div className="col-span-2 sm:col-span-1">
               <Input
-                label="5. Core Temperature (°C)"
+                label={t('weighing.coreTemp')}
                 type="number"
                 step="0.1"
                 mono
@@ -458,7 +464,7 @@ export const WeighingWorkspace: React.FC<{
                 </span>
               </div>
               <Input
-                label="Supervisor PIN"
+                label={t('weighing.supervisorPin')}
                 type="password"
                 mono
                 value={supervisorPin}
@@ -496,8 +502,8 @@ export const WeighingWorkspace: React.FC<{
 
       {/* Tagged Lots Table */}
       <Card
-        title="Landed Lots & Signed QR Registry"
-        subtitle="Click any lot row to preview and print its dockside thermal QR sticker"
+        title={t('weighing.landedLotsTitle')}
+        subtitle={t('weighing.landedLotsSubtitle')}
       >
         <DataTable
           caption="Landed Lots Registry"
@@ -526,7 +532,7 @@ export const WeighingWorkspace: React.FC<{
         open={Boolean(stickerModalLot)}
         onClose={() => setStickerModalLot(null)}
         title={t('slips.lotLabel')}
-        description="HMAC-SHA256 authenticated lot tag for Auction Pit verification"
+        description="Signed lot tag for Auction Pit verification"
         footer={
           <>
             <Button variant="outline" onClick={() => setStickerModalLot(null)}>

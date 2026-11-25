@@ -48,9 +48,34 @@ import {
   type MomentIllustrationVariant,
 } from './illustrations/index.tsx';
 import { humanizeCode } from '@web/lib/ui-formatters.ts';
+import {
+  Skeleton,
+  SkeletonMetric,
+  SkeletonCard,
+  SkeletonTable,
+  PerformanceDashboardSkeleton,
+  WorkspaceSkeleton,
+  type SkeletonProps,
+  type SkeletonVariant,
+} from './Skeleton.tsx';
+import {
+  getSkeletonCellWidthClass,
+  shouldShowWorkspaceSkeleton,
+  type WorkspaceSkeletonKind,
+} from './skeleton-layout.ts';
 
 export {
   humanizeCode,
+  Skeleton,
+  SkeletonMetric,
+  SkeletonCard,
+  SkeletonTable,
+  PerformanceDashboardSkeleton,
+  WorkspaceSkeleton,
+  shouldShowWorkspaceSkeleton,
+  type SkeletonProps,
+  type SkeletonVariant,
+  type WorkspaceSkeletonKind,
   HarbourCrestIcon,
   DockScaleIcon,
   AuctionGavelBellIcon,
@@ -441,8 +466,8 @@ export const Metric: React.FC<MetricProps> = ({
           : 'bg-[var(--bg-surface)] border-[var(--border-hair)]'
       }`}
     >
-      <div className="flex items-center justify-between gap-1.5 sm:gap-2">
-        <span className="text-[11px] sm:text-xs font-semibold text-[var(--text-secondary)] truncate">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+        <span className="text-[11px] sm:text-xs font-semibold text-[var(--text-secondary)] leading-snug">
           {label}
         </span>
         {status && <Badge tone={status.tone} label={status.label} className="shrink-0" />}
@@ -593,10 +618,18 @@ export function DataTable<T>({
       >
         {loading ? (
           Array.from({ length: 3 }).map((_, idx) => (
-            <div key={`mobile-skeleton-${idx}`} aria-busy="true" className="p-3 flex flex-col gap-2">
-              <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="h-3.5 w-full" />
-              <Skeleton className="h-3.5 w-4/5" />
+            <div
+              key={`mobile-skeleton-${idx}`}
+              role="status"
+              aria-busy="true"
+              aria-label="Loading records…"
+              className="p-3 flex flex-col gap-2"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton variant="pill" className="h-5 w-16" />
+              </div>
+              <Skeleton variant="text" lines={2} />
             </div>
           ))
         ) : rows.length === 0 ? (
@@ -697,11 +730,11 @@ export function DataTable<T>({
           </thead>
           <tbody className="divide-y divide-[var(--border-hair)]">
             {loading ? (
-              Array.from({ length: 3 }).map((_, idx) => (
+              Array.from({ length: 4 }).map((_, idx) => (
                 <tr key={`skeleton-${idx}`} aria-busy="true">
-                  {columns.map((col) => (
+                  {columns.map((col, colIdx) => (
                     <td key={col.key} className="px-3 py-3 lg:px-4">
-                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className={`h-4 ${getSkeletonCellWidthClass(idx, colIdx)}`} />
                     </td>
                   ))}
                 </tr>
@@ -1020,50 +1053,6 @@ export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange }) => {
     </div>
   );
 };
-
-export const Skeleton: React.FC<{ className?: string }> = ({ className = 'h-4 w-full' }) => (
-  <div className={`rounded-[var(--radius-control)] bg-[var(--bg-sunken)] animate-pulse ${className}`} />
-);
-
-export const WorkspaceSkeleton: React.FC<{ label?: string }> = ({
-  label = 'Loading workspace…',
-}) => (
-  <div
-    role="status"
-    aria-busy="true"
-    aria-label={label}
-    data-testid="workspace-skeleton"
-    className="flex flex-col gap-4 sm:gap-5"
-  >
-    <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex items-center justify-between gap-4">
-      <div className="flex flex-col gap-2 flex-1">
-        <Skeleton className="h-5 w-48" />
-        <Skeleton className="h-3.5 w-64 max-w-full" />
-      </div>
-      <Skeleton className="h-9 w-28 rounded-[var(--radius-pill)]" />
-    </div>
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-      <div className="col-span-2 sm:col-span-1 p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-2.5">
-        <Skeleton className="h-3.5 w-24" />
-        <Skeleton className="h-8 w-36" />
-      </div>
-      <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-2.5">
-        <Skeleton className="h-3.5 w-20" />
-        <Skeleton className="h-8 w-28" />
-      </div>
-      <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-2.5">
-        <Skeleton className="h-3.5 w-20" />
-        <Skeleton className="h-8 w-24" />
-      </div>
-    </div>
-    <div className="p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-3">
-      <Skeleton className="h-5 w-44" />
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-4/5" />
-    </div>
-  </div>
-);
 
 export interface EmptyStateProps {
   title: string;
@@ -1577,8 +1566,11 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
             <span className="md:hidden shrink-0" aria-hidden="true">
               <MaritimeCrestSvgEmblem size={30} />
             </span>
-            <span className="text-base sm:text-sm font-bold text-[var(--text-primary)] truncate">
-              {activeItem?.labelEn ?? 'Workspace'}
+            <span
+              lang={lang === 'ml' ? 'ml' : 'en'}
+              className="text-base sm:text-sm font-bold text-[var(--text-primary)] truncate"
+            >
+              {(lang === 'ml' ? activeItem?.labelMl : activeItem?.labelEn) ?? 'Workspace'}
             </span>
             <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[var(--radius-pill)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-[11px] font-mono-code text-[var(--text-muted)] whitespace-nowrap">
               1–7 Workspaces · L Ledger · ⌘K Search

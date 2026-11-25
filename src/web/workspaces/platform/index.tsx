@@ -16,6 +16,9 @@ import {
   Tabs,
   DataTable,
   Toast,
+  WorkspaceSkeleton,
+  SkeletonMetric,
+  PerformanceDashboardSkeleton,
   HarbourLedgerVaultIcon,
   StatutorySealIcon,
   MaritimeCrestSvgEmblem,
@@ -35,6 +38,7 @@ import {
   type EntryRow,
 } from '@web/lib/api.ts';
 import type { CentreType, CommercialMode } from '@shared/ids.ts';
+import { useI18n } from '@web/i18n/index.tsx';
 import type { SystemObservabilityMetrics } from './PerformanceDashboard.tsx';
 
 const LazyPerformanceDashboard = React.lazy(async () => {
@@ -65,9 +69,11 @@ interface GovernanceMigrationsResponse {
 export const PlatformWorkspace: React.FC<{
   data: BootstrapData;
   token: string;
+  loading?: boolean;
   onRefresh: () => Promise<void>;
   initialTab?: 'scalability' | 'governance' | 'sql-migrations';
-}> = ({ data, token, onRefresh, initialTab = 'scalability' }) => {
+}> = ({ data, token, loading = false, onRefresh, initialTab = 'scalability' }) => {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<
     'scalability' | 'governance' | 'sql-migrations'
   >(initialTab);
@@ -83,7 +89,9 @@ export const PlatformWorkspace: React.FC<{
   const [legalSignoffDate, setLegalSignoffDate] = useState('');
 
   const [migrationsInfo, setMigrationsInfo] = useState<GovernanceMigrationsResponse | null>(null);
+  const [loadingMigrations, setLoadingMigrations] = useState(true);
   const [scaleMetrics, setScaleMetrics] = useState<SystemObservabilityMetrics | null>(null);
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
 
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{
@@ -93,6 +101,7 @@ export const PlatformWorkspace: React.FC<{
   } | null>(null);
 
   const loadGovernanceMigrations = useCallback(async (): Promise<void> => {
+    setLoadingMigrations(true);
     try {
       const res = await apiRequest<GovernanceMigrationsResponse>('/api/v1/governance/migrations', {
         method: 'GET',
@@ -103,10 +112,13 @@ export const PlatformWorkspace: React.FC<{
       if (err instanceof Error && err.message.includes('403')) {
         setMigrationsInfo(null);
       }
+    } finally {
+      setLoadingMigrations(false);
     }
   }, [token]);
 
   const loadScaleMetrics = useCallback(async (): Promise<void> => {
+    setLoadingMetrics(true);
     try {
       const res = await apiRequest<SystemObservabilityMetrics>('/api/v1/metrics', {
         method: 'GET',
@@ -117,6 +129,8 @@ export const PlatformWorkspace: React.FC<{
       if (err instanceof Error && err.message.includes('403')) {
         setScaleMetrics(null);
       }
+    } finally {
+      setLoadingMetrics(false);
     }
   }, [token]);
 
@@ -183,13 +197,13 @@ export const PlatformWorkspace: React.FC<{
       setFeedback({
         tone: 'ok',
         title: `Policy Version v${res.versionNum} Activated (${res.policyId})`,
-        msg: `Commercial mode ${res.commercialMode} is now active for new sales (existing sales remain under their historical policy_id).`,
+        msg: `Commercial mode ${res.commercialMode} is now active for new sales (existing sales remain under their historical policy).`,
       });
       await onRefresh();
     } catch (err) {
       setFeedback({
         tone: 'danger',
-        title: 'Statutory Policy Gate Blocked Save (Conflict C7)',
+        title: 'Statutory Policy Gate Blocked Save',
         msg: err instanceof Error ? err.message : 'Policy validation failed',
       });
     } finally {
@@ -301,17 +315,17 @@ export const PlatformWorkspace: React.FC<{
       key: 'sha',
       header: 'SHA-256 Checksum',
       mono: true,
-      render: (r) => <span className="text-xs">{r.checksum.slice(0, 24)}…</span>,
+      render: (r) => <span className="text-xs">{r.checksum.slice(0, 20)}…</span>,
     },
     {
       key: 'applied',
       header: 'Applied At (UTC)',
       mono: true,
-      render: (r) => <span>{r.applied_at}</span>,
+      render: (r) => <span>{r.applied_at.slice(0, 19).replace('T', ' ')}</span>,
     },
     {
       key: 'status',
-      header: 'Integrity Status',
+      header: 'Integrity',
       render: () => <Badge tone="ok" label="VERIFIED" />,
     },
   ];
@@ -325,38 +339,31 @@ export const PlatformWorkspace: React.FC<{
     },
     {
       key: 'ref',
-      header: 'Reference Type',
+      header: 'Reference',
       mono: true,
       render: (r) => <Badge tone="info" label={r.reference_type} />,
     },
     {
-      key: 'cnt',
-      header: 'Lines',
-      align: 'right',
-      mono: true,
-      render: (r) => r.entry_count,
-    },
-    {
       key: 'dr',
-      header: 'Sum Debits',
+      header: 'Debits',
       align: 'right',
       mono: true,
       render: (r) => formatInrFromPaise(r.sum_debit_paise),
     },
     {
       key: 'cr',
-      header: 'Sum Credits',
+      header: 'Credits',
       align: 'right',
       mono: true,
       render: (r) => formatInrFromPaise(r.sum_credit_paise),
     },
     {
       key: 'bal',
-      header: 'Double-Entry Invariant',
+      header: 'Balance',
       render: (r) => (
         <Badge
           tone={r.is_balanced ? 'ok' : 'danger'}
-          label={r.is_balanced ? 'BALANCED (DR = CR)' : 'IMBALANCED'}
+          label={r.is_balanced ? 'BALANCED' : 'IMBALANCED'}
         />
       ),
     },
@@ -435,7 +442,7 @@ export const PlatformWorkspace: React.FC<{
       setFeedback({
         tone: 'ok',
         title: `Signed Nodal Bank Webhook Verified (${res.bankCode})`,
-        msg: `@harbouros/sdk (${HARBOUROS_SDK_VERSION}) verified HMAC-SHA256 ${res.signatureHex.slice(0, 16)}… & reconciled ${res.reconciledCount} batch(es).`,
+        msg: `Signed callback ${res.signatureHex.slice(0, 16)}… verified & reconciled ${res.reconciledCount} batch(es).`,
       });
     } catch (err) {
       setFeedback({
@@ -448,7 +455,11 @@ export const PlatformWorkspace: React.FC<{
     }
   };
 
-  const appliedCount = migrationsInfo?.migrations.length ?? 9;
+  const appliedCount = migrationsInfo?.migrations.length ?? 14;
+
+  if (loading) {
+    return <WorkspaceSkeleton workspace="platform" label={t('workspaces.loadingWorkspace')} />;
+  }
 
   return (
     <div className="flex flex-col gap-3.5 sm:gap-5">
@@ -459,10 +470,10 @@ export const PlatformWorkspace: React.FC<{
           </div>
           <div className="min-w-0">
             <h1 className="text-base sm:text-xl font-bold text-[var(--text-primary)] tracking-tight truncate">
-              Platform &amp; Governance
+              {t('platform.title')}
             </h1>
             <p className="text-[11px] sm:text-xs text-[var(--text-secondary)] truncate">
-              Node.js 22 · PostgreSQL 16 · Statutory Multi-Tenant RLS
+              {t('platform.subtitle')}
             </p>
           </div>
         </div>
@@ -471,16 +482,16 @@ export const PlatformWorkspace: React.FC<{
             items={[
               {
                 id: 'scalability',
-                label: 'Observability & SDK',
+                label: t('platform.tabObservability'),
               },
               {
                 id: 'sql-migrations',
-                label: 'Migrations & Audit',
+                label: t('platform.tabMigrations'),
                 badge: appliedCount,
               },
               {
                 id: 'governance',
-                label: 'Tenants & Policies',
+                label: t('platform.tabGovernance'),
                 badge: data.allTenants.length,
               },
             ]}
@@ -503,61 +514,87 @@ export const PlatformWorkspace: React.FC<{
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3.5">
         <Metric
-          label="Backend Runtime"
+          label={t('platform.metricRuntime')}
           value="Node.js 22"
           unit="TS / EXPRESS"
           status={{ tone: 'ok', label: 'ACTIVE' }}
         />
-        <Metric
-          label="SQL Migrations"
-          value={`${appliedCount} / ${appliedCount}`}
-          unit="APPLIED"
-          status={{ tone: 'ok', label: 'FORCE RLS' }}
-        />
-        <Metric
-          label="p95 SQL Latency"
-          value={String(scaleMetrics?.p95LatencyMs ?? 1.5)}
-          unit="MS"
-          sublabel={`p50: ${scaleMetrics?.p50LatencyMs ?? 0.8} ms`}
-          status={{ tone: 'ok', label: 'NOMINAL' }}
-        />
-        <Metric
-          label="Audit Cache Hit Ratio"
-          value={`${scaleMetrics?.cacheHitRatioPct ?? 0}%`}
-          status={{ tone: 'info', label: 'LRU CACHE' }}
-        />
+        {loadingMigrations && !migrationsInfo ? (
+          <SkeletonMetric />
+        ) : (
+          <Metric
+            label={t('platform.metricMigrations')}
+            value={`${appliedCount} / ${appliedCount}`}
+            unit="APPLIED"
+            status={{ tone: 'ok', label: 'FORCE RLS' }}
+          />
+        )}
+        {loadingMetrics && !scaleMetrics ? (
+          <SkeletonMetric />
+        ) : (
+          <Metric
+            label={t('platform.metricLatency')}
+            value={String(scaleMetrics?.p95LatencyMs ?? 1.5)}
+            unit="MS"
+            sublabel={`p50: ${scaleMetrics?.p50LatencyMs ?? 0.8} ms`}
+            status={{ tone: 'ok', label: 'NOMINAL' }}
+          />
+        )}
+        {loadingMetrics && !scaleMetrics ? (
+          <SkeletonMetric />
+        ) : (
+          <Metric
+            label={t('platform.metricCache')}
+            value={`${scaleMetrics?.cacheHitRatioPct ?? 0}%`}
+            status={{ tone: 'info', label: 'LRU CACHE' }}
+          />
+        )}
       </div>
 
-      {/* TAB 0: OBSERVABILITY & SDK */}
+      {/* TAB 0: OBSERVABILITY & SDK — Desktop-First 2-Column Command Grid */}
       {activeTab === 'scalability' && (
-        <div className="flex flex-col gap-5">
-          <React.Suspense
-            fallback={
-              <div className="p-5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] text-xs text-[var(--text-secondary)]">
-                Loading real-time SQL &amp; clearing telemetry charts…
-              </div>
-            }
-          >
-            <LazyPerformanceDashboard
-              token={token}
-              onMetricsRefreshed={(snap) => setScaleMetrics(snap)}
-            />
-          </React.Suspense>
+        <div
+          data-testid="platform-office-grid"
+          className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start"
+        >
+          <div className="xl:col-span-8 flex flex-col gap-5 min-w-0">
+            <React.Suspense fallback={<PerformanceDashboardSkeleton />}>
+              <LazyPerformanceDashboard
+                token={token}
+                onMetricsRefreshed={(snap) => {
+                  setScaleMetrics(snap);
+                  setLoadingMetrics(false);
+                }}
+              />
+            </React.Suspense>
 
-          <Card
-            title="Multi-Harbour Cross-Tenant Benchmarks & Isomorphic SDK (`@harbouros/sdk`)"
-            actions={
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="info" label={`SDK v${HARBOUROS_SDK_VERSION}`} />
+            <Card title={t('platform.benchmarksTitle')}>
+              <DataTable
+                caption="Multi-Harbour Cross-Tenant Clearing & Settlement Benchmarks"
+                columns={benchmarkColumns}
+                rows={crossHarbourBenchmarks}
+                getRowKey={(r) => r.tenantId}
+              />
+            </Card>
+          </div>
+
+          <aside className="xl:col-span-4 xl:sticky xl:top-20 flex flex-col gap-4 min-w-0">
+            <Card
+              title={t('platform.sdkPanelTitle')}
+              subtitle={t('platform.sdkPanelSubtitle')}
+              actions={<Badge tone="info" label={`SDK v${HARBOUROS_SDK_VERSION}`} />}
+            >
+              <div className="flex flex-col gap-3">
                 <Button
-                  variant="outline"
+                  variant="primary"
                   size="sm"
                   data-testid="platform-webhook-sync-btn"
                   loading={submitting}
                   icon={<Zap className="w-3.5 h-3.5" />}
                   onClick={() => void handlePlatformWebhookSync()}
+                  className="w-full"
                 >
-                  Simulate Signed Bank Webhook
+                  {t('platform.simulateWebhookBtn')}
                 </Button>
                 <Button
                   variant="secondary"
@@ -571,28 +608,43 @@ export const PlatformWorkspace: React.FC<{
                       'text/typescript;charset=utf-8;'
                     )
                   }
+                  className="w-full"
                 >
-                  Download SDK Starter
+                  {t('platform.downloadSdkBtn')}
                 </Button>
+                <div className="pt-2 border-t border-[var(--border-hair)] flex flex-col gap-1.5 text-xs text-[var(--text-secondary)]">
+                  <div className="flex items-center justify-between">
+                    <span>Active Harbour</span>
+                    <span className="font-semibold text-[var(--text-primary)] truncate max-w-[180px]">
+                      {data.tenant?.name_en ?? 'Munambam'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Provisioned Tenants</span>
+                    <span className="font-mono-code font-bold text-[var(--text-primary)]">
+                      {data.allTenants.length}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Ledger Chain</span>
+                    <Badge
+                      tone={data.ledgerVerification.verified ? 'ok' : 'danger'}
+                      label={data.ledgerVerification.verified ? 'VERIFIED' : 'ALERT'}
+                    />
+                  </div>
+                </div>
               </div>
-            }
-          >
-            <DataTable
-              caption="Multi-Harbour Cross-Tenant Clearing & Settlement Benchmarks"
-              columns={benchmarkColumns}
-              rows={crossHarbourBenchmarks}
-              getRowKey={(r) => r.tenantId}
-            />
-          </Card>
+            </Card>
+          </aside>
         </div>
       )}
 
-      {/* TAB 1: SQL MIGRATION CHAIN (001–009) & DOUBLE-ENTRY AUDIT */}
+      {/* TAB 1: SQL MIGRATION CHAIN & DOUBLE-ENTRY AUDIT — Side-by-Side Desktop Split */}
       {activeTab === 'sql-migrations' && (
-        <div className="flex flex-col gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
           <Card
-            title="Applied Schema Migrations"
-            subtitle="Checksum-verified migrations enforcing fail-closed RLS, statutory caps & deferred journal balance"
+            title={t('platform.migrationsTitle')}
+            subtitle={t('platform.migrationsSubtitle')}
             actions={
               <Button
                 variant="secondary"
@@ -600,7 +652,7 @@ export const PlatformWorkspace: React.FC<{
                 icon={<RefreshCw className="w-4 h-4" />}
                 onClick={() => void loadGovernanceMigrations()}
               >
-                Refresh Status
+                {t('platform.refreshStatus')}
               </Button>
             }
           >
@@ -608,18 +660,20 @@ export const PlatformWorkspace: React.FC<{
               caption="Applied PostgreSQL Schema Migrations"
               columns={migrationColumns}
               rows={migrationsInfo?.migrations ?? []}
+              loading={loadingMigrations && !migrationsInfo}
               getRowKey={(r) => r.version}
             />
           </Card>
 
           <Card
-            title="Double-Entry Journal Balance Audit"
-            subtitle="Verifies SUM(debit_paise) = SUM(credit_paise) across all statutory journals"
+            title={t('platform.balanceAuditTitle')}
+            subtitle={t('platform.balanceAuditSubtitle')}
           >
             <DataTable
               caption="Double-Entry Journal Balance Audit"
               columns={balanceAuditColumns}
               rows={migrationsInfo?.journalBalanceAudit ?? []}
+              loading={loadingMigrations && !migrationsInfo}
               getRowKey={(r) => r.journal_id}
             />
           </Card>
@@ -628,10 +682,10 @@ export const PlatformWorkspace: React.FC<{
 
       {/* TAB 2: TENANTS, POLICIES & LEDGER ENTRIES */}
       {activeTab === 'governance' && (
-        <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="flex flex-col gap-5">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <Card
-              title="Provision New Harbour / Fish Market Tenant (< 60s)"
+              title={t('platform.provisionTenantTitle')}
               subtitle="Seeds statutory commission split (20/20/40/20 for Harbour; 20/20/30/30 for Fish Market)"
             >
               <form onSubmit={handleProvisionTenant} className="flex flex-col gap-4">
@@ -687,7 +741,7 @@ export const PlatformWorkspace: React.FC<{
             </Card>
 
             <Card
-              title="New Commission Policy Version"
+              title={t('platform.policyVersionTitle')}
               subtitle="Modes B & C require a Legal Sign-Off reference and date before activation"
             >
               <form onSubmit={handleSavePolicyVersion} className="flex flex-col gap-4">
@@ -749,32 +803,34 @@ export const PlatformWorkspace: React.FC<{
             </Card>
           </div>
 
-          <Card
-            title="Provisioned Multi-Tenant Registry"
-            subtitle="All tenants isolated by database Row-Level Security"
-          >
-            <DataTable
-              caption="Provisioned Harbour & Market Tenants"
-              columns={tenantColumns}
-              rows={data.allTenants}
-              getRowKey={(r) => r.tenant_id}
-            />
-          </Card>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+            <Card
+              title={t('platform.tenantsRegistryTitle')}
+              subtitle="All tenants isolated by database Row-Level Security"
+            >
+              <DataTable
+                caption="Provisioned Harbour & Market Tenants"
+                columns={tenantColumns}
+                rows={data.allTenants}
+                getRowKey={(r) => r.tenant_id}
+              />
+            </Card>
+
+            <Card
+              title={t('platform.policyHistoryTitle')}
+              subtitle="Historical sales remain bound to their exact policy version"
+            >
+              <DataTable
+                caption="Versioned Statutory Commission Policies"
+                columns={policyColumns}
+                rows={data.policies}
+                getRowKey={(r) => r.policy_id}
+              />
+            </Card>
+          </div>
 
           <Card
-            title="Immutable Commission Policy History"
-            subtitle="Historical sales remain bound to their exact policy version"
-          >
-            <DataTable
-              caption="Versioned Statutory Commission Policies"
-              columns={policyColumns}
-              rows={data.policies}
-              getRowKey={(r) => r.policy_id}
-            />
-          </Card>
-
-          <Card
-            title="Append-Only Double-Entry Ledger Chain"
+            title={t('platform.ledgerChainTitle')}
             subtitle="Protected by immutable triggers and SHA-256 hash chain"
             actions={
               <div className="flex items-center gap-2">

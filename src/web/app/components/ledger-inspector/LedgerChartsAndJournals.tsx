@@ -109,10 +109,10 @@ export const LedgerChartsAndJournals: React.FC<LedgerChartsAndJournalsProps> = (
         <div className="flex items-center justify-between gap-2 mb-2">
           <div>
             <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-              Recent Double-Entry Journals (`ledger.journals`)
+              Recent Double-Entry Journals
             </h4>
             <p className="text-[11px] text-[var(--text-secondary)]">
-              Click any journal to inspect its balanced SHA-256 debit/credit lines (`ledger.entries`)
+              Click any journal to inspect its balanced SHA-256 debit and credit lines
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -208,10 +208,10 @@ export const LedgerChartsAndJournals: React.FC<LedgerChartsAndJournalsProps> = (
         </div>
       </div>
 
-      {/* §2 Golden Vectors */}
+      {/* Reference Settlement Vectors */}
       <div>
         <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-2">
-          §2 Golden Vectors (₹1,00,000 Hammer = 10,000,000 Paise)
+          Reference Settlement Vectors (₹1,00,000 Sale)
         </h4>
         <div className="flex flex-col gap-2.5">
           {goldenVectorRows.map((gv) => (

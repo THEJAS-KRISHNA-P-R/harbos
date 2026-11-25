@@ -88,11 +88,11 @@ const ROLE_DISPLAY_MAP: Record<Role, RoleDisplayMeta> = {
     shortBadge: 'Weighing Desk',
     statutoryRef: `${ACT_16_2021_CITATIONS.FISH_MARKET_COMMISSION_SPLIT} & QR Tagging`,
     description:
-      'Captures integer gram catch weights at the landing quay, binds vessels and species, and prints HMAC-SHA256 QR lot stickers.',
+      'Captures exact gram catch weights at the landing quay, binds vessels and species, and prints tamper-proof QR lot stickers.',
     defaultWorkspace: 'weighing',
     capabilities: [
       'Record Landed Catch in Exact Integer Grams (Zero Float Math)',
-      'Generate HMAC-SHA256 Signed Thermal QR Lot Stickers',
+      'Generate Signed Thermal QR Lot Stickers',
       'Queue Offline Dockside Lots with Idempotent Sync Replay',
       'Log Supervisor PIN Overrides to Immutable Audit Trail',
     ],
@@ -147,18 +147,18 @@ const ROLE_DISPLAY_MAP: Record<Role, RoleDisplayMeta> = {
   },
   AUTHORIZED_INSPECTOR: {
     role: 'AUTHORIZED_INSPECTOR',
-    titleEn: 'Quality Inspector (s.21)',
-    titleMl: 'ഗുണനിലവാര ഇൻസ്പെക്ടർ (s.21)',
-    shortBadge: 's.21 Inspector',
+    titleEn: 'Quality Inspector',
+    titleMl: 'ഗുണനിലവാര ഇൻസ്പെക്ടർ',
+    shortBadge: 'Quality Inspector',
     statutoryRef: ACT_16_2021_CITATIONS.QUALITY_INSPECTION_GATE,
     description:
       'Performs organoleptic and core-temperature hygiene inspections, certifying export lots or quarantining unfit catch.',
     defaultWorkspace: 'inspector',
     capabilities: [
-      'Certify Landed Lots as A_EXPORT, A_DOMESTIC, or B_PROCESS',
-      'Quarantine Adulterated/Unfit Lots (REJECTED_UNFIT Hard Block)',
+      'Certify Landed Lots as Export Grade A, Domestic Grade A, or Processing Grade B',
+      'Quarantine Adulterated/Unfit Lots (Hard Block from Sale)',
       'Record Core Flesh Temperature (°C) & Organoleptic Notes',
-      'Invoke Optional Advisory AI Inspection Assist (ADR-009)',
+      'Invoke Optional Advisory AI Inspection Assist',
     ],
   },
   SUPER_ADMIN: {
@@ -168,13 +168,13 @@ const ROLE_DISPLAY_MAP: Record<Role, RoleDisplayMeta> = {
     shortBadge: 'Super Admin',
     statutoryRef: 'Multi-Harbour Governance',
     description:
-      'Governs multi-harbour tenant provisioning, Conflict C7 commercial policy gates, Golang 1.23 source code, and PostgreSQL 16 console.',
+      'Governs multi-harbour tenant provisioning, commercial policy sign-off gates, Node.js 22 telemetry, and PostgreSQL 16 migrations.',
     defaultWorkspace: 'platform',
     capabilities: [
-      'Inspect Live Golang 1.23 Backend & 001–005 SQL Migrations',
-      'Execute Read-Only Queries in Live PostgreSQL 16 Console',
+      'Monitor Live Node.js 22 Telemetry & Applied SQL Migrations',
+      'Verify Double-Entry Journal Balance & SHA-256 Ledger Chain',
       'Provision New Harbour Tenants & Configure Floor Enforcement',
-      'Enforce Conflict C7 Legal Sign-Off Gate on Commercial Policies',
+      'Enforce Legal Sign-Off Gate on Commercial Monetization Policies',
     ],
   },
 };
