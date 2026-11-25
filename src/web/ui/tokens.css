@@ -223,6 +223,10 @@ table th {
   background-color: var(--bg-sunken);
 }
 
+.skeleton-shimmer.skeleton-tone-contrast {
+  background-color: color-mix(in srgb, var(--navy-200) 56%, var(--bg-surface));
+}
+
 .skeleton-shimmer::after {
   content: '';
   position: absolute;

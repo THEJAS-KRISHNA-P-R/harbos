@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   getSkeletonCellWidthClass,
   getSkeletonTextLineWidths,
+  resolveSkeletonCardGridColumnsClass,
+  resolveSkeletonListLayout,
   resolveWorkspaceSkeletonPreset,
   shouldShowWorkspaceSkeleton,
 } from '../../src/web/ui/skeleton-layout';
@@ -79,3 +81,28 @@ test('shouldShowWorkspaceSkeleton handles initial load, persona switch, explicit
     false
   );
 });
+
+test('resolveSkeletonListLayout returns consistent variant specs for list views', () => {
+  const activity = resolveSkeletonListLayout('activity');
+  assert.equal(activity.defaultAvatar, false);
+  assert.equal(activity.defaultBadge, true);
+  assert.equal(activity.subtitleLines, 1);
+  assert.ok(activity.titleWidthCycle.length >= 3);
+
+  const detailed = resolveSkeletonListLayout('detailed');
+  assert.equal(detailed.defaultAvatar, true);
+  assert.equal(detailed.subtitleLines, 2);
+
+  const keyValue = resolveSkeletonListLayout('key-value');
+  assert.equal(keyValue.defaultBadge, false);
+  assert.equal(keyValue.subtitleLines, 0);
+});
+
+test('resolveSkeletonCardGridColumnsClass maps responsive column presets cleanly', () => {
+  assert.equal(resolveSkeletonCardGridColumnsClass(1), 'grid-cols-1');
+  assert.equal(resolveSkeletonCardGridColumnsClass(2), 'grid-cols-1 sm:grid-cols-2');
+  assert.equal(resolveSkeletonCardGridColumnsClass(3), 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3');
+  assert.equal(resolveSkeletonCardGridColumnsClass(4), 'grid-cols-2 lg:grid-cols-4');
+  assert.equal(resolveSkeletonCardGridColumnsClass(6), 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6');
+});
+

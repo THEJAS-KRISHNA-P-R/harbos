@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Upload, CheckCircle2, AlertTriangle, FileSpreadsheet } from 'lucide-react';
-import { Button, Card, Badge, Select, Toast } from '@web/ui/index.tsx';
+import { Button, Card, Badge, Select, Toast, SkeletonCard, SkeletonList } from '@web/ui/index.tsx';
 import { apiRequest, type BootstrapData } from '@web/lib/api.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 
@@ -182,7 +182,17 @@ export const MasterdataCsvPanel: React.FC<{
             </Button>
           </div>
 
-          {result && (
+          {submitting && (
+            <SkeletonCard
+              showHeader={false}
+              testId="csv-import-skeleton"
+              label="Validating masterdata CSV rows…"
+            >
+              <SkeletonList items={3} variant="compact" surface="sunken" />
+            </SkeletonCard>
+          )}
+
+          {!submitting && result && (
             <div
               data-testid="csv-import-result"
               className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-3"

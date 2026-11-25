@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, History, Search } from 'lucide-react';
-import { Badge, Button } from '@web/ui/index.tsx';
+import { Badge, Button, SkeletonList } from '@web/ui/index.tsx';
 import {
   countUtrImportHistoryByFilter,
   filterAuditLogsByActionOrTarget,
@@ -32,6 +32,7 @@ export interface UtrBulkHistoryTableProps {
   expandedHistoryId: string | null;
   onToggleExpand: (importId: string) => void;
   lruCacheInfo?: SqlLruCacheBadgeInfo | null;
+  loading?: boolean;
 }
 
 export const UtrBulkHistoryTable: React.FC<UtrBulkHistoryTableProps> = ({
@@ -44,6 +45,7 @@ export const UtrBulkHistoryTable: React.FC<UtrBulkHistoryTableProps> = ({
   expandedHistoryId,
   onToggleExpand,
   lruCacheInfo = null,
+  loading = false,
 }) => {
   const [auditFilterText, setAuditFilterText] = useState('');
   const counts = countUtrImportHistoryByFilter(importHistoryEntries);
@@ -115,7 +117,15 @@ export const UtrBulkHistoryTable: React.FC<UtrBulkHistoryTableProps> = ({
         </div>
       </div>
 
-      {filteredHistoryEntries.length === 0 ? (
+      {loading && filteredHistoryEntries.length === 0 ? (
+        <SkeletonList
+          items={3}
+          variant="compact"
+          surface="sunken"
+          testId="utr-history-skeleton"
+          label="Loading reconciliation history…"
+        />
+      ) : filteredHistoryEntries.length === 0 ? (
         <div className="p-4 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] text-xs text-[var(--text-secondary)] flex items-center justify-between gap-2">
           <span>No CSV bulk import records match the selected filter.</span>
           <Button

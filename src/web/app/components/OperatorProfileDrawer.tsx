@@ -8,6 +8,7 @@ import {
   Input,
   Drawer,
   Toast,
+  SkeletonList,
 } from '@web/ui/index.tsx';
 import {
   getRoleDisplayMeta,
@@ -24,6 +25,7 @@ export interface OperatorProfileDrawerProps {
   profileTab: 'identity' | 'switch' | 'session';
   onChangeTab: (tab: 'identity' | 'switch' | 'session') => void;
   profileData: OperatorProfileResponse | null;
+  profileLoading?: boolean;
   editFullName: string;
   onChangeFullName: (val: string) => void;
   editPhoneE164: string;
@@ -48,6 +50,7 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
   profileTab,
   onChangeTab,
   profileData,
+  profileLoading = false,
   editFullName,
   onChangeFullName,
   editPhoneE164,
@@ -272,7 +275,15 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
               <h4 className="text-sm font-bold text-[var(--text-primary)] mb-2">
                 Recent Operator Activity
               </h4>
-              {profileData && profileData.recentAudit.length > 0 ? (
+              {profileLoading && !profileData ? (
+                <SkeletonList
+                  items={3}
+                  variant="activity"
+                  surface="card"
+                  testId="operator-activity-skeleton"
+                  label="Loading operator activity…"
+                />
+              ) : profileData && profileData.recentAudit.length > 0 ? (
                 <div className="flex flex-col gap-2">
                   {profileData.recentAudit.map((a) => (
                     <div

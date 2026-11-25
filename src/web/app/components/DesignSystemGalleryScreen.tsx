@@ -7,6 +7,8 @@ import {
   DataTable,
   Skeleton,
   SkeletonMetric,
+  SkeletonList,
+  SkeletonCardGrid,
   SkeletonTable,
   WorkflowStepStrip,
   HarbourCrestIcon,
@@ -178,6 +180,20 @@ export const DesignSystemGalleryScreen: React.FC<DesignSystemGalleryScreenProps>
             <SkeletonMetric featured />
             <SkeletonMetric />
             <SkeletonMetric />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                Card Grid Skeleton (Lot / Species Pickers)
+              </span>
+              <SkeletonCardGrid count={2} columns={2} variant="selectable" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                List View Skeleton (Activity & Audit Feeds)
+              </span>
+              <SkeletonList items={2} variant="activity" surface="sunken" />
+            </div>
           </div>
           <SkeletonTable rows={3} columns={4} />
         </div>

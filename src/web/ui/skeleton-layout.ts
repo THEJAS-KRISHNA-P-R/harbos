@@ -142,3 +142,68 @@ export function shouldShowWorkspaceSkeleton(params: {
   if (params.switchingPersona) return true;
   return Boolean(params.loading);
 }
+
+export type SkeletonListVariant = 'activity' | 'detailed' | 'compact' | 'key-value';
+
+export interface SkeletonListLayoutSpec {
+  variant: SkeletonListVariant;
+  defaultAvatar: boolean;
+  defaultBadge: boolean;
+  subtitleLines: number;
+  titleWidthCycle: ReadonlyArray<string>;
+}
+
+const LIST_LAYOUT_SPECS: Record<SkeletonListVariant, SkeletonListLayoutSpec> = {
+  activity: {
+    variant: 'activity',
+    defaultAvatar: false,
+    defaultBadge: true,
+    subtitleLines: 1,
+    titleWidthCycle: ['w-36', 'w-44', 'w-32', 'w-40'],
+  },
+  detailed: {
+    variant: 'detailed',
+    defaultAvatar: true,
+    defaultBadge: true,
+    subtitleLines: 2,
+    titleWidthCycle: ['w-44', 'w-52', 'w-40', 'w-48'],
+  },
+  compact: {
+    variant: 'compact',
+    defaultAvatar: false,
+    defaultBadge: true,
+    subtitleLines: 1,
+    titleWidthCycle: ['w-2/5', 'w-1/2', 'w-1/3', 'w-2/5'],
+  },
+  'key-value': {
+    variant: 'key-value',
+    defaultAvatar: false,
+    defaultBadge: false,
+    subtitleLines: 0,
+    titleWidthCycle: ['w-32', 'w-40', 'w-28', 'w-36'],
+  },
+};
+
+export function resolveSkeletonListLayout(
+  variant: SkeletonListVariant = 'activity'
+): SkeletonListLayoutSpec {
+  return LIST_LAYOUT_SPECS[variant] ?? LIST_LAYOUT_SPECS.activity;
+}
+
+export type SkeletonCardGridVariant = 'tile' | 'summary' | 'selectable' | 'alert';
+export type SkeletonCardGridColumns = 1 | 2 | 3 | 4 | 6;
+
+const CARD_GRID_COLUMN_CLASSES: Record<SkeletonCardGridColumns, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-1 sm:grid-cols-2',
+  3: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+  4: 'grid-cols-2 lg:grid-cols-4',
+  6: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6',
+};
+
+export function resolveSkeletonCardGridColumnsClass(
+  columns: SkeletonCardGridColumns = 2
+): string {
+  return CARD_GRID_COLUMN_CLASSES[columns] ?? CARD_GRID_COLUMN_CLASSES[2];
+}
+

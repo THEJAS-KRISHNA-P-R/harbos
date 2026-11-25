@@ -2,14 +2,21 @@ import React from 'react';
 import {
   getSkeletonCellWidthClass,
   getSkeletonTextLineWidths,
+  resolveSkeletonCardGridColumnsClass,
+  resolveSkeletonListLayout,
   resolveWorkspaceSkeletonPreset,
+  type SkeletonCardGridColumns,
+  type SkeletonCardGridVariant,
+  type SkeletonListVariant,
   type WorkspaceSkeletonKind,
 } from './skeleton-layout.ts';
 
 export type SkeletonVariant = 'rect' | 'text' | 'circle' | 'pill';
+export type SkeletonTone = 'default' | 'contrast';
 
 export interface SkeletonProps {
   variant?: SkeletonVariant;
+  tone?: SkeletonTone;
   width?: string | number;
   height?: string | number;
   lines?: number;
@@ -27,6 +34,7 @@ const VARIANT_CLASSES: Record<SkeletonVariant, string> = {
 
 export const Skeleton: React.FC<SkeletonProps> = ({
   variant = 'rect',
+  tone = 'default',
   width,
   height,
   lines = 1,
@@ -34,7 +42,13 @@ export const Skeleton: React.FC<SkeletonProps> = ({
   className = '',
   testId,
 }) => {
-  const baseMotion = animated ? 'skeleton-shimmer' : 'bg-[var(--bg-sunken)]';
+  const baseMotion = animated
+    ? tone === 'contrast'
+      ? 'skeleton-shimmer skeleton-tone-contrast'
+      : 'skeleton-shimmer'
+    : tone === 'contrast'
+      ? 'bg-[var(--navy-200)]/65'
+      : 'bg-[var(--bg-sunken)]';
   const style: React.CSSProperties | undefined =
     width !== undefined || height !== undefined
       ? {
@@ -68,10 +82,10 @@ export const Skeleton: React.FC<SkeletonProps> = ({
       ? variant === 'circle'
         ? 'h-9 w-9'
         : variant === 'pill'
-        ? 'h-6 w-20'
-        : variant === 'text'
-        ? 'h-3.5 w-full'
-        : 'h-4 w-full'
+          ? 'h-6 w-20'
+          : variant === 'text'
+            ? 'h-3.5 w-full'
+            : 'h-4 w-full'
       : '';
 
   return (
@@ -108,13 +122,29 @@ export const SkeletonMetric: React.FC<{ featured?: boolean; className?: string }
 export const SkeletonCard: React.FC<{
   showHeader?: boolean;
   showAction?: boolean;
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  lines?: number;
+  label?: string;
+  testId?: string;
   className?: string;
-}> = ({ showHeader = true, showAction = false, children, className = '' }) => (
+}> = ({
+  showHeader = true,
+  showAction = false,
+  children,
+  lines = 3,
+  label,
+  testId,
+  className = '',
+}) => (
   <section
-    aria-hidden="true"
+    role={label ? 'status' : undefined}
+    aria-busy={label ? 'true' : undefined}
+    aria-label={label}
+    aria-hidden={label ? undefined : 'true'}
+    data-testid={testId}
     className={`bg-[var(--bg-surface)] border border-[var(--border-hair)] rounded-[var(--radius-card)] overflow-hidden ${className}`}
   >
+    {label && <span className="sr-only">{label}</span>}
     {showHeader && (
       <header className="px-3.5 py-3 sm:px-5 sm:py-3.5 bg-[var(--bg-surface)] border-b border-[var(--border-hair)] flex items-center justify-between gap-3">
         <div className="flex flex-col gap-1.5 min-w-0 flex-1">
@@ -124,9 +154,197 @@ export const SkeletonCard: React.FC<{
         {showAction && <Skeleton variant="pill" className="h-8 w-24 shrink-0" />}
       </header>
     )}
-    <div className="p-3 sm:p-5">{children}</div>
+    <div className="p-3 sm:p-5">
+      {children ?? <Skeleton variant="text" lines={lines} />}
+    </div>
   </section>
 );
+
+export interface SkeletonListProps {
+  items?: number;
+  variant?: SkeletonListVariant;
+  showAvatar?: boolean;
+  showBadge?: boolean;
+  surface?: 'card' | 'sunken' | 'plain';
+  label?: string;
+  testId?: string;
+  className?: string;
+}
+
+export const SkeletonList: React.FC<SkeletonListProps> = ({
+  items = 4,
+  variant = 'activity',
+  showAvatar,
+  showBadge,
+  surface = 'card',
+  label,
+  testId,
+  className = '',
+}) => {
+  const spec = resolveSkeletonListLayout(variant);
+  const safeItems = Math.max(1, Math.min(12, Math.floor(items)));
+  const renderAvatar = showAvatar ?? spec.defaultAvatar;
+  const renderBadge = showBadge ?? spec.defaultBadge;
+
+  const itemSurfaceClass =
+    surface === 'sunken'
+      ? 'p-2.5 sm:p-3 rounded-[var(--radius-control)] bg-[var(--bg-sunken)] border border-[var(--border-hair)]'
+      : surface === 'plain'
+        ? 'py-2.5 border-b border-[var(--border-hair)] last:border-b-0'
+        : 'p-3 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)]';
+
+  const innerTone: SkeletonTone = surface === 'sunken' ? 'contrast' : 'default';
+
+  return (
+    <div
+      role={label ? 'status' : undefined}
+      aria-busy={label ? 'true' : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : 'true'}
+      data-testid={testId}
+      className={`flex flex-col ${surface === 'plain' ? '' : 'gap-2'} ${className}`}
+    >
+      {label && <span className="sr-only">{label}</span>}
+      {Array.from({ length: safeItems }).map((_, idx) => {
+        const titleWidth = spec.titleWidthCycle[idx % spec.titleWidthCycle.length] ?? 'w-40';
+
+        if (variant === 'key-value') {
+          return (
+            <div
+              key={idx}
+              className={`${itemSurfaceClass} flex items-center justify-between gap-3`}
+            >
+              <Skeleton variant="text" tone={innerTone} className={`h-3.5 ${titleWidth} max-w-[60%]`} />
+              <Skeleton tone={innerTone} className="h-4 w-20 sm:w-24 shrink-0" />
+            </div>
+          );
+        }
+
+        return (
+          <div key={idx} className={`${itemSurfaceClass} flex items-start justify-between gap-3`}>
+            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+              {renderAvatar && (
+                <Skeleton variant="circle" tone={innerTone} className="h-8 w-8 shrink-0 mt-0.5" />
+              )}
+              <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <Skeleton tone={innerTone} className={`h-3.5 ${titleWidth} max-w-full`} />
+                  {variant === 'activity' && (
+                    <Skeleton variant="text" tone={innerTone} className="h-3 w-20 shrink-0" />
+                  )}
+                </div>
+                {spec.subtitleLines > 0 && (
+                  <Skeleton variant="text" tone={innerTone} lines={spec.subtitleLines} className="max-w-[92%]" />
+                )}
+              </div>
+            </div>
+            {renderBadge && (
+              <Skeleton variant="pill" tone={innerTone} className="h-5 w-16 sm:w-20 shrink-0" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+export interface SkeletonCardGridProps {
+  count?: number;
+  columns?: SkeletonCardGridColumns;
+  variant?: SkeletonCardGridVariant;
+  label?: string;
+  testId?: string;
+  className?: string;
+}
+
+export const SkeletonCardGrid: React.FC<SkeletonCardGridProps> = ({
+  count = 4,
+  columns = 2,
+  variant = 'selectable',
+  label,
+  testId,
+  className = '',
+}) => {
+  const safeCount = Math.max(1, Math.min(12, Math.floor(count)));
+  const gridCols = resolveSkeletonCardGridColumnsClass(columns);
+
+  return (
+    <div
+      role={label ? 'status' : undefined}
+      aria-busy={label ? 'true' : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : 'true'}
+      data-testid={testId}
+      className={`grid ${gridCols} gap-2.5 sm:gap-3 ${className}`}
+    >
+      {label && <span className="sr-only">{label}</span>}
+      {Array.from({ length: safeCount }).map((_, idx) => {
+        if (variant === 'summary') {
+          return (
+            <div
+              key={idx}
+              className="p-3 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-2 min-w-0"
+            >
+              <Skeleton variant="text" className="h-3 w-16" />
+              <Skeleton className="h-6 w-12" />
+            </div>
+          );
+        }
+
+        if (variant === 'alert') {
+          return (
+            <div
+              key={idx}
+              className="p-3 rounded-[var(--radius-card)] bg-[var(--bg-sunken)]/60 border border-[var(--border-hair)] flex items-center justify-between gap-3 min-w-0"
+            >
+              <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                <Skeleton tone="contrast" className="h-3.5 w-40 max-w-full" />
+                <Skeleton variant="text" tone="contrast" className="h-3 w-52 max-w-full" />
+              </div>
+              <Skeleton variant="pill" tone="contrast" className="h-5 w-14 shrink-0" />
+            </div>
+          );
+        }
+
+        if (variant === 'tile') {
+          return (
+            <div
+              key={idx}
+              className="min-h-[76px] p-3 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col justify-between gap-2 min-w-0"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <Skeleton variant="pill" className="h-5 w-14" />
+                <Skeleton variant="text" className="h-3 w-12" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Skeleton className="h-4 w-4/5" />
+                <Skeleton variant="text" className="h-3 w-3/5" />
+              </div>
+            </div>
+          );
+        }
+
+        // 'selectable' — Pit lot pickers, buyer paddles, telemetry stat cards
+        return (
+          <div
+            key={idx}
+            className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col justify-between gap-2.5 min-w-0"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <Skeleton className="h-4 w-28 max-w-[65%]" />
+              <Skeleton variant="pill" className="h-5 w-16 shrink-0" />
+            </div>
+            <Skeleton variant="text" lines={2} />
+            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-[var(--border-hair)]">
+              <Skeleton variant="text" className="h-3 w-20" />
+              <Skeleton variant="text" className="h-3 w-16" />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 export const SkeletonTable: React.FC<{
   rows?: number;
@@ -157,9 +375,12 @@ export const SkeletonTable: React.FC<{
         style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
       >
         {Array.from({ length: columns }).map((_, cIdx) => (
-          <div
+          <Skeleton
             key={`hdr-${cIdx}`}
-            className="h-3 w-3/5 rounded-[6px] bg-[var(--navy-200)]/65"
+            variant="text"
+            tone="contrast"
+            animated={false}
+            className="h-3 w-3/5"
           />
         ))}
       </div>
@@ -196,25 +417,7 @@ export const PerformanceDashboardSkeleton: React.FC<{ label?: string }> = ({
     <SkeletonCard showHeader showAction>
       <div className="flex flex-col gap-5">
         {/* 3-up telemetry stat cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-          {Array.from({ length: 3 }).map((_, idx) => (
-            <div
-              key={idx}
-              className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-sunken)]/60 border border-[var(--border-hair)] flex flex-col gap-2"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <Skeleton className="h-3.5 w-28" />
-                <Skeleton variant="pill" className="h-5 w-16" />
-              </div>
-              <Skeleton className="h-6 w-36" />
-              <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-[var(--border-hair)]">
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className="h-3 w-14" />
-              </div>
-            </div>
-          ))}
-        </div>
+        <SkeletonCardGrid count={3} columns={3} variant="selectable" />
 
         {/* Chart canvas skeleton */}
         <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] flex flex-col gap-3">
@@ -230,20 +433,7 @@ export const PerformanceDashboardSkeleton: React.FC<{ label?: string }> = ({
         </div>
 
         {/* KPI alert cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {Array.from({ length: 2 }).map((_, idx) => (
-            <div
-              key={idx}
-              className="p-3 rounded-[var(--radius-card)] bg-[var(--bg-sunken)]/60 border border-[var(--border-hair)] flex items-center justify-between gap-3"
-            >
-              <div className="flex flex-col gap-1.5 flex-1">
-                <Skeleton className="h-3.5 w-40" />
-                <Skeleton className="h-3 w-52 max-w-full" />
-              </div>
-              <Skeleton variant="pill" className="h-5 w-14 shrink-0" />
-            </div>
-          ))}
-        </div>
+        <SkeletonCardGrid count={2} columns={2} variant="alert" />
 
         {/* Log stream skeleton */}
         <SkeletonTable rows={3} columns={5} />
@@ -333,34 +523,22 @@ export const WorkspaceSkeleton: React.FC<{
               </div>
             </SkeletonCard>
             <SkeletonCard showHeader>
-              <div className="flex flex-col gap-2.5">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-              </div>
+              <SkeletonList items={3} variant="activity" surface="sunken" />
             </SkeletonCard>
           </aside>
         </div>
       )}
 
-      {/* Layout Variant 2: Auction Pit Split (Left lot/buyer cards, Right spotlight + keypad) */}
+      {/* Layout Variant 2: Auction Pit Split (Left lot/buyer card grids, Right spotlight + keypad) */}
       {preset.layout === 'pit-split' && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
             <div className="lg:col-span-7 flex flex-col gap-4">
               <SkeletonCard showHeader>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {Array.from({ length: 4 }).map((_, idx) => (
-                    <Skeleton key={idx} className="h-20 w-full rounded-[var(--radius-card)]" />
-                  ))}
-                </div>
+                <SkeletonCardGrid count={4} columns={2} variant="selectable" />
               </SkeletonCard>
               <SkeletonCard showHeader>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {Array.from({ length: 2 }).map((_, idx) => (
-                    <Skeleton key={idx} className="h-16 w-full rounded-[var(--radius-card)]" />
-                  ))}
-                </div>
+                <SkeletonCardGrid count={2} columns={2} variant="alert" />
               </SkeletonCard>
             </div>
             <div className="lg:col-span-5 flex flex-col gap-3">
@@ -411,7 +589,11 @@ export const WorkspaceSkeleton: React.FC<{
             <SkeletonTable rows={preset.primaryTableRows} columns={preset.primaryTableColumns} />
           </SkeletonCard>
           <SkeletonCard showHeader>
-            <SkeletonTable rows={3} columns={4} />
+            {preset.kind === 'fisher' ? (
+              <SkeletonList items={4} variant="key-value" surface="sunken" />
+            ) : (
+              <SkeletonTable rows={3} columns={4} />
+            )}
           </SkeletonCard>
         </>
       )}
@@ -425,11 +607,7 @@ export const WorkspaceSkeleton: React.FC<{
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-12 w-full" />
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-                {Array.from({ length: 4 }).map((_, idx) => (
-                  <Skeleton key={idx} className="h-20 w-full rounded-[var(--radius-card)]" />
-                ))}
-              </div>
+              <SkeletonCardGrid count={4} columns={4} variant="tile" />
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-12 w-full" />

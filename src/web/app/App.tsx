@@ -192,6 +192,7 @@ export const App: React.FC = () => {
   const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
   const [profileTab, setProfileTab] = useState<'identity' | 'switch' | 'session'>('identity');
   const [profileData, setProfileData] = useState<OperatorProfileResponse | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [editFullName, setEditFullName] = useState('');
   const [editPhoneE164, setEditPhoneE164] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -212,6 +213,7 @@ export const App: React.FC = () => {
   }, []);
 
   const loadOperatorProfile = useCallback(async (jwt: string): Promise<void> => {
+    setProfileLoading(true);
     try {
       const res = await apiRequest<OperatorProfileResponse>('/api/v1/auth/profile', {
         method: 'GET',
@@ -224,6 +226,8 @@ export const App: React.FC = () => {
       if (err instanceof Error && err.message.includes('401')) {
         setProfileData(null);
       }
+    } finally {
+      setProfileLoading(false);
     }
   }, []);
 
@@ -785,6 +789,7 @@ export const App: React.FC = () => {
         profileTab={profileTab}
         onChangeTab={setProfileTab}
         profileData={profileData}
+        profileLoading={profileLoading}
         editFullName={editFullName}
         onChangeFullName={setEditFullName}
         editPhoneE164={editPhoneE164}

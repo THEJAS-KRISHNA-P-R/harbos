@@ -52,15 +52,23 @@ import {
   Skeleton,
   SkeletonMetric,
   SkeletonCard,
+  SkeletonList,
+  SkeletonCardGrid,
   SkeletonTable,
   PerformanceDashboardSkeleton,
   WorkspaceSkeleton,
   type SkeletonProps,
+  type SkeletonTone,
   type SkeletonVariant,
+  type SkeletonListProps,
+  type SkeletonCardGridProps,
 } from './Skeleton.tsx';
 import {
   getSkeletonCellWidthClass,
   shouldShowWorkspaceSkeleton,
+  type SkeletonCardGridColumns,
+  type SkeletonCardGridVariant,
+  type SkeletonListVariant,
   type WorkspaceSkeletonKind,
 } from './skeleton-layout.ts';
 
@@ -69,12 +77,20 @@ export {
   Skeleton,
   SkeletonMetric,
   SkeletonCard,
+  SkeletonList,
+  SkeletonCardGrid,
   SkeletonTable,
   PerformanceDashboardSkeleton,
   WorkspaceSkeleton,
   shouldShowWorkspaceSkeleton,
   type SkeletonProps,
+  type SkeletonTone,
   type SkeletonVariant,
+  type SkeletonListProps,
+  type SkeletonListVariant,
+  type SkeletonCardGridProps,
+  type SkeletonCardGridVariant,
+  type SkeletonCardGridColumns,
   type WorkspaceSkeletonKind,
   HarbourCrestIcon,
   DockScaleIcon,
@@ -339,6 +355,9 @@ export interface CardProps {
   children: React.ReactNode;
   className?: string;
   sunkenFooter?: React.ReactNode;
+  loading?: boolean;
+  loadingLayout?: 'lines' | 'list' | 'cards' | 'table';
+  loadingLabel?: string;
 }
 
 export const Card: React.FC<CardProps> = ({
@@ -348,6 +367,9 @@ export const Card: React.FC<CardProps> = ({
   children,
   className = '',
   sunkenFooter,
+  loading = false,
+  loadingLayout = 'lines',
+  loadingLabel = 'Loading section…',
 }) => {
   return (
     <section
@@ -368,7 +390,24 @@ export const Card: React.FC<CardProps> = ({
           {actions && <div className="flex flex-wrap items-center gap-2 shrink-0 max-w-full">{actions}</div>}
         </header>
       )}
-      <div className="p-3 sm:p-5">{children}</div>
+      <div className="p-3 sm:p-5">
+        {loading ? (
+          <div role="status" aria-busy="true" aria-label={loadingLabel}>
+            <span className="sr-only">{loadingLabel}</span>
+            {loadingLayout === 'list' ? (
+              <SkeletonList items={3} variant="activity" surface="sunken" />
+            ) : loadingLayout === 'cards' ? (
+              <SkeletonCardGrid count={4} columns={2} variant="selectable" />
+            ) : loadingLayout === 'table' ? (
+              <SkeletonTable rows={3} columns={4} />
+            ) : (
+              <Skeleton variant="text" lines={3} />
+            )}
+          </div>
+        ) : (
+          children
+        )}
+      </div>
       {sunkenFooter && (
         <footer className="px-3.5 py-2.5 sm:px-5 sm:py-3 bg-[var(--bg-sunken)] border-t border-[var(--border-hair)] text-[11px] sm:text-xs text-[var(--text-secondary)]">
           {sunkenFooter}

@@ -10,6 +10,8 @@ import {
   Badge,
   Drawer,
   Toast,
+  SkeletonCard,
+  SkeletonList,
   StatutoryLedgerWaterfallSvgDecor,
 } from '@web/ui/index.tsx';
 import {
@@ -97,6 +99,7 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
     ReadonlyArray<PayoutBatchRow> | null
   >(null);
   const [lruCacheInfo, setLruCacheInfo] = useState<SqlLruCacheBadgeInfo | null>(null);
+  const [loadingAuditImports, setLoadingAuditImports] = useState(false);
 
   const utrCsvInputRef = useRef<HTMLInputElement | null>(null);
   const prevRowsRef = useRef<ReadonlyArray<BankUtrCsvMappedRow>>([]);
@@ -106,6 +109,7 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
       return;
     }
     let cancelled = false;
+    setLoadingAuditImports(true);
     void apiRequest<{
       cacheStatus: 'HIT' | 'MISS' | 'BYPASS';
       cachedAtIso: string;
@@ -133,7 +137,14 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
         });
       })
       .catch(() => {
-        // Fallback to bootstrap snapshot if offline
+        if (!cancelled) {
+          setLruCacheInfo(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingAuditImports(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -607,6 +618,24 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
           />
         )}
 
+        {!bootstrap && (
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label="Loading statutory ledger records…"
+            data-testid="ledger-drawer-skeleton"
+            className="flex flex-col gap-4"
+          >
+            <span className="sr-only">Loading statutory ledger records…</span>
+            <SkeletonCard showHeader>
+              <SkeletonList items={3} variant="compact" surface="sunken" />
+            </SkeletonCard>
+            <SkeletonCard showHeader>
+              <SkeletonList items={3} variant="detailed" surface="card" />
+            </SkeletonCard>
+          </div>
+        )}
+
         {bootstrap && (
           <div className="flex flex-col gap-4">
             {/* Nodal Bank UTR CSV Reconciliation Card */}
@@ -922,6 +951,7 @@ export const LedgerInspectorDrawer: React.FC<LedgerInspectorDrawerProps> = ({
                 setExpandedHistoryId((prev) => (prev === importId ? null : importId))
               }
               lruCacheInfo={lruCacheInfo}
+              loading={loadingAuditImports && !cachedAllAuditLogs}
             />
 
             {/* Charts, Double-Entry Journals, and §2 Golden Vectors */}
