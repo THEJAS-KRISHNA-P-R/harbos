@@ -56,6 +56,15 @@ import {
   type WorkspaceExportFormat,
 } from '@web/lib/workspace-export.ts';
 import {
+  classifyReplayErrorStatus,
+  enqueueOfflineAction,
+  persistOfflineQueue,
+  readOfflineQueue,
+  replayOfflineQueue,
+  type QueuedOfflineAction,
+  type SubmitWeighingPayload,
+} from '@web/lib/offline-queue.ts';
+import {
   clearStoredSession,
   extractWorkspaceFromPathname,
   getBrowserLocalStorage,
@@ -249,24 +258,45 @@ export const App: React.FC = () => {
   const [commandPaletteInitialScope, setCommandPaletteInitialScope] =
     useState<CommandPaletteFilterScope>('all');
 
-  // Real-time browser network status monitoring
+  // Real-time browser network status monitoring + persistent offline action queue
   const [isOnline, setIsOnline] = useState<boolean>(() =>
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
   const [recentlyReconnected, setRecentlyReconnected] = useState(false);
   const [dismissedOfflineToast, setDismissedOfflineToast] = useState(false);
+  const [queue, setQueue] = useState<ReadonlyArray<QueuedOfflineAction>>(() =>
+    readOfflineQueue(getBrowserLocalStorage())
+  );
+  const [replayingQueue, setReplayingQueue] = useState(false);
+  const [queueSyncFeedback, setQueueSyncFeedback] = useState<{
+    tone: 'ok' | 'warn' | 'danger' | 'info';
+    title: string;
+    message: string;
+  } | null>(null);
   const [exportFeedback, setExportFeedback] = useState<{
     title: string;
     message: string;
   } | null>(null);
   const exportToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queueSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tokenRef = useRef<string | null>(null);
   tokenRef.current = token;
+  const queueRef = useRef<ReadonlyArray<QueuedOfflineAction>>(queue);
+  queueRef.current = queue;
+  const replayingRef = useRef(false);
+  const wasOfflineRef = useRef<boolean>(!isOnline);
+
+  useEffect(() => {
+    persistOfflineQueue(getBrowserLocalStorage(), queue);
+  }, [queue]);
 
   useEffect(() => {
     return () => {
       if (exportToastTimerRef.current) {
         clearTimeout(exportToastTimerRef.current);
+      }
+      if (queueSyncTimerRef.current) {
+        clearTimeout(queueSyncTimerRef.current);
       }
     };
   }, []);
@@ -283,6 +313,109 @@ export const App: React.FC = () => {
       setBootstrapRefreshing(false);
     }
   }, []);
+
+  const enqueueAction = useCallback((action: QueuedOfflineAction): void => {
+    setQueue((prev) => {
+      const next = enqueueOfflineAction(prev, action);
+      persistOfflineQueue(getBrowserLocalStorage(), next);
+      return next;
+    });
+  }, []);
+
+  const replayPendingQueue = useCallback(
+    async (activeToken: string, targetTenantId: string): Promise<void> => {
+      if (replayingRef.current) return;
+      const snapshot = queueRef.current;
+      const pendingForTenant = snapshot.filter((item) => item.tenantId === targetTenantId);
+      if (pendingForTenant.length === 0) return;
+
+      replayingRef.current = true;
+      setReplayingQueue(true);
+      try {
+        const summary = await replayOfflineQueue({
+          queue: snapshot,
+          tenantId: targetTenantId,
+          executeAction: async (action) => {
+            try {
+              if (action.type === 'submit-weighing') {
+                await apiRequest<{ syncedCount: number }>('/api/v1/sync/commands', {
+                  method: 'POST',
+                  token: activeToken,
+                  body: { commands: [action.payload] },
+                });
+                return { status: 'ok' };
+              }
+              await apiRequest<{ compensatingJournalId: string }>('/api/v1/ledger/reversals', {
+                method: 'POST',
+                token: activeToken,
+                body: { action: 'APPROVE', reversalId: action.payload.reversalId },
+              });
+              return { status: 'ok' };
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'Offline replay error';
+              return { status: classifyReplayErrorStatus(msg), errorMessage: msg };
+            }
+          },
+        });
+
+        setQueue(summary.remainingQueue);
+        persistOfflineQueue(getBrowserLocalStorage(), summary.remainingQueue);
+
+        if (summary.replayedActions.length > 0 || summary.droppedActions.length > 0) {
+          try {
+            await loadBootstrap(activeToken);
+          } catch {
+            setBootstrapRefreshing(false);
+          }
+        }
+
+        if (queueSyncTimerRef.current) {
+          clearTimeout(queueSyncTimerRef.current);
+        }
+
+        if (summary.droppedActions.length > 0 && summary.replayedActions.length === 0) {
+          const firstErr = summary.droppedActions[0]!.errorMessage;
+          setQueueSyncFeedback({
+            tone: 'warn',
+            title: `Queued action rejected (${summary.droppedActions.length})`,
+            message: `${summary.droppedActions[0]!.action.label}: ${firstErr}`,
+          });
+        } else if (summary.replayedActions.length > 0) {
+          const n = summary.replayedActions.length;
+          const droppedNote =
+            summary.droppedActions.length > 0
+              ? ` ${summary.droppedActions.length} rejected by policy.`
+              : '';
+          const retriedNote =
+            summary.retriedActions.length > 0
+              ? ` ${summary.retriedActions.length} still pending retry.`
+              : '';
+          setQueueSyncFeedback({
+            tone: summary.droppedActions.length > 0 || summary.retriedActions.length > 0 ? 'warn' : 'ok',
+            title: `Replayed ${n} queued offline ${n === 1 ? 'action' : 'actions'}`,
+            message: `Synchronized ${summary.replayedActions.map((a) => a.type).join(', ')} with the harbour ledger.${droppedNote}${retriedNote}`,
+          });
+        } else if (summary.retriedActions.length > 0) {
+          setQueueSyncFeedback({
+            tone: 'warn',
+            title: 'Offline queue replay deferred',
+            message: `${summary.retriedActions.length} queued ${
+              summary.retriedActions.length === 1 ? 'action remains' : 'actions remain'
+            } saved locally until the server is reachable.`,
+          });
+        }
+
+        queueSyncTimerRef.current = setTimeout(() => {
+          setQueueSyncFeedback(null);
+          queueSyncTimerRef.current = null;
+        }, 6000);
+      } finally {
+        replayingRef.current = false;
+        setReplayingQueue(false);
+      }
+    },
+    [loadBootstrap]
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -324,6 +457,21 @@ export const App: React.FC = () => {
       window.removeEventListener('online', handleOnline);
     };
   }, [loadBootstrap]);
+
+  // Automatically replay persisted offline actions when isOnline transitions false -> true
+  const activeTenantId = bootstrap?.tenant?.tenant_id ?? user?.tenantId ?? '';
+  useEffect(() => {
+    if (!isOnline) {
+      wasOfflineRef.current = true;
+      return;
+    }
+    if (wasOfflineRef.current && token && activeTenantId) {
+      wasOfflineRef.current = false;
+      if (queueRef.current.some((item) => item.tenantId === activeTenantId)) {
+        void replayPendingQueue(token, activeTenantId);
+      }
+    }
+  }, [isOnline, token, activeTenantId, replayPendingQueue]);
 
   const loadOperatorProfile = useCallback(async (jwt: string): Promise<void> => {
     setProfileLoading(true);
@@ -859,14 +1007,69 @@ export const App: React.FC = () => {
     }
   };
 
+  const activeTenantQueue = useMemo(
+    () => (activeTenantId ? queue.filter((a) => a.tenantId === activeTenantId) : queue),
+    [queue, activeTenantId]
+  );
+
+  const queuedWeighingCount = useMemo(
+    () => activeTenantQueue.filter((a) => a.type === 'submit-weighing').length,
+    [activeTenantQueue]
+  );
+
+  const queuedLedgerApprovalIds = useMemo(
+    () =>
+      new Set(
+        activeTenantQueue
+          .filter(
+            (a): a is Extract<QueuedOfflineAction, { type: 'approve-ledger' }> =>
+              a.type === 'approve-ledger'
+          )
+          .map((a) => a.payload.reversalId)
+      ),
+    [activeTenantQueue]
+  );
+
+  const handleQueueWeighingAction = useCallback(
+    (payload: SubmitWeighingPayload, label: string): void => {
+      const tenantId = bootstrap?.tenant?.tenant_id ?? user?.tenantId ?? 'TEN-MUN';
+      enqueueAction({
+        id: payload.commandId,
+        type: 'submit-weighing',
+        tenantId,
+        createdAt: new Date().toISOString(),
+        label,
+        payload,
+      });
+    },
+    [bootstrap?.tenant?.tenant_id, user?.tenantId, enqueueAction]
+  );
+
+  const handleQueueApproveLedger = useCallback(
+    (reversalId: string, label: string): void => {
+      const tenantId = bootstrap?.tenant?.tenant_id ?? user?.tenantId ?? 'TEN-MUN';
+      enqueueAction({
+        id: `CMD-LEDGER-${reversalId}-${Date.now()}`,
+        type: 'approve-ledger',
+        tenantId,
+        createdAt: new Date().toISOString(),
+        label,
+        payload: { reversalId },
+      });
+    },
+    [bootstrap?.tenant?.tenant_id, user?.tenantId, enqueueAction]
+  );
+
   const networkStatus = useMemo(
     () =>
       resolveNetworkStatusPresentation({
         isOnline,
         recentlyReconnected,
         dismissedOfflineToast,
+        queuedCount: activeTenantQueue.length,
+        replayingQueue,
       }),
-    [isOnline, recentlyReconnected, dismissedOfflineToast]
+    [isOnline, recentlyReconnected, dismissedOfflineToast, activeTenantQueue.length, replayingQueue]
   );
 
   const activeNavLabel = useMemo(() => {
@@ -970,6 +1173,24 @@ export const App: React.FC = () => {
           <Wifi className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
           <span className="hidden sm:inline">{networkStatus.shortLabel}</span>
         </span>
+      ) : activeTenantQueue.length > 0 ? (
+        <button
+          type="button"
+          data-testid="header-network-status"
+          data-network-status="online-queued"
+          onClick={() => {
+            if (token && activeTenantId) {
+              void replayPendingQueue(token, activeTenantId);
+            }
+          }}
+          aria-label={networkStatus.ariaLabel}
+          title={`${networkStatus.ariaLabel} — click to replay now`}
+          className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--brand-soft)] text-[var(--brand-soft-fg)] border border-[var(--brand)]/50 hover:border-[var(--brand)] inline-flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0 transition-colors"
+        >
+          <Wifi className="w-3.5 h-3.5 shrink-0 text-[var(--brand)]" aria-hidden="true" />
+          <span className="hidden sm:inline">{networkStatus.shortLabel}</span>
+          <span className="sm:hidden">{activeTenantQueue.length}</span>
+        </button>
       ) : (
         <span
           role="status"
@@ -1183,7 +1404,8 @@ export const App: React.FC = () => {
         onClickTenant={handleBreadcrumbTenantClick}
         onClickGroup={handleBreadcrumbGroupClick}
       />
-      {networkStatus.toast && (
+      {networkStatus.toast &&
+        !(networkStatus.status === 'reconnected' && queueSyncFeedback) && (
         <div data-testid="network-status-toast">
           <Toast
             tone={networkStatus.toast.tone}
@@ -1196,6 +1418,16 @@ export const App: React.FC = () => {
                 setRecentlyReconnected(false);
               }
             }}
+          />
+        </div>
+      )}
+      {queueSyncFeedback && (
+        <div data-testid="offline-queue-sync-toast">
+          <Toast
+            tone={queueSyncFeedback.tone}
+            title={queueSyncFeedback.title}
+            message={queueSyncFeedback.message}
+            onDismiss={() => setQueueSyncFeedback(null)}
           />
         </div>
       )}
@@ -1301,8 +1533,15 @@ export const App: React.FC = () => {
                 data={bootstrap}
                 token={token}
                 loading={personaSwitching}
-                refreshing={bootstrapRefreshing}
+                refreshing={bootstrapRefreshing || replayingQueue}
                 browserOnline={isOnline}
+                queuedWeighingCount={queuedWeighingCount}
+                onQueueWeighingAction={handleQueueWeighingAction}
+                onReplayQueue={
+                  activeTenantId
+                    ? () => replayPendingQueue(token, activeTenantId)
+                    : undefined
+                }
                 onRefresh={() => loadBootstrap(token)}
               />
             )}
@@ -1345,7 +1584,10 @@ export const App: React.FC = () => {
                 data={bootstrap}
                 token={token}
                 loading={personaSwitching}
-                refreshing={bootstrapRefreshing}
+                refreshing={bootstrapRefreshing || replayingQueue}
+                browserOnline={isOnline}
+                queuedLedgerApprovalIds={queuedLedgerApprovalIds}
+                onQueueApproveLedger={handleQueueApproveLedger}
                 onRefresh={() => loadBootstrap(token)}
               />
             )}

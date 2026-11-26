@@ -24,6 +24,7 @@ import {
   type LotRow,
 } from '@web/lib/api.ts';
 import { extractManglishName } from '@web/lib/ui-formatters.ts';
+import type { SubmitWeighingPayload } from '@web/lib/offline-queue.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 import { BarcodeScannerModal } from '@web/shared/BarcodeScannerModal.tsx';
@@ -43,8 +44,21 @@ export const WeighingWorkspace: React.FC<{
   loading?: boolean;
   refreshing?: boolean;
   browserOnline?: boolean;
+  queuedWeighingCount?: number | undefined;
+  onQueueWeighingAction?: ((payload: SubmitWeighingPayload, label: string) => void) | undefined;
+  onReplayQueue?: (() => Promise<void>) | undefined;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, loading = false, refreshing = false, browserOnline = true, onRefresh }) => {
+}> = ({
+  data,
+  token,
+  loading = false,
+  refreshing = false,
+  browserOnline = true,
+  queuedWeighingCount,
+  onQueueWeighingAction,
+  onReplayQueue,
+  onRefresh,
+}) => {
   const { t } = useI18n();
   const [selectedVesselId, setSelectedVesselId] = useState(data.vessels[0]?.vessel_id ?? 'VSL-01');
   const [selectedSpeciesId, setSelectedSpeciesId] = useState(data.species[0]?.species_id ?? 'SPC-01');
@@ -56,6 +70,9 @@ export const WeighingWorkspace: React.FC<{
   const [simulateOffline, setSimulateOffline] = useState(false);
   const isOfflineMode = !browserOnline || simulateOffline;
   const [offlineQueue, setOfflineQueue] = useState<QueuedLotCommand[]>([]);
+  const effectiveQueuedCount = onQueueWeighingAction
+    ? (queuedWeighingCount ?? 0)
+    : offlineQueue.length;
   const [submitting, setSubmitting] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [printFormat, setPrintFormat] = useState<'58mm' | '80mm'>('80mm');
@@ -130,19 +147,40 @@ export const WeighingWorkspace: React.FC<{
     const boxes = Math.max(1, Number(totalBoxes) || 1);
 
     if (isOfflineMode) {
-      const cmd: QueuedLotCommand = {
-        commandId: `CMD-OFFLINE-${Date.now()}-${offlineQueue.length + 1}`,
-        vesselId: selectedVesselId,
-        speciesId: selectedSpeciesId,
-        totalBoxes: boxes,
-        netGrams: netGrams.toString(),
-        createdAt: new Date().toISOString(),
-      };
-      setOfflineQueue((prev) => [...prev, cmd]);
+      const commandId = `CMD-OFFLINE-${Date.now()}-${effectiveQueuedCount + 1}`;
+      const vessel = data.vessels.find((x) => x.vessel_id === selectedVesselId);
+      const species = data.species.find((x) => x.species_id === selectedSpeciesId);
+      const label = `${species?.name_en ?? selectedSpeciesId} (${boxes} boxes · ${formatKgFromGrams(netGrams)}) — ${vessel?.vessel_name_en ?? selectedVesselId}`;
+
+      if (onQueueWeighingAction) {
+        onQueueWeighingAction(
+          {
+            commandId,
+            vesselId: selectedVesselId,
+            speciesId: selectedSpeciesId,
+            totalBoxes: boxes,
+            netGrams: netGrams.toString(),
+            weightSource,
+            coreTempC: Number(coreTempC) || 2.0,
+          },
+          label
+        );
+      } else {
+        const cmd: QueuedLotCommand = {
+          commandId,
+          vesselId: selectedVesselId,
+          speciesId: selectedSpeciesId,
+          totalBoxes: boxes,
+          netGrams: netGrams.toString(),
+          createdAt: new Date().toISOString(),
+        };
+        setOfflineQueue((prev) => [...prev, cmd]);
+      }
+
       setFeedback({
         tone: 'warn',
-        title: 'Saved offline on this device',
-        msg: `Entry ${cmd.commandId} stored locally (${offlineQueue.length + 1} pending). Reconnect to sync safely without duplicates.`,
+        title: 'Saved offline in persistent queue',
+        msg: `Entry ${commandId} stored locally (${effectiveQueuedCount + 1} pending). It will replay automatically once connection returns.`,
       });
       setSubmitting(false);
       return;
@@ -203,6 +241,17 @@ export const WeighingWorkspace: React.FC<{
   };
 
   const handleSyncOfflineQueue = async (): Promise<void> => {
+    if (effectiveQueuedCount === 0) return;
+    if (onReplayQueue) {
+      setSubmitting(true);
+      try {
+        setSimulateOffline(false);
+        await onReplayQueue();
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     if (offlineQueue.length === 0) return;
     setSubmitting(true);
     try {
@@ -348,10 +397,10 @@ export const WeighingWorkspace: React.FC<{
           </Button>
           <ConnectivityBadge
             online={!isOfflineMode}
-            queuedCount={offlineQueue.length}
+            queuedCount={effectiveQueuedCount}
             onToggleSimulateOffline={() => setSimulateOffline((prev) => !prev)}
           />
-          {offlineQueue.length > 0 && (
+          {effectiveQueuedCount > 0 && browserOnline && (
             <Button
               variant="primary"
               size="sm"
@@ -359,7 +408,7 @@ export const WeighingWorkspace: React.FC<{
               onClick={handleSyncOfflineQueue}
               loading={submitting}
             >
-              Sync {offlineQueue.length} Queued
+              Sync {effectiveQueuedCount} Queued
             </Button>
           )}
         </div>
@@ -394,9 +443,15 @@ export const WeighingWorkspace: React.FC<{
         />
         <Metric
           label={t('weighing.offlineQueue')}
-          value={String(offlineQueue.length)}
+          value={String(effectiveQueuedCount)}
           unit="PENDING"
-          sublabel={isOfflineMode ? 'Offline capture active' : 'Live sync active'}
+          sublabel={
+            isOfflineMode
+              ? 'Offline capture active'
+              : effectiveQueuedCount > 0
+                ? 'Ready to sync'
+                : 'Live sync active'
+          }
         />
       </div>
 

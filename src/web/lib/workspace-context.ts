@@ -59,20 +59,49 @@ export function resolveNetworkStatusPresentation(input: {
   isOnline: boolean;
   recentlyReconnected: boolean;
   dismissedOfflineToast: boolean;
+  queuedCount?: number | undefined;
+  replayingQueue?: boolean | undefined;
 }): NetworkStatusPresentation {
+  const queuedCount = Math.max(0, input.queuedCount ?? 0);
+  const actionNoun = queuedCount === 1 ? 'action' : 'actions';
+
   if (!input.isOnline) {
     return {
       status: 'offline',
-      shortLabel: 'Offline · Queued',
-      ariaLabel: 'Network connection lost. Changes are queued for synchronization.',
+      shortLabel: queuedCount > 0 ? `Offline · ${queuedCount} queued` : 'Offline · Queued',
+      ariaLabel:
+        queuedCount > 0
+          ? `Network connection lost. ${queuedCount} ${actionNoun} queued for synchronization.`
+          : 'Network connection lost. Changes are queued for synchronization.',
       toast: input.dismissedOfflineToast
         ? null
         : {
             tone: 'warn',
-            title: 'Connection lost — changes queued for sync',
+            title:
+              queuedCount > 0
+                ? `Connection lost — ${queuedCount} ${actionNoun} queued for sync`
+                : 'Connection lost — changes queued for sync',
             message:
-              'You are currently offline. New dockside actions are queued locally and will synchronize automatically once connection returns.',
+              queuedCount > 0
+                ? `You are currently offline with ${queuedCount} saved ${actionNoun} in local storage. They will replay automatically once connection returns.`
+                : 'You are currently offline. New dockside actions are queued locally and will synchronize automatically once connection returns.',
           },
+    };
+  }
+
+  if (input.replayingQueue) {
+    return {
+      status: 'reconnected',
+      shortLabel: queuedCount > 0 ? `Syncing ${queuedCount}…` : 'Syncing…',
+      ariaLabel: 'Replaying queued offline actions.',
+      toast: {
+        tone: 'ok',
+        title: 'Connection restored — replaying queued actions',
+        message:
+          queuedCount > 0
+            ? `Replaying ${queuedCount} queued ${actionNoun} to the harbour ledger now.`
+            : 'Replaying queued offline actions now.',
+      },
     };
   }
 
@@ -92,8 +121,11 @@ export function resolveNetworkStatusPresentation(input: {
 
   return {
     status: 'online',
-    shortLabel: 'Online',
-    ariaLabel: 'Network status: Online',
+    shortLabel: queuedCount > 0 ? `Online · ${queuedCount} queued` : 'Online',
+    ariaLabel:
+      queuedCount > 0
+        ? `Network status: Online with ${queuedCount} queued ${actionNoun} ready to sync`
+        : 'Network status: Online',
     toast: null,
   };
 }

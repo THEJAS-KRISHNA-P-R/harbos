@@ -51,8 +51,20 @@ export const HarbourWorkspace: React.FC<{
   token: string;
   loading?: boolean;
   refreshing?: boolean;
+  browserOnline?: boolean;
+  queuedLedgerApprovalIds?: ReadonlySet<string> | undefined;
+  onQueueApproveLedger?: ((reversalId: string, label: string) => void) | undefined;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, loading = false, refreshing = false, onRefresh }) => {
+}> = ({
+  data,
+  token,
+  loading = false,
+  refreshing = false,
+  browserOnline = true,
+  queuedLedgerApprovalIds,
+  onQueueApproveLedger,
+  onRefresh,
+}) => {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'today' | 'masterdata' | 'accounting' | 'reports' | 'audit'>('today');
   const [mutating, setMutating] = useState(false);
@@ -185,6 +197,16 @@ export const HarbourWorkspace: React.FC<{
   };
 
   const handleApproveDualKeyReversal = async (reversalId: string): Promise<void> => {
+    if (!browserOnline && onQueueApproveLedger) {
+      onQueueApproveLedger(reversalId, `Approve dual-key reversal ${reversalId}`);
+      setFeedback({
+        tone: 'warn',
+        title: `Approval queued offline: ${reversalId}`,
+        msg: 'Dual-key ledger approval is saved in local storage and will replay automatically once connection returns.',
+      });
+      return;
+    }
+
     setMutating(true);
     try {
       const res = await apiRequest<{ compensatingJournalId: string }>(
@@ -391,14 +413,21 @@ export const HarbourWorkspace: React.FC<{
       align: 'right',
       render: (r) =>
         r.status === 'PENDING_SECOND_APPROVAL' ? (
-          <Button
-            variant="primary"
-            size="sm"
-            icon={<RotateCcw className="w-3.5 h-3.5" />}
-            onClick={() => handleApproveDualKeyReversal(r.reversal_id)}
-          >
-            Approve 2nd Key & Post Reversal
-          </Button>
+          queuedLedgerApprovalIds?.has(r.reversal_id) ? (
+            <Badge tone="warn" label="Queued for Sync" code={r.reversal_id} />
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              data-testid={`approve-reversal-${r.reversal_id}`}
+              icon={<RotateCcw className="w-3.5 h-3.5" />}
+              onClick={() => handleApproveDualKeyReversal(r.reversal_id)}
+            >
+              {!browserOnline
+                ? 'Queue 2nd Key Approval (Offline)'
+                : 'Approve 2nd Key & Post Reversal'}
+            </Button>
+          )
         ) : (
           <span className="text-xs text-[var(--text-secondary)]">
             Approved by {r.approved_by_name}
