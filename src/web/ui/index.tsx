@@ -1331,6 +1331,8 @@ export interface ShellLayoutProps {
   refreshing?: boolean | undefined;
   /** Accessible status label announced while synchronizing */
   refreshingLabel?: string | undefined;
+  /** Optional contextual strip rendered at the top of the workspace area (e.g., breadcrumbs & network toast) */
+  workspaceTopBar?: React.ReactNode | undefined;
   children: React.ReactNode;
 }
 
@@ -1344,6 +1346,7 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
   operatorCard,
   refreshing = false,
   refreshingLabel,
+  workspaceTopBar,
   children,
 }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -1722,6 +1725,7 @@ export const AppShell: React.FC<ShellLayoutProps> = ({
             showBottomNav ? 'pb-[calc(88px+env(safe-area-inset-bottom))]' : 'pb-6'
           } md:pb-6 sm:pt-6 flex flex-col gap-4 sm:gap-6`}
         >
+          {workspaceTopBar}
           {children}
         </main>
       </div>
@@ -1738,6 +1742,7 @@ export const DocksideShell: React.FC<ShellLayoutProps> = ({
   headerRight,
   refreshing = false,
   refreshingLabel,
+  workspaceTopBar,
   children,
 }) => {
   return (
@@ -1760,6 +1765,7 @@ export const DocksideShell: React.FC<ShellLayoutProps> = ({
       </header>
 
       <main className="flex-1 w-full max-w-[1200px] mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-6 flex flex-col gap-6">
+        {workspaceTopBar}
         {children}
       </main>
 

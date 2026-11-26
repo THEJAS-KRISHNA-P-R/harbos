@@ -42,8 +42,9 @@ export const WeighingWorkspace: React.FC<{
   token: string;
   loading?: boolean;
   refreshing?: boolean;
+  browserOnline?: boolean;
   onRefresh: () => Promise<void>;
-}> = ({ data, token, loading = false, refreshing = false, onRefresh }) => {
+}> = ({ data, token, loading = false, refreshing = false, browserOnline = true, onRefresh }) => {
   const { t } = useI18n();
   const [selectedVesselId, setSelectedVesselId] = useState(data.vessels[0]?.vessel_id ?? 'VSL-01');
   const [selectedSpeciesId, setSelectedSpeciesId] = useState(data.species[0]?.species_id ?? 'SPC-01');
@@ -53,6 +54,7 @@ export const WeighingWorkspace: React.FC<{
   const [coreTempC, setCoreTempC] = useState('1.8');
   const [supervisorPin, setSupervisorPin] = useState('1234');
   const [simulateOffline, setSimulateOffline] = useState(false);
+  const isOfflineMode = !browserOnline || simulateOffline;
   const [offlineQueue, setOfflineQueue] = useState<QueuedLotCommand[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -127,7 +129,7 @@ export const WeighingWorkspace: React.FC<{
     const netGrams = BigInt(Math.round((Number(netKgInput) || 0) * 1000));
     const boxes = Math.max(1, Number(totalBoxes) || 1);
 
-    if (simulateOffline) {
+    if (isOfflineMode) {
       const cmd: QueuedLotCommand = {
         commandId: `CMD-OFFLINE-${Date.now()}-${offlineQueue.length + 1}`,
         vesselId: selectedVesselId,
@@ -345,7 +347,7 @@ export const WeighingWorkspace: React.FC<{
             {t('actions.scanVesselQr')}
           </Button>
           <ConnectivityBadge
-            online={!simulateOffline}
+            online={!isOfflineMode}
             queuedCount={offlineQueue.length}
             onToggleSimulateOffline={() => setSimulateOffline((prev) => !prev)}
           />
@@ -394,7 +396,7 @@ export const WeighingWorkspace: React.FC<{
           label={t('weighing.offlineQueue')}
           value={String(offlineQueue.length)}
           unit="PENDING"
-          sublabel={simulateOffline ? 'Offline capture active' : 'Live sync active'}
+          sublabel={isOfflineMode ? 'Offline capture active' : 'Live sync active'}
         />
       </div>
 
@@ -516,7 +518,7 @@ export const WeighingWorkspace: React.FC<{
               icon={<QrCode className="w-4 h-4 sm:w-5 sm:h-5" />}
               className="w-full sm:w-auto"
             >
-              {simulateOffline
+              {isOfflineMode
                 ? t('workspaces.weighingOfflineSubmit')
                 : t('workspaces.weighingSubmit')}
             </Button>

@@ -5,6 +5,8 @@ import {
   BookOpen,
   Plus,
   Search,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import {
   AppShell,
@@ -12,6 +14,7 @@ import {
   Button,
   Select,
   Modal,
+  Toast,
   EmptyState,
   ErrorBoundary,
   WorkspaceSkeleton,
@@ -37,6 +40,21 @@ import {
   type OperatorRow,
   type SessionUser,
 } from '@web/lib/api.ts';
+import type {
+  CommandPaletteFilterScope,
+  WorkspaceGroup,
+} from '@web/lib/command-palette.ts';
+import {
+  buildWorkspaceBreadcrumbs,
+  resolveNetworkStatusPresentation,
+} from '@web/lib/workspace-context.ts';
+import {
+  buildWorkspaceExportDataset,
+  serializeDatasetToCsv,
+  serializeDatasetToPdfBytes,
+  triggerBrowserFileDownload,
+  type WorkspaceExportFormat,
+} from '@web/lib/workspace-export.ts';
 import {
   clearStoredSession,
   extractWorkspaceFromPathname,
@@ -57,6 +75,8 @@ import { OperatorProfileDrawer } from '@web/app/components/OperatorProfileDrawer
 import { LoginPortalScreen } from '@web/app/components/LoginPortalScreen.tsx';
 import { CommandPaletteModal } from '@web/app/components/CommandPaletteModal.tsx';
 import { TenantOnboardingWizard } from '@web/app/components/TenantOnboardingWizard.tsx';
+import { WorkspaceBreadcrumbs } from '@web/app/components/WorkspaceBreadcrumbs.tsx';
+import { WorkspaceExportMenu } from '@web/app/components/WorkspaceExportMenu.tsx';
 import { useI18n } from '@web/i18n/index.tsx';
 
 const WeighingWorkspace = React.lazy(async () => {
@@ -226,6 +246,30 @@ export const App: React.FC = () => {
   } | null>(null);
   const [galleryModalOpen, setGalleryModalOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandPaletteInitialScope, setCommandPaletteInitialScope] =
+    useState<CommandPaletteFilterScope>('all');
+
+  // Real-time browser network status monitoring
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [recentlyReconnected, setRecentlyReconnected] = useState(false);
+  const [dismissedOfflineToast, setDismissedOfflineToast] = useState(false);
+  const [exportFeedback, setExportFeedback] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+  const exportToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tokenRef = useRef<string | null>(null);
+  tokenRef.current = token;
+
+  useEffect(() => {
+    return () => {
+      if (exportToastTimerRef.current) {
+        clearTimeout(exportToastTimerRef.current);
+      }
+    };
+  }, []);
 
   const loadBootstrap = useCallback(async (jwt: string): Promise<void> => {
     setBootstrapRefreshing(true);
@@ -239,6 +283,47 @@ export const App: React.FC = () => {
       setBootstrapRefreshing(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const handleOffline = (): void => {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      setIsOnline(false);
+      setRecentlyReconnected(false);
+      setDismissedOfflineToast(false);
+    };
+
+    const handleOnline = (): void => {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
+      setIsOnline(true);
+      setRecentlyReconnected(true);
+      setDismissedOfflineToast(false);
+      if (tokenRef.current) {
+        void loadBootstrap(tokenRef.current).catch(() => {
+          setBootstrapRefreshing(false);
+        });
+      }
+      reconnectTimer = setTimeout(() => {
+        setRecentlyReconnected(false);
+        reconnectTimer = null;
+      }, 5000);
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [loadBootstrap]);
 
   const loadOperatorProfile = useCallback(async (jwt: string): Promise<void> => {
     setProfileLoading(true);
@@ -557,6 +642,7 @@ export const App: React.FC = () => {
 
       if (intent.type === 'TOGGLE_COMMAND_PALETTE') {
         e.preventDefault();
+        setCommandPaletteInitialScope('all');
         setCommandPaletteOpen((prev) => !prev);
       } else if (intent.type === 'TOGGLE_LEDGER_DRAWER' && canAccessLedger) {
         e.preventDefault();
@@ -773,15 +859,146 @@ export const App: React.FC = () => {
     }
   };
 
+  const networkStatus = useMemo(
+    () =>
+      resolveNetworkStatusPresentation({
+        isOnline,
+        recentlyReconnected,
+        dismissedOfflineToast,
+      }),
+    [isOnline, recentlyReconnected, dismissedOfflineToast]
+  );
+
+  const activeNavLabel = useMemo(() => {
+    const item = navItems.find((n) => n.id === activeWorkspace);
+    if (!item) return activeWorkspace;
+    return item.labelEn;
+  }, [navItems, activeWorkspace]);
+
+  const breadcrumbSegments = useMemo(
+    () =>
+      buildWorkspaceBreadcrumbs({
+        tenantName: bootstrap?.tenant?.name_en,
+        workspaceId: activeWorkspace,
+        workspaceLabel: activeNavLabel,
+        screenMode,
+      }),
+    [bootstrap?.tenant?.name_en, activeWorkspace, activeNavLabel, screenMode]
+  );
+
+  const currentExportDataset = useMemo(
+    () =>
+      buildWorkspaceExportDataset({
+        workspaceId: activeWorkspace,
+        workspaceLabel: activeNavLabel,
+        bootstrap,
+      }),
+    [activeWorkspace, activeNavLabel, bootstrap]
+  );
+
+  const handleExportWorkspace = useCallback(
+    (format: WorkspaceExportFormat): void => {
+      const dataset = buildWorkspaceExportDataset({
+        workspaceId: activeWorkspace,
+        workspaceLabel: activeNavLabel,
+        bootstrap,
+      });
+      const filename = `${dataset.filenameBase}.${format}`;
+      if (format === 'csv') {
+        const csvContent = serializeDatasetToCsv(dataset);
+        triggerBrowserFileDownload({
+          filename,
+          mimeType: 'text/csv;charset=utf-8',
+          data: csvContent,
+        });
+      } else {
+        const pdfBytes = serializeDatasetToPdfBytes(dataset);
+        triggerBrowserFileDownload({
+          filename,
+          mimeType: 'application/pdf',
+          data: pdfBytes,
+        });
+      }
+
+      if (exportToastTimerRef.current) {
+        clearTimeout(exportToastTimerRef.current);
+      }
+      setExportFeedback({
+        title: `Exported ${activeNavLabel} (${format.toUpperCase()})`,
+        message: `Downloaded ${filename} (${dataset.rows.length} ${
+          dataset.rows.length === 1 ? 'row' : 'rows'
+        }).`,
+      });
+      exportToastTimerRef.current = setTimeout(() => {
+        setExportFeedback(null);
+        exportToastTimerRef.current = null;
+      }, 4500);
+    },
+    [activeWorkspace, activeNavLabel, bootstrap]
+  );
+
   const shortOperatorName = (user?.fullName ?? 'Capt. Mathew Thomas')
     .replace(/\([^)]*\)/g, '')
     .trim();
 
   const headerControls = (
     <>
+      {networkStatus.status === 'offline' ? (
+        <button
+          type="button"
+          data-testid="header-network-status"
+          data-network-status="offline"
+          onClick={() => setDismissedOfflineToast(false)}
+          aria-label={networkStatus.ariaLabel}
+          title={networkStatus.ariaLabel}
+          className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--warning-bg)] text-[var(--warning)] border border-[var(--warning)]/50 hover:border-[var(--warning)] inline-flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0 transition-colors"
+        >
+          <WifiOff className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+          <span className="hidden sm:inline">{networkStatus.shortLabel}</span>
+          <span className="sm:hidden">Offline</span>
+        </button>
+      ) : networkStatus.status === 'reconnected' ? (
+        <span
+          role="status"
+          aria-live="polite"
+          data-testid="header-network-status"
+          data-network-status="reconnected"
+          aria-label={networkStatus.ariaLabel}
+          title={networkStatus.ariaLabel}
+          className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--brand-soft)] text-[var(--brand-soft-fg)] border border-[var(--navy-200)] inline-flex items-center justify-center gap-1.5 text-xs font-semibold shrink-0"
+        >
+          <Wifi className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+          <span className="hidden sm:inline">{networkStatus.shortLabel}</span>
+        </span>
+      ) : (
+        <span
+          role="status"
+          data-testid="header-network-status"
+          data-network-status="online"
+          aria-label={networkStatus.ariaLabel}
+          title={networkStatus.ariaLabel}
+          className="h-8 w-8 lg:w-auto sm:h-9 lg:px-2.5 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-hair)] inline-flex items-center justify-center gap-1.5 text-xs font-medium shrink-0"
+        >
+          <Wifi className="w-3.5 h-3.5 shrink-0 text-[var(--brand)]" aria-hidden="true" />
+          <span className="hidden lg:inline">{networkStatus.shortLabel}</span>
+        </span>
+      )}
+
+      {screenMode === 'workspace' && (
+        <WorkspaceExportMenu
+          workspaceLabel={activeNavLabel}
+          rowCount={currentExportDataset.rows.length}
+          disabled={!bootstrap || !isActiveWorkspaceAuthorized}
+          onExport={handleExportWorkspace}
+        />
+      )}
+
       <button
         type="button"
-        onClick={() => setCommandPaletteOpen(true)}
+        onClick={() => {
+          setCommandPaletteInitialScope('all');
+          setCommandPaletteOpen(true);
+        }}
         aria-label="Open Command Palette"
         title="Command Palette (⌘K)"
         className="hidden sm:inline-flex sm:h-9 sm:px-3 rounded-[var(--radius-pill)] bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--bg-tint)] items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
@@ -948,11 +1165,52 @@ export const App: React.FC = () => {
 
   const ShellComponent = docksideMobileLayout ? DocksideShell : AppShell;
 
-  const activeNavLabel = useMemo(() => {
-    const item = navItems.find((n) => n.id === activeWorkspace);
-    if (!item) return activeWorkspace;
-    return item.labelEn;
-  }, [navItems, activeWorkspace]);
+  const handleBreadcrumbTenantClick: (() => void) | undefined = allowedWorkspaceIds.has('platform')
+    ? () => handleSelectWorkspace('platform')
+    : allowedWorkspaceIds.has('harbour')
+      ? () => handleSelectWorkspace('harbour')
+      : undefined;
+
+  const handleBreadcrumbGroupClick = (groupId: WorkspaceGroup): void => {
+    setCommandPaletteInitialScope(groupId);
+    setCommandPaletteOpen(true);
+  };
+
+  const workspaceTopBar = (
+    <div className="flex flex-col gap-3 no-print">
+      <WorkspaceBreadcrumbs
+        segments={breadcrumbSegments}
+        onClickTenant={handleBreadcrumbTenantClick}
+        onClickGroup={handleBreadcrumbGroupClick}
+      />
+      {networkStatus.toast && (
+        <div data-testid="network-status-toast">
+          <Toast
+            tone={networkStatus.toast.tone}
+            title={networkStatus.toast.title}
+            message={networkStatus.toast.message}
+            onDismiss={() => {
+              if (networkStatus.status === 'offline') {
+                setDismissedOfflineToast(true);
+              } else {
+                setRecentlyReconnected(false);
+              }
+            }}
+          />
+        </div>
+      )}
+      {exportFeedback && (
+        <div data-testid="workspace-export-toast">
+          <Toast
+            tone="ok"
+            title={exportFeedback.title}
+            message={exportFeedback.message}
+            onDismiss={() => setExportFeedback(null)}
+          />
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <ShellComponent
@@ -963,6 +1221,7 @@ export const App: React.FC = () => {
       lang={lang}
       headerRight={headerControls}
       sidebarHeaderExtra={sidebarTenantSwitcher}
+      workspaceTopBar={workspaceTopBar}
       refreshing={bootstrapRefreshing || tenantSwitching}
       refreshingLabel={t('workspaces.syncingData')}
       operatorCard={{
@@ -1043,6 +1302,7 @@ export const App: React.FC = () => {
                 token={token}
                 loading={personaSwitching}
                 refreshing={bootstrapRefreshing}
+                browserOnline={isOnline}
                 onRefresh={() => loadBootstrap(token)}
               />
             )}
@@ -1157,6 +1417,7 @@ export const App: React.FC = () => {
         allowedWorkspaceIds={allowedWorkspaceIds}
         activeWorkspace={activeWorkspace}
         canAccessLedger={canAccessLedger}
+        initialScope={commandPaletteInitialScope}
         onExecuteItem={handleExecuteCommandItem}
       />
 

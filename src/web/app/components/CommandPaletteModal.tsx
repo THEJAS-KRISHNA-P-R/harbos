@@ -18,6 +18,7 @@ export interface CommandPaletteModalProps {
   bootstrap: BootstrapData | null;
   allowedWorkspaceIds: ReadonlySet<WorkspaceId>;
   activeWorkspace?: WorkspaceId | undefined;
+  initialScope?: CommandPaletteFilterScope | undefined;
   canAccessLedger: boolean;
   onExecuteItem: (item: CommandPaletteItem) => void;
 }
@@ -34,11 +35,12 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   bootstrap,
   allowedWorkspaceIds,
   activeWorkspace,
+  initialScope = 'all',
   canAccessLedger,
   onExecuteItem,
 }) => {
   const [query, setQuery] = useState('');
-  const [scope, setScope] = useState<CommandPaletteFilterScope>('all');
+  const [scope, setScope] = useState<CommandPaletteFilterScope>(initialScope);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -84,10 +86,10 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   useEffect(() => {
     if (open) {
       setQuery('');
-      setScope('all');
+      setScope(initialScope);
       setSelectedIndex(0);
     }
-  }, [open]);
+  }, [open, initialScope]);
 
   useEffect(() => {
     setSelectedIndex(0);
