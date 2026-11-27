@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Volume2, FileDown, CheckCircle2, Anchor, Printer } from 'lucide-react';
+import { Volume2, FileDown, CheckCircle2, Anchor, Printer, ArchiveRestore } from 'lucide-react';
 import {
   Button,
   Card,
@@ -19,7 +19,11 @@ import {
 } from '@web/lib/api.ts';
 import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 import { useI18n } from '@web/i18n/index.tsx';
+import { BulkActionToolbar } from '@web/app/components/BulkActionToolbar.tsx';
+import { useBulkSelection } from '@web/app/components/useBulkSelection.ts';
 import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
+
+const getSaleRowId = (r: AllocationRow): string => r.allocation_id;
 
 export const FisherWorkspace: React.FC<{
   data: BootstrapData;
@@ -37,9 +41,17 @@ export const FisherWorkspace: React.FC<{
   );
 
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
+  const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
   const [voucherModalOpen, setVoucherModalOpen] = useState(false);
   const [voucherFormat, setVoucherFormat] = useState<'80mm' | 'A4'>('80mm');
   const [isReprint, setIsReprint] = useState(false);
+
+  const tenantScope = data.tenant?.tenant_id ?? 'TEN-MUN';
+  const saleSelection = useBulkSelection({
+    rows: data.allocations,
+    getRowId: getSaleRowId,
+    archiveScopeKey: `${tenantScope}.fisher.sales`,
+  });
 
   const totalHammerPaise = data.allocations.reduce(
     (acc, a) => acc + BigInt(a.hammer_paise),
@@ -212,6 +224,36 @@ export const FisherWorkspace: React.FC<{
         />
       )}
 
+      {archiveNotice && (
+        <Toast
+          tone="info"
+          title="Passbook View Updated"
+          message={archiveNotice}
+          onDismiss={() => setArchiveNotice(null)}
+        />
+      )}
+
+      <BulkActionToolbar
+        selectedCount={saleSelection.selectedVisibleIds.length}
+        totalCount={saleSelection.visibleRowIds.length}
+        itemNounSingular="sale"
+        itemNounPlural="sales"
+        datasetLabel="Passbook Sales"
+        archiveLabel="Archive Selected"
+        onSelectAll={saleSelection.selectAllVisible}
+        onArchiveSelected={() => {
+          const count = saleSelection.archiveSelected();
+          if (count > 0) {
+            setArchiveNotice(
+              `Archived ${count} passbook ${
+                count === 1 ? 'sale' : 'sales'
+              } from active view. Use "Restore archived" to view again.`
+            );
+          }
+        }}
+        onClearSelection={saleSelection.clearSelection}
+      />
+
       {/* Hero: the one number a fisher cares about */}
       <section
         aria-label={t('workspaces.fisherHeroLabel')}
@@ -340,6 +382,28 @@ export const FisherWorkspace: React.FC<{
       <Card
         title={t('workspaces.fisherSalesTitle')}
         subtitle={t('fisher.salesSubtitle')}
+        actions={
+          saleSelection.archivedInDatasetCount > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="restore-archived-fisher-sales-btn"
+              icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+              onClick={() => {
+                const restored = saleSelection.restoreArchived();
+                if (restored > 0) {
+                  setArchiveNotice(
+                    `Restored ${restored} archived passbook ${
+                      restored === 1 ? 'sale' : 'sales'
+                    }.`
+                  );
+                }
+              }}
+            >
+              Restore {saleSelection.archivedInDatasetCount} archived
+            </Button>
+          ) : undefined
+        }
         sunkenFooter={
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5">
@@ -356,9 +420,13 @@ export const FisherWorkspace: React.FC<{
         <DataTable
           caption="Fisherman Passbook Sales"
           columns={columns}
-          rows={data.allocations}
+          rows={saleSelection.visibleRows}
           loading={refreshing}
-          getRowKey={(r) => r.allocation_id}
+          getRowKey={getSaleRowId}
+          selectedRowKeys={saleSelection.selectedIds}
+          onToggleRowSelection={saleSelection.toggleRow}
+          onToggleSelectAll={saleSelection.toggleSelectAll}
+          selectionAriaLabel="Select sale"
         />
       </Card>
 

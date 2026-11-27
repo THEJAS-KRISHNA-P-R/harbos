@@ -641,6 +641,11 @@ export interface DataTableProps<T> {
   emptyTitle?: string;
   emptyDescription?: string;
   onRowClick?: (row: T) => void;
+  /** Optional multi-select state & handlers for bulk action toolbars */
+  selectedRowKeys?: ReadonlySet<string> | undefined;
+  onToggleRowSelection?: ((rowKey: string) => void) | undefined;
+  onToggleSelectAll?: ((visibleRowKeys: ReadonlyArray<string>) => void) | undefined;
+  selectionAriaLabel?: string | undefined;
 }
 
 export function DataTable<T>({
@@ -653,7 +658,33 @@ export function DataTable<T>({
   emptyTitle = 'No statutory records found',
   emptyDescription = 'Adjust the active filter criteria or record a new harbour transaction.',
   onRowClick,
+  selectedRowKeys,
+  onToggleRowSelection,
+  onToggleSelectAll,
+  selectionAriaLabel = 'Select row',
 }: DataTableProps<T>): React.ReactElement {
+  const selectable = Boolean(selectedRowKeys && onToggleRowSelection);
+  const visibleRowKeys = rows.map(getRowKey);
+  const selectedVisibleCount = selectable
+    ? visibleRowKeys.filter((k) => selectedRowKeys!.has(k)).length
+    : 0;
+  const allVisibleSelected =
+    selectable && visibleRowKeys.length > 0 && selectedVisibleCount === visibleRowKeys.length;
+  const someVisibleSelected =
+    selectable && selectedVisibleCount > 0 && selectedVisibleCount < visibleRowKeys.length;
+
+  const desktopSelectAllRef = React.useRef<HTMLInputElement>(null);
+  const mobileSelectAllRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (desktopSelectAllRef.current) {
+      desktopSelectAllRef.current.indeterminate = someVisibleSelected;
+    }
+    if (mobileSelectAllRef.current) {
+      mobileSelectAllRef.current.indeterminate = someVisibleSelected;
+    }
+  }, [someVisibleSelected]);
+
   if (error) {
     return (
       <div
@@ -671,7 +702,10 @@ export function DataTable<T>({
   const detailCols = columns.slice(1, trailingCol ? -1 : undefined);
 
   const skeletonRowCount = resolveSkeletonRowCount(rows.length, 3, 5);
-  const columnAlignments = columns.map((col) => col.align);
+  const columnAlignments = selectable
+    ? [undefined, ...columns.map((col) => col.align)]
+    : columns.map((col) => col.align);
+  const totalColCount = columns.length + (selectable ? 1 : 0);
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-hair)] rounded-[var(--radius-card)] overflow-hidden">
@@ -680,6 +714,30 @@ export function DataTable<T>({
         data-testid="datatable-mobile-list"
         className="md:hidden divide-y divide-[var(--border-hair)] overflow-x-hidden"
       >
+        {selectable && !loading && rows.length > 0 && onToggleSelectAll && (
+          <div className="px-3 py-2 bg-[var(--bg-sunken)] flex items-center justify-between gap-2">
+            <label className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)] cursor-pointer select-none">
+              <input
+                ref={mobileSelectAllRef}
+                type="checkbox"
+                data-testid="datatable-mobile-select-all"
+                checked={allVisibleSelected}
+                onChange={() => onToggleSelectAll(visibleRowKeys)}
+                className="w-4 h-4 rounded accent-[var(--brand)] cursor-pointer"
+              />
+              <span>
+                {allVisibleSelected
+                  ? `All ${visibleRowKeys.length} selected`
+                  : `Select all (${visibleRowKeys.length})`}
+              </span>
+            </label>
+            {selectedVisibleCount > 0 && (
+              <span className="text-[11px] font-mono-code font-semibold text-[var(--brand)]">
+                {selectedVisibleCount} selected
+              </span>
+            )}
+          </div>
+        )}
         {loading ? (
           <div role="status" aria-busy="true" aria-label="Loading records…">
             <span className="sr-only">Loading records…</span>
@@ -699,6 +757,7 @@ export function DataTable<T>({
         ) : (
           rows.map((row) => {
             const key = getRowKey(row);
+            const isSelected = Boolean(selectable && selectedRowKeys!.has(key));
             return (
               <div
                 key={key}
@@ -716,6 +775,8 @@ export function DataTable<T>({
                     : undefined
                 }
                 className={`p-3 flex flex-col gap-2 transition-colors ${
+                  isSelected ? 'bg-[var(--brand-soft)]/50' : ''
+                } ${
                   onRowClick
                     ? 'cursor-pointer hover:bg-[var(--bg-tint)] active:bg-[var(--bg-sunken)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]'
                     : ''
@@ -723,12 +784,25 @@ export function DataTable<T>({
               >
                 {primaryCol && (
                   <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
-                    <div
-                      className={`min-w-0 flex-1 text-xs font-semibold text-[var(--text-primary)] [overflow-wrap:anywhere] ${
-                        primaryCol.mono ? 'font-mono-code tabular-nums' : ''
-                      }`}
-                    >
-                      {primaryCol.render(row)}
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      {selectable && (
+                        <input
+                          type="checkbox"
+                          data-testid={`datatable-mobile-select-${key}`}
+                          aria-label={`${selectionAriaLabel} ${key}`}
+                          checked={isSelected}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => onToggleRowSelection!(key)}
+                          className="w-4 h-4 mt-0.5 rounded accent-[var(--brand)] cursor-pointer shrink-0"
+                        />
+                      )}
+                      <div
+                        className={`min-w-0 flex-1 text-xs font-semibold text-[var(--text-primary)] [overflow-wrap:anywhere] ${
+                          primaryCol.mono ? 'font-mono-code tabular-nums' : ''
+                        }`}
+                      >
+                        {primaryCol.render(row)}
+                      </div>
                     </div>
                     {trailingCol && (
                       <div
@@ -775,6 +849,24 @@ export function DataTable<T>({
           {caption && <caption className="sr-only">{caption}</caption>}
           <thead>
             <tr className="bg-[var(--bg-sunken)] border-b border-[var(--border-hair)]">
+              {selectable && (
+                <th scope="col" className="w-10 pl-3.5 pr-1 py-2.5 text-left">
+                  {onToggleSelectAll ? (
+                    <input
+                      ref={desktopSelectAllRef}
+                      type="checkbox"
+                      data-testid="datatable-select-all"
+                      aria-label={`Select all ${caption ?? 'rows'}`}
+                      checked={allVisibleSelected}
+                      disabled={loading || rows.length === 0}
+                      onChange={() => onToggleSelectAll(visibleRowKeys)}
+                      className="w-4 h-4 rounded accent-[var(--brand)] cursor-pointer align-middle disabled:opacity-40"
+                    />
+                  ) : (
+                    <span className="sr-only">Select</span>
+                  )}
+                </th>
+              )}
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -794,7 +886,7 @@ export function DataTable<T>({
                 <SkeletonListRow
                   key={`skeleton-${idx}`}
                   mode="table"
-                  columns={columns.length}
+                  columns={totalColCount}
                   rowIndex={idx}
                   columnAlignments={columnAlignments}
                   testId="datatable-skeleton-row"
@@ -802,31 +894,50 @@ export function DataTable<T>({
               ))
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="p-8">
+                <td colSpan={totalColCount} className="p-8">
                   <EmptyState title={emptyTitle} description={emptyDescription} />
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr
-                  key={getRowKey(row)}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`transition-colors hover:bg-[var(--bg-tint)] ${
-                    onRowClick ? 'cursor-pointer' : ''
-                  }`}
-                >
-                  {columns.map((col) => (
-                    <td
-                      key={col.key}
-                      className={`px-3 py-3 lg:px-4 text-sm leading-5 text-[var(--text-primary)] tabular-nums ${
-                        col.align === 'right' ? 'text-right' : 'text-left'
-                      } ${col.mono ? 'font-mono-code text-[13px]' : ''}`}
-                    >
-                      {col.render(row)}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              rows.map((row) => {
+                const key = getRowKey(row);
+                const isSelected = Boolean(selectable && selectedRowKeys!.has(key));
+                return (
+                  <tr
+                    key={key}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    className={`transition-colors hover:bg-[var(--bg-tint)] ${
+                      isSelected ? 'bg-[var(--brand-soft)]/50' : ''
+                    } ${onRowClick ? 'cursor-pointer' : ''}`}
+                  >
+                    {selectable && (
+                      <td
+                        className="w-10 pl-3.5 pr-1 py-3 align-middle"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          data-testid={`datatable-select-${key}`}
+                          aria-label={`${selectionAriaLabel} ${key}`}
+                          checked={isSelected}
+                          onChange={() => onToggleRowSelection!(key)}
+                          className="w-4 h-4 rounded accent-[var(--brand)] cursor-pointer align-middle"
+                        />
+                      </td>
+                    )}
+                    {columns.map((col) => (
+                      <td
+                        key={col.key}
+                        className={`px-3 py-3 lg:px-4 text-sm leading-5 text-[var(--text-primary)] tabular-nums ${
+                          col.align === 'right' ? 'text-right' : 'text-left'
+                        } ${col.mono ? 'font-mono-code text-[13px]' : ''}`}
+                      >
+                        {col.render(row)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

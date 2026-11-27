@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Gavel, FileDown, Printer, Minus, Plus } from 'lucide-react';
+import { Gavel, FileDown, Printer, Minus, Plus, ArchiveRestore } from 'lucide-react';
 import {
   Button,
   Card,
@@ -22,8 +22,12 @@ import {
 } from '@web/lib/api.ts';
 import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
 import { useI18n } from '@web/i18n/index.tsx';
+import { BulkActionToolbar } from '@web/app/components/BulkActionToolbar.tsx';
+import { useBulkSelection } from '@web/app/components/useBulkSelection.ts';
 import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 import { extractManglishName } from '@web/lib/ui-formatters.ts';
+
+const getPurchaseRowId = (r: AllocationRow): string => r.allocation_id;
 
 export const BuyerWorkspace: React.FC<{
   data: BootstrapData;
@@ -44,6 +48,13 @@ export const BuyerWorkspace: React.FC<{
     title: string;
     msg: string;
   } | null>(null);
+
+  const tenantScope = data.tenant?.tenant_id ?? 'TEN-MUN';
+  const purchaseSelection = useBulkSelection({
+    rows: data.allocations,
+    getRowId: getPurchaseRowId,
+    archiveScopeKey: `${tenantScope}.buyer.purchases`,
+  });
 
   const escrowPaise = BigInt(buyer?.escrow_balance_paise ?? '0');
   const creditPaise = BigInt(buyer?.approved_credit_paise ?? '0');
@@ -292,6 +303,28 @@ export const BuyerWorkspace: React.FC<{
         />
       )}
 
+      <BulkActionToolbar
+        selectedCount={purchaseSelection.selectedVisibleIds.length}
+        totalCount={purchaseSelection.visibleRowIds.length}
+        itemNounSingular="purchase"
+        itemNounPlural="purchases"
+        datasetLabel="Buyer Purchases"
+        busy={submittingLotId !== null}
+        archiveLabel="Archive Selected"
+        onSelectAll={purchaseSelection.selectAllVisible}
+        onArchiveSelected={() => {
+          const count = purchaseSelection.archiveSelected();
+          if (count > 0) {
+            setFeedback({
+              tone: 'info',
+              title: `Archived ${count} ${count === 1 ? 'purchase' : 'purchases'}`,
+              msg: 'Removed from active purchase dossiers. Use "Restore archived" to view them again.',
+            });
+          }
+        }}
+        onClearSelection={purchaseSelection.clearSelection}
+      />
+
       {/* Hero: Buyer Available Trading Limit */}
       <section
         aria-label={t('workspaces.buyerLimitHero')}
@@ -408,13 +441,43 @@ export const BuyerWorkspace: React.FC<{
       </Card>
 
       {/* Purchases & Export Dossiers */}
-      <Card title={t('workspaces.buyerPurchasesTitle')}>
+      <Card
+        title={t('workspaces.buyerPurchasesTitle')}
+        actions={
+          purchaseSelection.archivedInDatasetCount > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="restore-archived-buyer-purchases-btn"
+              icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+              onClick={() => {
+                const restored = purchaseSelection.restoreArchived();
+                if (restored > 0) {
+                  setFeedback({
+                    tone: 'info',
+                    title: `Restored ${restored} archived ${
+                      restored === 1 ? 'purchase' : 'purchases'
+                    }`,
+                    msg: 'Archived purchase dossiers are visible again.',
+                  });
+                }
+              }}
+            >
+              Restore {purchaseSelection.archivedInDatasetCount} archived
+            </Button>
+          ) : undefined
+        }
+      >
         <DataTable
           caption="Buyer Purchases and Export Dossiers"
           columns={purchaseColumns}
-          rows={data.allocations}
+          rows={purchaseSelection.visibleRows}
           loading={refreshing || submittingLotId !== null}
-          getRowKey={(r) => r.allocation_id}
+          getRowKey={getPurchaseRowId}
+          selectedRowKeys={purchaseSelection.selectedIds}
+          onToggleRowSelection={purchaseSelection.toggleRow}
+          onToggleSelectAll={purchaseSelection.toggleSelectAll}
+          selectionAriaLabel="Select purchase"
         />
       </Card>
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   PlusCircle,
   FileKey,
@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
   Users,
   CheckCircle2,
+  ArchiveRestore,
 } from 'lucide-react';
 import {
   Button,
@@ -42,10 +43,15 @@ import {
   type EntryRow,
 } from '@web/lib/api.ts';
 import { ROLE_DASHBOARD_DIRECTORY } from '@web/lib/tenant-onboarding.ts';
+import { BulkActionToolbar } from '@web/app/components/BulkActionToolbar.tsx';
+import { useBulkSelection } from '@web/app/components/useBulkSelection.ts';
 import type { Role, WorkspaceId } from '@shared/contracts/rbac.ts';
 import type { CentreType, CommercialMode } from '@shared/ids.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 import type { SystemObservabilityMetrics } from './PerformanceDashboard.tsx';
+
+const getTenantRowId = (r: TenantRow): string => r.tenant_id;
+const getBenchmarkRowId = (r: CrossHarbourBenchmarkRow): string => r.tenantId;
 
 const LazyPerformanceDashboard = React.lazy(async () => {
   const mod = await import('./PerformanceDashboard.tsx');
@@ -439,7 +445,28 @@ export const PlatformWorkspace: React.FC<{
     },
   ];
 
-  const crossHarbourBenchmarks = computeCrossHarbourBenchmarks(data.allTenants);
+  const crossHarbourBenchmarks = useMemo(
+    () => computeCrossHarbourBenchmarks(data.allTenants),
+    [data.allTenants]
+  );
+
+  const tenantSelection = useBulkSelection({
+    rows: data.allTenants,
+    getRowId: getTenantRowId,
+    archiveScopeKey: 'platform.tenants',
+  });
+
+  const benchmarkSelection = useBulkSelection({
+    rows: crossHarbourBenchmarks,
+    getRowId: getBenchmarkRowId,
+    archiveScopeKey: 'platform.benchmarks',
+  });
+
+  useEffect(() => {
+    tenantSelection.clearSelection();
+    benchmarkSelection.clearSelection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   const benchmarkColumns: ReadonlyArray<DataTableColumn<CrossHarbourBenchmarkRow>> = [
     {
@@ -595,6 +622,54 @@ export const PlatformWorkspace: React.FC<{
         />
       )}
 
+      {activeTab === 'governance' && tenantSelection.selectedVisibleIds.length > 0 && (
+        <BulkActionToolbar
+          selectedCount={tenantSelection.selectedVisibleIds.length}
+          totalCount={tenantSelection.visibleRowIds.length}
+          itemNounSingular="harbour tenant"
+          itemNounPlural="harbour tenants"
+          datasetLabel="Provisioned Tenants"
+          busy={submitting}
+          archiveLabel="Archive Selected"
+          onSelectAll={tenantSelection.selectAllVisible}
+          onArchiveSelected={() => {
+            const count = tenantSelection.archiveSelected();
+            if (count > 0) {
+              setFeedback({
+                tone: 'info',
+                title: `Archived ${count} harbour ${count === 1 ? 'tenant' : 'tenants'}`,
+                msg: 'Hidden from the active tenant registry view. Use "Restore archived" to bring them back.',
+              });
+            }
+          }}
+          onClearSelection={tenantSelection.clearSelection}
+        />
+      )}
+
+      {activeTab === 'scalability' && benchmarkSelection.selectedVisibleIds.length > 0 && (
+        <BulkActionToolbar
+          selectedCount={benchmarkSelection.selectedVisibleIds.length}
+          totalCount={benchmarkSelection.visibleRowIds.length}
+          itemNounSingular="benchmark"
+          itemNounPlural="benchmarks"
+          datasetLabel="Cross-Harbour Benchmarks"
+          busy={submitting}
+          archiveLabel="Archive Selected"
+          onSelectAll={benchmarkSelection.selectAllVisible}
+          onArchiveSelected={() => {
+            const count = benchmarkSelection.archiveSelected();
+            if (count > 0) {
+              setFeedback({
+                tone: 'info',
+                title: `Archived ${count} benchmark ${count === 1 ? 'row' : 'rows'}`,
+                msg: 'Removed from active comparison table. Use "Restore archived" anytime.',
+              });
+            }
+          }}
+          onClearSelection={benchmarkSelection.clearSelection}
+        />
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3.5">
         <Metric
           label="Provisioned Tenants"
@@ -650,12 +725,42 @@ export const PlatformWorkspace: React.FC<{
               />
             </React.Suspense>
 
-            <Card title={t('platform.benchmarksTitle')}>
+            <Card
+              title={t('platform.benchmarksTitle')}
+              actions={
+                benchmarkSelection.archivedInDatasetCount > 0 ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="restore-archived-benchmarks-btn"
+                    icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+                    onClick={() => {
+                      const restored = benchmarkSelection.restoreArchived();
+                      if (restored > 0) {
+                        setFeedback({
+                          tone: 'info',
+                          title: `Restored ${restored} archived benchmark ${
+                            restored === 1 ? 'row' : 'rows'
+                          }`,
+                          msg: 'All cross-harbour benchmark rows are visible again.',
+                        });
+                      }
+                    }}
+                  >
+                    Restore {benchmarkSelection.archivedInDatasetCount} archived
+                  </Button>
+                ) : undefined
+              }
+            >
               <DataTable
                 caption="Multi-Harbour Cross-Tenant Clearing & Settlement Benchmarks"
                 columns={benchmarkColumns}
-                rows={crossHarbourBenchmarks}
-                getRowKey={(r) => r.tenantId}
+                rows={benchmarkSelection.visibleRows}
+                getRowKey={getBenchmarkRowId}
+                selectedRowKeys={benchmarkSelection.selectedIds}
+                onToggleRowSelection={benchmarkSelection.toggleRow}
+                onToggleSelectAll={benchmarkSelection.toggleSelectAll}
+                selectionAriaLabel="Select benchmark"
               />
             </Card>
           </div>
@@ -769,12 +874,40 @@ export const PlatformWorkspace: React.FC<{
           <Card
             title={t('platform.tenantsRegistryTitle')}
             subtitle="Switch between isolated harbour tenants or onboard a new harbour with operators and starter species"
+            actions={
+              tenantSelection.archivedInDatasetCount > 0 ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="restore-archived-tenants-btn"
+                  icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    const restored = tenantSelection.restoreArchived();
+                    if (restored > 0) {
+                      setFeedback({
+                        tone: 'info',
+                        title: `Restored ${restored} archived ${
+                          restored === 1 ? 'tenant' : 'tenants'
+                        }`,
+                        msg: 'All provisioned harbour tenants are visible again.',
+                      });
+                    }
+                  }}
+                >
+                  Restore {tenantSelection.archivedInDatasetCount} archived
+                </Button>
+              ) : undefined
+            }
           >
             <DataTable
               caption="Provisioned Harbour & Market Tenants"
               columns={tenantColumns}
-              rows={data.allTenants}
-              getRowKey={(r) => r.tenant_id}
+              rows={tenantSelection.visibleRows}
+              getRowKey={getTenantRowId}
+              selectedRowKeys={tenantSelection.selectedIds}
+              onToggleRowSelection={tenantSelection.toggleRow}
+              onToggleSelectAll={tenantSelection.toggleSelectAll}
+              selectionAriaLabel="Select tenant"
             />
           </Card>
 

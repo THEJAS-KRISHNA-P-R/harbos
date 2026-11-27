@@ -7,6 +7,7 @@ import {
   Plus,
   OctagonAlert,
   CheckCircle2,
+  ArchiveRestore,
 } from 'lucide-react';
 import {
   Button,
@@ -30,8 +31,16 @@ import {
   type LotRow,
 } from '@web/lib/api.ts';
 import { extractManglishName, stepTemperatureC } from '@web/lib/ui-formatters.ts';
+import {
+  formatBulkApproveFeedback,
+  runBulkOperation,
+} from '@web/lib/bulk-selection.ts';
+import { BulkActionToolbar } from '@web/app/components/BulkActionToolbar.tsx';
+import { useBulkSelection } from '@web/app/components/useBulkSelection.ts';
 import type { InspectionGrade } from '@shared/ids.ts';
 import { useI18n } from '@web/i18n/index.tsx';
+
+const getLotRowId = (r: LotRow): string => r.lot_id;
 
 const GRADE_CHOICES: ReadonlyArray<{
   value: InspectionGrade;
@@ -92,6 +101,13 @@ export const InspectorWorkspace: React.FC<{
     msg: string;
   } | null>(null);
 
+  const tenantScope = data.tenant?.tenant_id ?? 'TEN-MUN';
+  const lotSelection = useBulkSelection({
+    rows: data.lots,
+    getRowId: getLotRowId,
+    archiveScopeKey: `${tenantScope}.inspector.lots`,
+  });
+
   const selectedLot = data.lots.find((l) => l.lot_id === selectedLotId) ?? data.lots[0];
   const selectedSpecies = data.species.find(
     (s) => s.species_id === selectedLot?.species_id
@@ -144,6 +160,56 @@ export const InspectorWorkspace: React.FC<{
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleBulkApproveLots = async (): Promise<void> => {
+    const selectedIds = lotSelection.selectedVisibleIds;
+    if (selectedIds.length === 0) return;
+    const approvalGrade: InspectionGrade =
+      grade === 'REJECTED_UNFIT' ? 'A_EXPORT' : grade;
+    setSubmitting(true);
+    setFeedback(null);
+    try {
+      const summary = await runBulkOperation(selectedIds, async (lotId) => {
+        const lot = data.lots.find((l) => l.lot_id === lotId);
+        if (!lot) return { id: lotId, status: 'skipped' };
+        await apiRequest(`/api/v1/lots/${lotId}/inspect`, {
+          method: 'POST',
+          token,
+          body: {
+            grade: approvalGrade,
+            coreTempC: Number(lot.core_temp_c ?? coreTempC) || 1.8,
+            notes: lot.inspection_notes || notes,
+          },
+        });
+        return { id: lotId, status: 'succeeded' };
+      });
+      lotSelection.clearSelection();
+      setFeedback(
+        formatBulkApproveFeedback({
+          summary,
+          itemNounSingular: 'lot',
+          itemNounPlural: 'lots',
+          actionPastTense: `Approved (${humanizeCode(approvalGrade)})`,
+        })
+      );
+      if (summary.succeeded.length > 0) {
+        await onRefresh();
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleBulkArchiveLots = (): void => {
+    const count = lotSelection.archiveSelected();
+    if (count > 0) {
+      setFeedback({
+        tone: 'info',
+        title: `Archived ${count} inspection ${count === 1 ? 'lot' : 'lots'}`,
+        msg: 'Removed from active inspection log. Use "Restore archived" to view them again.',
+      });
     }
   };
 
@@ -278,6 +344,21 @@ export const InspectorWorkspace: React.FC<{
           onDismiss={() => setFeedback(null)}
         />
       )}
+
+      <BulkActionToolbar
+        selectedCount={lotSelection.selectedVisibleIds.length}
+        totalCount={lotSelection.visibleRowIds.length}
+        itemNounSingular="lot"
+        itemNounPlural="lots"
+        datasetLabel="Quality Inspection Log"
+        busy={submitting}
+        approveLabel="Approve Selected"
+        archiveLabel="Archive Selected"
+        onSelectAll={lotSelection.selectAllVisible}
+        onApproveSelected={() => void handleBulkApproveLots()}
+        onArchiveSelected={handleBulkArchiveLots}
+        onClearSelection={lotSelection.clearSelection}
+      />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="col-span-2 sm:col-span-1">
@@ -534,13 +615,39 @@ export const InspectorWorkspace: React.FC<{
       <Card
         title={t('inspector.logTitle')}
         subtitle={t('inspector.logSubtitle')}
+        actions={
+          lotSelection.archivedInDatasetCount > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="restore-archived-inspector-lots-btn"
+              icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+              onClick={() => {
+                const restored = lotSelection.restoreArchived();
+                if (restored > 0) {
+                  setFeedback({
+                    tone: 'info',
+                    title: `Restored ${restored} archived ${restored === 1 ? 'lot' : 'lots'}`,
+                    msg: 'Archived inspection records are visible in the log again.',
+                  });
+                }
+              }}
+            >
+              Restore {lotSelection.archivedInDatasetCount} archived
+            </Button>
+          ) : undefined
+        }
       >
         <DataTable
           caption="Quality Inspection Log"
           columns={columns}
-          rows={data.lots}
+          rows={lotSelection.visibleRows}
           loading={refreshing || submitting}
-          getRowKey={(r) => r.lot_id}
+          getRowKey={getLotRowId}
+          selectedRowKeys={lotSelection.selectedIds}
+          onToggleRowSelection={lotSelection.toggleRow}
+          onToggleSelectAll={lotSelection.toggleSelectAll}
+          selectionAriaLabel="Select lot"
           onRowClick={handleSelectLot}
         />
       </Card>

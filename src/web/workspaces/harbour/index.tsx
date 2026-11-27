@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   FileDown,
   Printer,
@@ -9,6 +9,7 @@ import {
   X,
   ArrowRight,
   Clock,
+  ArchiveRestore,
 } from 'lucide-react';
 import {
   Button,
@@ -41,10 +42,20 @@ import {
   type AuditLogRow,
 } from '@web/lib/api.ts';
 import { extractManglishName } from '@web/lib/ui-formatters.ts';
+import {
+  formatBulkApproveFeedback,
+  runBulkOperation,
+} from '@web/lib/bulk-selection.ts';
+import { BulkActionToolbar } from '@web/app/components/BulkActionToolbar.tsx';
+import { useBulkSelection } from '@web/app/components/useBulkSelection.ts';
 import type { FloorEnforcement } from '@shared/ids.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 import { MasterdataCsvPanel } from './MasterdataCsvPanel.tsx';
 import { ReportsShadowPanel } from './ReportsShadowPanel.tsx';
+
+const getBatchRowId = (r: PayoutBatchRow): string => r.batch_id;
+const getReversalRowId = (r: ReversalRow): string => r.reversal_id;
+const getAuditLogRowId = (r: AuditLogRow): string => r.audit_id;
 
 export const HarbourWorkspace: React.FC<{
   data: BootstrapData;
@@ -100,8 +111,35 @@ export const HarbourWorkspace: React.FC<{
   }, [data.tenant?.floor_enforcement]);
 
   const allAuditLogs = data.auditLogs ?? [];
-  const filteredAuditLogs = filterAuditLogs(allAuditLogs, auditSearchQuery, auditRoleFilter);
-  const pendingBatchesCount = data.payoutBatches.filter(
+  const filteredAuditLogs = useMemo(
+    () => filterAuditLogs(allAuditLogs, auditSearchQuery, auditRoleFilter),
+    [allAuditLogs, auditSearchQuery, auditRoleFilter]
+  );
+  const tenantScope = data.tenant?.tenant_id ?? 'TEN-MUN';
+  const batchSelection = useBulkSelection({
+    rows: data.payoutBatches,
+    getRowId: getBatchRowId,
+    archiveScopeKey: `${tenantScope}.harbour.payoutBatches`,
+  });
+  const reversalSelection = useBulkSelection({
+    rows: data.reversals,
+    getRowId: getReversalRowId,
+    archiveScopeKey: `${tenantScope}.harbour.reversals`,
+  });
+  const auditSelection = useBulkSelection({
+    rows: filteredAuditLogs,
+    getRowId: getAuditLogRowId,
+    archiveScopeKey: `${tenantScope}.harbour.auditLogs`,
+  });
+
+  useEffect(() => {
+    batchSelection.clearSelection();
+    reversalSelection.clearSelection();
+    auditSelection.clearSelection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  const pendingBatchesCount = batchSelection.visibleRows.filter(
     (b) => b.status === 'GENERATED_CSV'
   ).length;
 
@@ -234,6 +272,116 @@ export const HarbourWorkspace: React.FC<{
       });
     } finally {
       setMutating(false);
+    }
+  };
+
+  const handleBulkApproveBatches = async (): Promise<void> => {
+    const selectedIds = batchSelection.selectedVisibleIds;
+    if (selectedIds.length === 0) return;
+    setMutating(true);
+    setFeedback(null);
+    try {
+      const summary = await runBulkOperation(selectedIds, async (batchId) => {
+        const row = data.payoutBatches.find((b) => b.batch_id === batchId);
+        if (!row || row.status !== 'GENERATED_CSV') {
+          return { id: batchId, status: 'skipped' };
+        }
+        await apiRequest(`/api/v1/payout-batches/${batchId}/reconcile`, {
+          method: 'POST',
+          token,
+          body: { bankUtr: utrInput },
+        });
+        return { id: batchId, status: 'succeeded' };
+      });
+      batchSelection.clearSelection();
+      setFeedback(
+        formatBulkApproveFeedback({
+          summary,
+          itemNounSingular: 'payout batch',
+          itemNounPlural: 'payout batches',
+          actionPastTense: 'Reconciled',
+        })
+      );
+      if (summary.succeeded.length > 0) {
+        await onRefresh();
+      }
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const handleBulkApproveReversals = async (): Promise<void> => {
+    const selectedIds = reversalSelection.selectedVisibleIds;
+    if (selectedIds.length === 0) return;
+    setMutating(true);
+    setFeedback(null);
+    try {
+      const summary = await runBulkOperation(selectedIds, async (reversalId) => {
+        const row = data.reversals.find((r) => r.reversal_id === reversalId);
+        if (!row || row.status !== 'PENDING_SECOND_APPROVAL') {
+          return { id: reversalId, status: 'skipped' };
+        }
+        if (!browserOnline && onQueueApproveLedger) {
+          if (queuedLedgerApprovalIds?.has(reversalId)) {
+            return { id: reversalId, status: 'skipped' };
+          }
+          onQueueApproveLedger(reversalId, `Approve dual-key reversal ${reversalId}`);
+          return { id: reversalId, status: 'queued' };
+        }
+        await apiRequest<{ compensatingJournalId: string }>('/api/v1/ledger/reversals', {
+          method: 'POST',
+          token,
+          body: { action: 'APPROVE', reversalId },
+        });
+        return { id: reversalId, status: 'succeeded' };
+      });
+      reversalSelection.clearSelection();
+      setFeedback(
+        formatBulkApproveFeedback({
+          summary,
+          itemNounSingular: 'reversal',
+          itemNounPlural: 'reversals',
+          actionPastTense: 'Approved',
+        })
+      );
+      if (summary.succeeded.length > 0) {
+        await onRefresh();
+      }
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const handleBulkArchiveBatches = (): void => {
+    const count = batchSelection.archiveSelected();
+    if (count > 0) {
+      setFeedback({
+        tone: 'info',
+        title: `Archived ${count} payout ${count === 1 ? 'batch' : 'batches'}`,
+        msg: 'Removed from active clearing view. Use "Restore archived" on the Payout Batches card to unarchive anytime.',
+      });
+    }
+  };
+
+  const handleBulkArchiveReversals = (): void => {
+    const count = reversalSelection.archiveSelected();
+    if (count > 0) {
+      setFeedback({
+        tone: 'info',
+        title: `Archived ${count} dual-key ${count === 1 ? 'reversal' : 'reversals'}`,
+        msg: 'Hidden from active approval queue. Use "Restore archived" on the Dual-Key Reversals card to bring them back.',
+      });
+    }
+  };
+
+  const handleBulkArchiveAuditLogs = (): void => {
+    const count = auditSelection.archiveSelected();
+    if (count > 0) {
+      setFeedback({
+        tone: 'info',
+        title: `Archived ${count} audit ${count === 1 ? 'entry' : 'entries'}`,
+        msg: 'Cleared from your active review view. Underlying statutory logs remain immutable and can be restored anytime.',
+      });
     }
   };
 
@@ -514,8 +662,28 @@ export const HarbourWorkspace: React.FC<{
         <div className="flex flex-wrap items-center gap-2">
           <Badge
             tone="info"
-            label={`${filteredAuditLogs.length} / ${allAuditLogs.length}`}
+            label={`${auditSelection.visibleRows.length} / ${allAuditLogs.length}`}
           />
+          {auditSelection.archivedInDatasetCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="restore-archived-audit-btn"
+              icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+              onClick={() => {
+                const restored = auditSelection.restoreArchived();
+                if (restored > 0) {
+                  setFeedback({
+                    tone: 'info',
+                    title: `Restored ${restored} archived audit ${restored === 1 ? 'entry' : 'entries'}`,
+                    msg: 'All archived audit records are visible again.',
+                  });
+                }
+              }}
+            >
+              Restore {auditSelection.archivedInDatasetCount} archived
+            </Button>
+          )}
           {(auditSearchQuery.trim() !== '' || auditRoleFilter !== 'ALL') && (
             <Button
               variant="outline"
@@ -581,9 +749,13 @@ export const HarbourWorkspace: React.FC<{
         <DataTable
           caption="Statutory Harbour Audit Logs"
           columns={auditColumns}
-          rows={filteredAuditLogs}
+          rows={auditSelection.visibleRows}
           loading={isFetchingRows}
-          getRowKey={(r) => r.audit_id}
+          getRowKey={getAuditLogRowId}
+          selectedRowKeys={auditSelection.selectedIds}
+          onToggleRowSelection={auditSelection.toggleRow}
+          onToggleSelectAll={auditSelection.toggleSelectAll}
+          selectionAriaLabel="Select audit log"
           emptyTitle="No matching audit log entries"
           emptyDescription="No audit records matched your actor, action code, or target ID query. Try clearing the search filter."
         />
@@ -644,6 +816,58 @@ export const HarbourWorkspace: React.FC<{
         />
       )}
 
+      {(activeTab === 'today' || activeTab === 'accounting') &&
+        batchSelection.selectedVisibleIds.length > 0 && (
+          <BulkActionToolbar
+            selectedCount={batchSelection.selectedVisibleIds.length}
+            totalCount={batchSelection.visibleRowIds.length}
+            itemNounSingular="payout batch"
+            itemNounPlural="payout batches"
+            datasetLabel="Payout Batches"
+            busy={mutating}
+            approveLabel="Approve Selected"
+            archiveLabel="Archive Selected"
+            onSelectAll={batchSelection.selectAllVisible}
+            onApproveSelected={() => void handleBulkApproveBatches()}
+            onArchiveSelected={handleBulkArchiveBatches}
+            onClearSelection={batchSelection.clearSelection}
+          />
+        )}
+
+      {activeTab === 'accounting' &&
+        batchSelection.selectedVisibleIds.length === 0 &&
+        reversalSelection.selectedVisibleIds.length > 0 && (
+          <BulkActionToolbar
+            selectedCount={reversalSelection.selectedVisibleIds.length}
+            totalCount={reversalSelection.visibleRowIds.length}
+            itemNounSingular="reversal"
+            itemNounPlural="reversals"
+            datasetLabel="Dual-Key Reversals"
+            busy={mutating}
+            approveLabel={!browserOnline ? 'Queue Approve Selected' : 'Approve Selected'}
+            archiveLabel="Archive Selected"
+            onSelectAll={reversalSelection.selectAllVisible}
+            onApproveSelected={() => void handleBulkApproveReversals()}
+            onArchiveSelected={handleBulkArchiveReversals}
+            onClearSelection={reversalSelection.clearSelection}
+          />
+        )}
+
+      {activeTab === 'audit' && auditSelection.selectedVisibleIds.length > 0 && (
+        <BulkActionToolbar
+          selectedCount={auditSelection.selectedVisibleIds.length}
+          totalCount={auditSelection.visibleRowIds.length}
+          itemNounSingular="audit entry"
+          itemNounPlural="audit entries"
+          datasetLabel="Audit Log"
+          busy={mutating}
+          archiveLabel="Archive Selected"
+          onSelectAll={auditSelection.selectAllVisible}
+          onArchiveSelected={handleBulkArchiveAuditLogs}
+          onClearSelection={auditSelection.clearSelection}
+        />
+      )}
+
       {/* Compact 3-Metric Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4">
         <div className="col-span-2 sm:col-span-1">
@@ -679,22 +903,56 @@ export const HarbourWorkspace: React.FC<{
             <Card
               title={t('harbour.payoutBatchesTitle')}
               actions={
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon={<Landmark className="w-3.5 h-3.5" />}
-                  onClick={handleGenerateBatch}
-                >
-                  {t('harbour.newBatch')}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {batchSelection.archivedInDatasetCount > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="restore-archived-batches-btn"
+                      icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+                      onClick={() => {
+                        const restored = batchSelection.restoreArchived();
+                        if (restored > 0) {
+                          setFeedback({
+                            tone: 'info',
+                            title: `Restored ${restored} archived payout ${
+                              restored === 1 ? 'batch' : 'batches'
+                            }`,
+                            msg: 'Archived payout batches are visible in the clearing table again.',
+                          });
+                        }
+                      }}
+                    >
+                      Restore {batchSelection.archivedInDatasetCount} archived
+                    </Button>
+                  )}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={<Landmark className="w-3.5 h-3.5" />}
+                    onClick={handleGenerateBatch}
+                  >
+                    {t('harbour.newBatch')}
+                  </Button>
+                </div>
               }
             >
               <DataTable
                 caption="Payout Batches"
                 columns={batchColumns}
-                rows={data.payoutBatches}
+                rows={batchSelection.visibleRows}
                 loading={isFetchingRows}
-                getRowKey={(r) => r.batch_id}
+                getRowKey={getBatchRowId}
+                selectedRowKeys={batchSelection.selectedIds}
+                onToggleRowSelection={(id) => {
+                  reversalSelection.clearSelection();
+                  batchSelection.toggleRow(id);
+                }}
+                onToggleSelectAll={(ids) => {
+                  reversalSelection.clearSelection();
+                  batchSelection.toggleSelectAll(ids);
+                }}
+                selectionAriaLabel="Select payout batch"
               />
             </Card>
 
@@ -863,6 +1121,28 @@ export const HarbourWorkspace: React.FC<{
               subtitle="Close the harbour day: generate CSV payout batch → import bank UTR → zero unexplained difference"
               actions={
                 <div className="flex flex-wrap items-center gap-2">
+                  {batchSelection.archivedInDatasetCount > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="restore-archived-batches-accounting-btn"
+                      icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+                      onClick={() => {
+                        const restored = batchSelection.restoreArchived();
+                        if (restored > 0) {
+                          setFeedback({
+                            tone: 'info',
+                            title: `Restored ${restored} archived payout ${
+                              restored === 1 ? 'batch' : 'batches'
+                            }`,
+                            msg: 'Archived payout batches are visible in the clearing table again.',
+                          });
+                        }
+                      }}
+                    >
+                      Restore {batchSelection.archivedInDatasetCount} archived
+                    </Button>
+                  )}
                   <Input
                     label={t('harbour.bankUtrReference')}
                     mono
@@ -882,22 +1162,66 @@ export const HarbourWorkspace: React.FC<{
               <DataTable
                 caption="Payout Batches and UTR Reconciliation"
                 columns={batchColumns}
-                rows={data.payoutBatches}
+                rows={batchSelection.visibleRows}
                 loading={isFetchingRows}
-                getRowKey={(r) => r.batch_id}
+                getRowKey={getBatchRowId}
+                selectedRowKeys={batchSelection.selectedIds}
+                onToggleRowSelection={(id) => {
+                  reversalSelection.clearSelection();
+                  batchSelection.toggleRow(id);
+                }}
+                onToggleSelectAll={(ids) => {
+                  reversalSelection.clearSelection();
+                  batchSelection.toggleSelectAll(ids);
+                }}
+                selectionAriaLabel="Select payout batch"
               />
             </Card>
 
             <Card
               title={t('harbour.dualKeyReversalsTitle')}
               subtitle={t('harbour.dualKeyReversalsSub')}
+              actions={
+                reversalSelection.archivedInDatasetCount > 0 ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="restore-archived-reversals-btn"
+                    icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+                    onClick={() => {
+                      const restored = reversalSelection.restoreArchived();
+                      if (restored > 0) {
+                        setFeedback({
+                          tone: 'info',
+                          title: `Restored ${restored} archived ${
+                            restored === 1 ? 'reversal' : 'reversals'
+                          }`,
+                          msg: 'Archived dual-key reversals are visible again.',
+                        });
+                      }
+                    }}
+                  >
+                    Restore {reversalSelection.archivedInDatasetCount} archived
+                  </Button>
+                ) : undefined
+              }
             >
               <DataTable
                 caption="Dual-Key Reversal Queue"
                 columns={reversalColumns}
-                rows={data.reversals}
+                rows={reversalSelection.visibleRows}
                 loading={isFetchingRows}
-                getRowKey={(r) => r.reversal_id}
+                getRowKey={getReversalRowId}
+                selectedRowKeys={reversalSelection.selectedIds}
+                onToggleRowSelection={(id) => {
+                  batchSelection.clearSelection();
+                  reversalSelection.toggleRow(id);
+                }}
+                onToggleSelectAll={(ids) => {
+                  batchSelection.clearSelection();
+                  reversalSelection.toggleSelectAll(ids);
+                }}
+                selectionAriaLabel="Select reversal"
               />
             </Card>
           </div>

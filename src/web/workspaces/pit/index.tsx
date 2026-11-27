@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   AlertTriangle,
   RefreshCw,
+  ArchiveRestore,
 } from 'lucide-react';
 import {
   Button,
@@ -43,8 +44,12 @@ import {
 } from '@web/lib/ui-formatters.ts';
 import type { AuctionMode } from '@shared/ids.ts';
 import { useI18n } from '@web/i18n/index.tsx';
+import { BulkActionToolbar } from '@web/app/components/BulkActionToolbar.tsx';
+import { useBulkSelection } from '@web/app/components/useBulkSelection.ts';
 import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 import { BarcodeScannerModal } from '@web/shared/BarcodeScannerModal.tsx';
+
+const getAllocationRowId = (r: AllocationRow): string => r.allocation_id;
 
 const AUCTION_MODE_OPTIONS: ReadonlyArray<{ value: AuctionMode; label: string }> = [
   { value: 'PHYSICAL_SHOUT', label: 'Pit shout (voice auction)' },
@@ -62,6 +67,12 @@ export const PitWorkspace: React.FC<{
   onRefresh: () => Promise<void>;
 }> = ({ data, token, loading = false, refreshing = false, onRefresh }) => {
   const { t } = useI18n();
+  const tenantScope = data.tenant?.tenant_id ?? 'TEN-MUN';
+  const allocationSelection = useBulkSelection({
+    rows: data.allocations,
+    getRowId: getAllocationRowId,
+    archiveScopeKey: `${tenantScope}.pit.allocations`,
+  });
   const openLots = useMemo(
     () =>
       data.lots.filter(
@@ -338,6 +349,28 @@ export const PitWorkspace: React.FC<{
           onDismiss={() => setFeedback(null)}
         />
       )}
+
+      <BulkActionToolbar
+        selectedCount={allocationSelection.selectedVisibleIds.length}
+        totalCount={allocationSelection.visibleRowIds.length}
+        itemNounSingular="allocation"
+        itemNounPlural="allocations"
+        datasetLabel="Confirmed Pit Allocations"
+        busy={submitting}
+        archiveLabel="Archive Selected"
+        onSelectAll={allocationSelection.selectAllVisible}
+        onArchiveSelected={() => {
+          const count = allocationSelection.archiveSelected();
+          if (count > 0) {
+            setFeedback({
+              tone: 'info',
+              title: `Archived ${count} pit ${count === 1 ? 'allocation' : 'allocations'}`,
+              msg: 'Hidden from active pit table. Use "Restore archived" on the card header anytime.',
+            });
+          }
+        }}
+        onClearSelection={allocationSelection.clearSelection}
+      />
 
       {/* Main Pit Pad: Left = Visual Lot Cards + Buyer Paddle + Box Stepper, Right = Live Spotlight + Keypad + Hammer Confirm */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
@@ -761,13 +794,41 @@ export const PitWorkspace: React.FC<{
       <Card
         title={t('workspaces.pitAllocationsTitle')}
         subtitle={t('pit.allocationsSubtitle')}
+        actions={
+          allocationSelection.archivedInDatasetCount > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="restore-archived-pit-allocations-btn"
+              icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+              onClick={() => {
+                const restored = allocationSelection.restoreArchived();
+                if (restored > 0) {
+                  setFeedback({
+                    tone: 'info',
+                    title: `Restored ${restored} archived ${
+                      restored === 1 ? 'allocation' : 'allocations'
+                    }`,
+                    msg: 'All archived pit allocations are visible again.',
+                  });
+                }
+              }}
+            >
+              Restore {allocationSelection.archivedInDatasetCount} archived
+            </Button>
+          ) : undefined
+        }
       >
         <DataTable
           caption="Confirmed Pit Sale Allocations"
           columns={allocColumns}
-          rows={data.allocations}
+          rows={allocationSelection.visibleRows}
           loading={refreshing || submitting}
-          getRowKey={(r) => r.allocation_id}
+          getRowKey={getAllocationRowId}
+          selectedRowKeys={allocationSelection.selectedIds}
+          onToggleRowSelection={allocationSelection.toggleRow}
+          onToggleSelectAll={allocationSelection.toggleSelectAll}
+          selectionAriaLabel="Select allocation"
         />
       </Card>
 

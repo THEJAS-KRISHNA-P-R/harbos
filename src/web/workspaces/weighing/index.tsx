@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { QrCode, Scale, Printer, RefreshCw, ShieldAlert, ScanLine } from 'lucide-react';
+import { QrCode, Scale, Printer, RefreshCw, ShieldAlert, ScanLine, ArchiveRestore } from 'lucide-react';
 import {
   Button,
   Card,
@@ -25,9 +25,13 @@ import {
 } from '@web/lib/api.ts';
 import { extractManglishName } from '@web/lib/ui-formatters.ts';
 import type { SubmitWeighingPayload } from '@web/lib/offline-queue.ts';
+import { BulkActionToolbar } from '@web/app/components/BulkActionToolbar.tsx';
+import { useBulkSelection } from '@web/app/components/useBulkSelection.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 import { DocksidePrintSlip } from '@web/shared/DocksidePrintSlip.tsx';
 import { BarcodeScannerModal } from '@web/shared/BarcodeScannerModal.tsx';
+
+const getWeighingLotRowId = (r: LotRow): string => r.lot_id;
 
 interface QueuedLotCommand {
   commandId: string;
@@ -60,6 +64,12 @@ export const WeighingWorkspace: React.FC<{
   onRefresh,
 }) => {
   const { t } = useI18n();
+  const tenantScope = data.tenant?.tenant_id ?? 'TEN-MUN';
+  const lotSelection = useBulkSelection({
+    rows: data.lots,
+    getRowId: getWeighingLotRowId,
+    archiveScopeKey: `${tenantScope}.weighing.lots`,
+  });
   const [selectedVesselId, setSelectedVesselId] = useState(data.vessels[0]?.vessel_id ?? 'VSL-01');
   const [selectedSpeciesId, setSelectedSpeciesId] = useState(data.species[0]?.species_id ?? 'SPC-01');
   const [weightSource, setWeightSource] = useState<'BLE_SCALE' | 'MANUAL'>('BLE_SCALE');
@@ -423,6 +433,28 @@ export const WeighingWorkspace: React.FC<{
         />
       )}
 
+      <BulkActionToolbar
+        selectedCount={lotSelection.selectedVisibleIds.length}
+        totalCount={lotSelection.visibleRowIds.length}
+        itemNounSingular="lot"
+        itemNounPlural="lots"
+        datasetLabel="Landed Lots Registry"
+        busy={submitting}
+        archiveLabel="Archive Selected"
+        onSelectAll={lotSelection.selectAllVisible}
+        onArchiveSelected={() => {
+          const count = lotSelection.archiveSelected();
+          if (count > 0) {
+            setFeedback({
+              tone: 'info',
+              title: `Archived ${count} landed ${count === 1 ? 'lot' : 'lots'}`,
+              msg: 'Removed from active registry view. Use "Restore archived" on the table header to unarchive.',
+            });
+          }
+        }}
+        onClearSelection={lotSelection.clearSelection}
+      />
+
       {/* Clean 3-Metric Strip (zero decorative pill clutter) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="col-span-2 sm:col-span-1">
@@ -585,13 +617,39 @@ export const WeighingWorkspace: React.FC<{
       <Card
         title={t('weighing.landedLotsTitle')}
         subtitle={t('weighing.landedLotsSubtitle')}
+        actions={
+          lotSelection.archivedInDatasetCount > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="restore-archived-weighing-lots-btn"
+              icon={<ArchiveRestore className="w-3.5 h-3.5" />}
+              onClick={() => {
+                const restored = lotSelection.restoreArchived();
+                if (restored > 0) {
+                  setFeedback({
+                    tone: 'info',
+                    title: `Restored ${restored} archived ${restored === 1 ? 'lot' : 'lots'}`,
+                    msg: 'All archived landed lots are visible again.',
+                  });
+                }
+              }}
+            >
+              Restore {lotSelection.archivedInDatasetCount} archived
+            </Button>
+          ) : undefined
+        }
       >
         <DataTable
           caption="Landed Lots Registry"
           columns={columns}
-          rows={data.lots}
+          rows={lotSelection.visibleRows}
           loading={refreshing || submitting}
-          getRowKey={(r) => r.lot_id}
+          getRowKey={getWeighingLotRowId}
+          selectedRowKeys={lotSelection.selectedIds}
+          onToggleRowSelection={lotSelection.toggleRow}
+          onToggleSelectAll={lotSelection.toggleSelectAll}
+          selectionAriaLabel="Select lot"
           onRowClick={(r) => {
             const v = data.vessels.find((x) => x.vessel_id === r.vessel_id);
             const s = data.species.find((x) => x.species_id === r.species_id);
