@@ -1,5 +1,8 @@
 import type { Role } from '@shared/contracts/rbac.ts';
 import { ACT_16_2021_CITATIONS } from '@shared/contracts/statute.ts';
+import type { SessionHistoryEntry } from '@shared/contracts/session-history.ts';
+
+export type { SessionHistoryEntry };
 
 export interface OperatorRow {
   user_id: string;
@@ -35,6 +38,9 @@ export interface OperatorProfileResponse {
     details_json: string;
     created_at: string;
   }>;
+  lastKnownLocation?: string | null | undefined;
+  unusualLoginCount?: number | undefined;
+  sessionHistory?: ReadonlyArray<SessionHistoryEntry> | undefined;
 }
 
 export interface RoleDisplayMeta {

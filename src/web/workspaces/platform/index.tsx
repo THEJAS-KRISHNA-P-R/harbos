@@ -45,6 +45,7 @@ import {
 import { ROLE_DASHBOARD_DIRECTORY } from '@web/lib/tenant-onboarding.ts';
 import { BulkActionToolbar } from '@web/app/components/BulkActionToolbar.tsx';
 import { useBulkSelection } from '@web/app/components/useBulkSelection.ts';
+import { AdminSessionHistoryCard } from '@web/app/components/AdminSessionHistoryCard.tsx';
 import type { Role, WorkspaceId } from '@shared/contracts/rbac.ts';
 import type { CentreType, CommercialMode } from '@shared/ids.ts';
 import { useI18n } from '@web/i18n/index.tsx';
@@ -910,6 +911,15 @@ export const PlatformWorkspace: React.FC<{
               selectionAriaLabel="Select tenant"
             />
           </Card>
+
+          {/* Cross-Harbour Operator Session Security & Unusual-Region Monitor */}
+          <AdminSessionHistoryCard
+            token={token}
+            scopeLabel="All Provisioned Harbours (Super Admin)"
+            title="Platform Session History & Unusual-Region Alerts"
+            subtitle="Flags any operator or administrator login attempt originating outside their usual region based on lastKnownLocation"
+            maxVisible={10}
+          />
 
           {/* Role-Specific User Dashboards Launcher */}
           <Card

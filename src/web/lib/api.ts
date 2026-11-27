@@ -15,7 +15,9 @@ export {
   type OperatorRow,
   type OperatorProfileResponse,
   type RoleDisplayMeta,
+  type SessionHistoryEntry,
 } from '@web/lib/operator-directory.ts';
+export type { AdminSessionHistoryResponse } from '@shared/contracts/session-history.ts';
 export {
   validateAndNormalizeBankUtr,
   sanitizeBulkReconcilePayload,
@@ -338,6 +340,7 @@ export interface SessionUser {
   fullName: string;
   role: Role;
   entityRefId?: string | null;
+  lastKnownLocation?: string | null;
 }
 
 export {

@@ -82,6 +82,7 @@ export async function seedDemoData(db: DbPort): Promise<void> {
     const tenantCheck = await db.query<{ tenant_id: string }>(`SELECT tenant_id FROM core.tenants WHERE tenant_id = $1`, [DEMO_TENANT_ID]);
     if (tenantCheck.rows.length > 0) {
       await seedAuditLogsIfEmpty(db, DEMO_TENANT_ID);
+      await seedSessionHistoryIfEmpty(db, DEMO_TENANT_ID);
       return;
     }
 
@@ -318,6 +319,7 @@ export async function seedDemoData(db: DbPort): Promise<void> {
       alloc2Id: alloc2.allocationId,
       alloc1JournalId: alloc1.journalId,
     });
+    await seedSessionHistoryIfEmpty(db, tId);
   } finally {
     await db.query(`SELECT set_config('app.tenant_id', '', false)`);
   }
@@ -369,6 +371,79 @@ async function seedAuditLogsIfEmpty(
     await db.query(
       `INSERT INTO core.audit_logs (audit_id, tenant_id, actor_user_id, actor_role, action_code, target_type, target_id, details_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [audId, tIdVal, actorId, role, actionCode, targetType, targetId, detailsJson, createdAt]
+    );
+  }
+}
+
+async function seedSessionHistoryIfEmpty(
+  db: DbPort,
+  tenantId: string
+): Promise<void> {
+  const existing = await db.query<{ cnt: number }>(
+    `SELECT COUNT(*)::int AS cnt FROM core.audit_logs WHERE tenant_id = $1 AND action_code = 'USER_SESSION_LOGIN'`,
+    [tenantId]
+  );
+
+  const seedSessions: ReadonlyArray<
+    readonly [string, string, string, string, string, string, string, string, string]
+  > = [
+    // Capt. Mathew Thomas (Harbour Admin) — usual region: Kochi, KL
+    ['AUD-SESS-SEED-001', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-26T05:12:08.000Z', 'Munambam Harbour Office, Kochi, KL', 'Munambam Harbour Office, Kochi, KL', '103.42.88.14', 'OTP_SMS', 'Chrome · macOS'],
+    ['AUD-SESS-SEED-002', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-25T16:40:22.000Z', 'Ernakulam Fisheries Directorate, Kochi, KL', 'Munambam Harbour Office, Kochi, KL', '103.42.89.51', 'OTP_SMS', 'Safari · iOS'],
+    ['AUD-SESS-SEED-003', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-25T05:05:19.000Z', 'Munambam Harbour Office, Kochi, KL', 'Munambam Harbour Office, Kochi, KL', '103.42.88.14', 'OTP_SMS', 'Chrome · macOS'],
+    ['AUD-SESS-SEED-004', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-24T05:18:44.000Z', 'Munambam Harbour Office, Kochi, KL', 'Munambam Harbour Office, Kochi, KL', '103.42.88.14', 'OTP_SMS', 'Chrome · macOS'],
+    ['AUD-SESS-SEED-005', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-23T11:26:10.000Z', 'Vypin Coastal Jetty Desk, Kochi, KL', 'Munambam Harbour Office, Kochi, KL', '103.42.91.102', 'OTP_SMS', 'Chrome · Android'],
+    ['AUD-SESS-SEED-006', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-23T04:58:03.000Z', 'Munambam Harbour Office, Kochi, KL', 'Munambam Harbour Office, Kochi, KL', '103.42.88.14', 'OTP_SMS', 'Chrome · macOS'],
+    ['AUD-SESS-SEED-007', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-22T05:22:51.000Z', 'Munambam Harbour Office, Kochi, KL', 'Munambam Harbour Office, Kochi, KL', '103.42.88.14', 'OTP_SMS', 'Chrome · macOS'],
+    ['AUD-SESS-SEED-008', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-21T05:14:37.000Z', 'Munambam Harbour Office, Kochi, KL', 'Munambam Harbour Office, Kochi, KL', '103.42.88.14', 'OTP_SMS', 'Edge · Windows'],
+    ['AUD-SESS-SEED-009', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-20T05:09:15.000Z', 'North Paravur HMS Annex, Kochi, KL', 'Munambam Harbour Office, Kochi, KL', '103.42.90.28', 'OTP_SMS', 'Chrome · macOS'],
+    // Deepa Krishnan (Accountant)
+    ['AUD-SESS-SEED-010', 'USR-ACCT-01', 'ACCOUNTANT', '2026-11-26T06:02:11.000Z', 'Munambam HMS Accounts Wing, Kochi, KL', 'Munambam HMS Accounts Wing, Kochi, KL', '103.42.88.19', 'OTP_SMS', 'Edge · Windows'],
+    ['AUD-SESS-SEED-011', 'USR-ACCT-01', 'ACCOUNTANT', '2026-11-25T17:15:40.000Z', 'Federal Bank Nodal Desk, Aluva, KL', 'Munambam HMS Accounts Wing, Kochi, KL', '103.42.94.62', 'OTP_SMS', 'Chrome · Windows'],
+    ['AUD-SESS-SEED-012', 'USR-ACCT-01', 'ACCOUNTANT', '2026-11-25T05:54:02.000Z', 'Munambam HMS Accounts Wing, Kochi, KL', 'Munambam HMS Accounts Wing, Kochi, KL', '103.42.88.19', 'OTP_SMS', 'Edge · Windows'],
+    // Sajeev K. (Weighing Operator)
+    ['AUD-SESS-SEED-013', 'USR-WEIGH-01', 'WEIGHING_OPERATOR', '2026-11-26T04:41:09.000Z', 'Quay Terminal #2, Munambam, KL', 'Quay Terminal #2, Munambam, KL', '10.14.2.104', 'OTP_SMS', 'Chrome · Android'],
+    ['AUD-SESS-SEED-014', 'USR-WEIGH-01', 'WEIGHING_OPERATOR', '2026-11-25T04:36:55.000Z', 'Quay Terminal #2, Munambam, KL', 'Quay Terminal #2, Munambam, KL', '10.14.2.104', 'OTP_SMS', 'Chrome · Android'],
+    // K. Balakrishnan Nair (Auctioneer)
+    ['AUD-SESS-SEED-015', 'USR-AUCT-01', 'LICENSED_AUCTIONEER', '2026-11-26T05:24:31.000Z', 'Main Auction Hall Pit A, Munambam, KL', 'Main Auction Hall Pit A, Munambam, KL', '10.14.3.22', 'OTP_SMS', 'Safari · iOS'],
+    ['AUD-SESS-SEED-016', 'USR-AUCT-01', 'LICENSED_AUCTIONEER', '2026-11-25T05:19:48.000Z', 'Main Auction Hall Pit A, Munambam, KL', 'Main Auction Hall Pit A, Munambam, KL', '10.14.3.22', 'OTP_SMS', 'Safari · iOS'],
+    // Dr. Lekshmi R. (Inspector)
+    ['AUD-SESS-SEED-017', 'USR-INSP-01', 'AUTHORIZED_INSPECTOR', '2026-11-26T05:08:17.000Z', 'Cold-Chain QC Lab, Munambam, KL', 'Cold-Chain QC Lab, Munambam, KL', '10.14.4.18', 'OTP_SMS', 'Chrome · Android'],
+    ['AUD-SESS-SEED-018', 'USR-INSP-01', 'AUTHORIZED_INSPECTOR', '2026-11-25T05:11:29.000Z', 'Cold-Chain QC Lab, Munambam, KL', 'Cold-Chain QC Lab, Munambam, KL', '10.14.4.18', 'OTP_SMS', 'Chrome · Android'],
+    // Thejas R. (Platform Super Admin) — usual region: Ernakulam, KL
+    ['AUD-SESS-SEED-019', 'USR-SUPER-01', 'SUPER_ADMIN', '2026-11-26T08:10:04.000Z', 'Kochi Governance NOC, Ernakulam, KL', 'Kochi Governance NOC, Ernakulam, KL', '103.42.88.5', 'OTP_SMS', 'Chrome · macOS'],
+    ['AUD-SESS-SEED-020', 'USR-SUPER-01', 'SUPER_ADMIN', '2026-11-25T09:42:18.000Z', 'Beypore Harbour Inspection, Kozhikode, KL', 'Kochi Governance NOC, Ernakulam, KL', '103.42.96.41', 'TENANT_SWITCH', 'Chrome · macOS'],
+    ['AUD-SESS-SEED-021', 'USR-SUPER-01', 'SUPER_ADMIN', '2026-11-24T07:55:12.000Z', 'Kochi Governance NOC, Ernakulam, KL', 'Kochi Governance NOC, Ernakulam, KL', '103.42.88.5', 'OTP_SMS', 'Chrome · macOS'],
+  ];
+
+  // Realistic out-of-region login events checked against each operator's lastKnownLocation
+  const anomalySessions: ReadonlyArray<
+    readonly [string, string, string, string, string, string, string, string, string]
+  > = [
+    ['AUD-SESS-ANOM-001', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-26T22:18:04.000Z', 'Mumbai Port Proxy, Mumbai, MH', 'Munambam Harbour Office, Kochi, KL', '49.36.118.42', 'OTP_SMS', 'Chrome · Windows'],
+    ['AUD-SESS-ANOM-002', 'USR-HADMIN-01', 'HARBOUR_ADMIN', '2026-11-26T14:05:33.000Z', 'Singapore Maritime Relay, Singapore, SG', 'Munambam Harbour Office, Kochi, KL', '18.141.92.74', 'OTP_SMS', 'Firefox · Linux'],
+    ['AUD-SESS-ANOM-003', 'USR-SUPER-01', 'SUPER_ADMIN', '2026-11-26T21:44:12.000Z', 'Bengaluru Cloud VPN, Bengaluru, KA', 'Kochi Governance NOC, Ernakulam, KL', '106.51.78.210', 'OTP_SMS', 'Chrome · macOS'],
+    ['AUD-SESS-ANOM-004', 'USR-SUPER-01', 'SUPER_ADMIN', '2026-11-26T11:29:50.000Z', 'Dubai Maritime Exchange, Dubai, UAE', 'Kochi Governance NOC, Ernakulam, KL', '94.200.144.18', 'OTP_SMS', 'Safari · iOS'],
+    ['AUD-SESS-ANOM-005', 'USR-ACCT-01', 'ACCOUNTANT', '2026-11-26T19:12:45.000Z', 'Chennai Clearing Gateway, Chennai, TN', 'Munambam HMS Accounts Wing, Kochi, KL', '117.193.204.66', 'OTP_SMS', 'Edge · Windows'],
+  ];
+
+  const rowsToInsert =
+    (existing.rows[0]?.cnt ?? 0) > 0 ? anomalySessions : [...seedSessions, ...anomalySessions];
+
+  for (const [auditId, userId, role, loginAt, location, lastKnownLocation, ipAddress, authMethod, deviceLabel] of rowsToInsert) {
+    await db.query(
+      `INSERT INTO core.audit_logs (audit_id, tenant_id, actor_user_id, actor_role, action_code, target_type, target_id, details_json, created_at)
+       VALUES ($1, $2, $3, $4, 'USER_SESSION_LOGIN', 'SESSION', $5, $6, $7)
+       ON CONFLICT (audit_id) DO NOTHING`,
+      [
+        auditId,
+        tenantId,
+        userId,
+        role,
+        userId,
+        JSON.stringify({ loginAt, location, lastKnownLocation, ipAddress, authMethod, deviceLabel }),
+        loginAt,
+      ]
     );
   }
 }

@@ -48,6 +48,7 @@ import {
 } from '@web/lib/bulk-selection.ts';
 import { BulkActionToolbar } from '@web/app/components/BulkActionToolbar.tsx';
 import { useBulkSelection } from '@web/app/components/useBulkSelection.ts';
+import { AdminSessionHistoryCard } from '@web/app/components/AdminSessionHistoryCard.tsx';
 import type { FloorEnforcement } from '@shared/ids.ts';
 import { useI18n } from '@web/i18n/index.tsx';
 import { MasterdataCsvPanel } from './MasterdataCsvPanel.tsx';
@@ -1319,7 +1320,18 @@ export const HarbourWorkspace: React.FC<{
         </div>
       )}
 
-      {activeTab === 'audit' && <div className="flex flex-col gap-6">{auditLogsSection}</div>}
+      {activeTab === 'audit' && (
+        <div className="flex flex-col gap-6">
+          <AdminSessionHistoryCard
+            token={token}
+            scopeLabel={data.tenant?.name_en ?? 'Active Harbour'}
+            title="Harbour Operator Session History & Regional Alerts"
+            subtitle="Highlights login attempts originating outside each operator’s usual region compared against lastKnownLocation"
+            maxVisible={10}
+          />
+          {auditLogsSection}
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,9 @@
 import type { DbPort } from '@server/ports/db.ts';
 import type { Role } from '@shared/contracts/rbac.ts';
+import {
+  SESSION_LOGIN_ACTION_CODE,
+  type SessionAuditRowLike,
+} from '@shared/contracts/session-history.ts';
 
 export async function upsertAuthRateLimitBucketInTx(
   tx: DbPort,
@@ -324,12 +328,89 @@ export async function insertOtpOutboxEventInTx(
   );
 }
 
+export async function insertSessionLoginAuditInTx(
+  tx: DbPort,
+  params: {
+    auditId: string;
+    tenantId: string;
+    userId: string;
+    role: Role;
+    detailsJson: string;
+    createdAtIso: string;
+  }
+): Promise<void> {
+  await tx.query(
+    `INSERT INTO core.audit_logs (
+      audit_id, tenant_id, actor_user_id, actor_role, action_code,
+      target_type, target_id, details_json, created_at
+    ) VALUES ($1, $2, $3, $4, $5, 'SESSION', $6, $7, $8)`,
+    [
+      params.auditId,
+      params.tenantId,
+      params.userId,
+      params.role,
+      SESSION_LOGIN_ACTION_CODE,
+      params.userId,
+      params.detailsJson,
+      params.createdAtIso,
+    ]
+  );
+}
+
+export async function fetchUserSessionLoginRowsInTx(
+  tx: DbPort,
+  userId: string,
+  limit = 20
+): Promise<ReadonlyArray<SessionAuditRowLike>> {
+  const res = await tx.query<SessionAuditRowLike>(
+    `SELECT audit_id, details_json, created_at::text AS created_at
+     FROM core.audit_logs
+     WHERE actor_user_id = $1 AND action_code = $2
+     ORDER BY created_at DESC
+     LIMIT $3`,
+    [userId, SESSION_LOGIN_ACTION_CODE, limit]
+  );
+  return res.rows;
+}
+
+export async function fetchAdminSessionLoginRows(
+  db: DbPort,
+  params: { tenantId?: string | undefined; limit: number }
+): Promise<ReadonlyArray<SessionAuditRowLike>> {
+  if (params.tenantId) {
+    const res = await db.query<SessionAuditRowLike>(
+      `SELECT a.audit_id, a.details_json, a.created_at::text AS created_at,
+              a.actor_user_id, a.actor_role, u.full_name AS actor_name,
+              a.tenant_id, COALESCE(t.name_en, a.tenant_id) AS tenant_name_en
+       FROM core.audit_logs a
+       LEFT JOIN core.users u ON u.user_id = a.actor_user_id
+       LEFT JOIN core.tenants t ON t.tenant_id = a.tenant_id
+       WHERE a.tenant_id = $1 AND a.action_code = $2
+       ORDER BY a.created_at DESC LIMIT $3`,
+      [params.tenantId, SESSION_LOGIN_ACTION_CODE, params.limit]
+    );
+    return res.rows;
+  }
+  const res = await db.query<SessionAuditRowLike>(
+    `SELECT a.audit_id, a.details_json, a.created_at::text AS created_at,
+            a.actor_user_id, a.actor_role, u.full_name AS actor_name,
+            a.tenant_id, COALESCE(t.name_en, a.tenant_id) AS tenant_name_en
+     FROM core.audit_logs a
+     LEFT JOIN core.users u ON u.user_id = a.actor_user_id
+     LEFT JOIN core.tenants t ON t.tenant_id = a.tenant_id
+     WHERE a.action_code = $1
+     ORDER BY a.created_at DESC LIMIT $2`,
+    [SESSION_LOGIN_ACTION_CODE, params.limit]
+  );
+  return res.rows;
+}
+
 export async function fetchOperatorProfileAndAudit(
   db: DbPort,
   tenantId: string,
   userId: string
 ) {
-  const [uRes, auditRes] = await Promise.all([
+  const [uRes, auditRes, sessionRes] = await Promise.all([
     db.query<Record<string, unknown>>(
       `SELECT u.user_id, u.tenant_id, COALESCE(t.name_en, 'Munambam HMS') AS tenant_name_en,
               COALESCE(t.name_ml, '') AS tenant_name_ml,
@@ -345,15 +426,24 @@ export async function fetchOperatorProfileAndAudit(
     db.query<Record<string, unknown>>(
       `SELECT audit_id, action_code, target_type, target_id, details_json, created_at
        FROM core.audit_logs
-       WHERE actor_user_id = $1 AND tenant_id = $2
+       WHERE actor_user_id = $1 AND tenant_id = $2 AND action_code <> $3
        ORDER BY created_at DESC
        LIMIT 15`,
-      [userId, tenantId]
+      [userId, tenantId, SESSION_LOGIN_ACTION_CODE]
+    ),
+    db.query<SessionAuditRowLike>(
+      `SELECT audit_id, details_json, created_at::text AS created_at
+       FROM core.audit_logs
+       WHERE actor_user_id = $1 AND tenant_id = $2 AND action_code = $3
+       ORDER BY created_at DESC
+       LIMIT 20`,
+      [userId, tenantId, SESSION_LOGIN_ACTION_CODE]
     ),
   ]);
   return {
     profile: uRes.rows[0] ?? null,
     recentAudit: auditRes.rows,
+    sessionLoginRows: sessionRes.rows,
   };
 }
 

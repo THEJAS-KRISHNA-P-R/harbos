@@ -13,10 +13,16 @@ import {
 import { DEMO_TENANT_ID } from '@server/platform/seed.ts';
 import type { Role } from '@shared/contracts/rbac.ts';
 import {
+  buildOperatorSessionSummary,
+  recordSessionLoginEvent,
+  type SessionClientMeta,
+} from './session-audit.ts';
+import {
   executePersonalDataErasureInTx,
   exportCallerPrivacyData,
   fetchOperatorProfileAndAudit,
   fetchUserByIdInTx,
+  fetchUserSessionLoginRowsInTx,
   findActiveUserByPhoneInTx,
   findActiveUserByRoleInTx,
   findTenantByIdInTx,
@@ -26,6 +32,8 @@ import {
   updateOperatorLocaleInTx,
   updateOperatorProfileInTx,
 } from './repo.ts';
+
+export type { SessionClientMeta };
 
 export async function getDemoOperators(platformDb: DbPort) {
   return withPlatform(platformDb, async (tx) => {
@@ -85,7 +93,8 @@ export async function requestOtpForPhone(
 export async function verifyOtpAndIssueSession(
   platformDb: DbPort,
   rawPhoneInput: string,
-  otpCodeInput: string
+  otpCodeInput: string,
+  clientMeta?: SessionClientMeta
 ) {
   const rawPhone = rawPhoneInput.replace(/\s+/g, '');
   const otpCode = otpCodeInput.trim();
@@ -123,6 +132,14 @@ export async function verifyOtpAndIssueSession(
     tenantId: user.tenant_id,
   });
 
+  const recordedSession = await recordSessionLoginEvent(platformDb, {
+    tenantId: user.tenant_id,
+    userId: user.user_id,
+    role: user.role,
+    authMethod: 'OTP_SMS',
+    clientMeta,
+  });
+
   return {
     rawRefreshToken: refresh.rawToken,
     body: {
@@ -134,6 +151,7 @@ export async function verifyOtpAndIssueSession(
         fullName: user.full_name,
         role: user.role,
         entityRefId: user.entity_ref_id,
+        lastKnownLocation: recordedSession.lastKnownLocation,
       },
     },
   };
@@ -143,7 +161,8 @@ export async function switchDemoPersona(
   platformDb: DbPort,
   _baseDb: DbPort,
   roleInput?: string,
-  tenantIdInput?: string
+  tenantIdInput?: string,
+  clientMeta?: SessionClientMeta
 ) {
   if (!config.DEMO_MODE || config.NODE_ENV === 'production') {
     throw new AppError(
@@ -181,6 +200,14 @@ export async function switchDemoPersona(
     tenantId: effectiveTenantId,
   });
 
+  const recordedSession = await recordSessionLoginEvent(platformDb, {
+    tenantId: effectiveTenantId,
+    userId: user.user_id,
+    role: user.role,
+    authMethod: 'PERSONA_SWITCH',
+    clientMeta,
+  });
+
   return {
     rawRefreshToken: refresh.rawToken,
     body: {
@@ -192,6 +219,7 @@ export async function switchDemoPersona(
         fullName: user.full_name,
         role: user.role,
         entityRefId: user.entity_ref_id,
+        lastKnownLocation: recordedSession.lastKnownLocation,
       },
     },
   };
@@ -200,7 +228,8 @@ export async function switchDemoPersona(
 export async function switchSuperAdminTenant(
   platformDb: DbPort,
   claims: AuthSessionClaims,
-  targetTenantIdInput: string
+  targetTenantIdInput: string,
+  clientMeta?: SessionClientMeta
 ) {
   if (claims.role !== 'SUPER_ADMIN') {
     throw new AppError(
@@ -246,6 +275,14 @@ export async function switchSuperAdminTenant(
     tenantId: targetTenant.tenant_id,
   });
 
+  const recordedSession = await recordSessionLoginEvent(platformDb, {
+    tenantId: targetTenant.tenant_id,
+    userId: claims.sub,
+    role: 'SUPER_ADMIN',
+    authMethod: 'TENANT_SWITCH',
+    clientMeta,
+  });
+
   return {
     rawRefreshToken: refresh.rawToken,
     body: {
@@ -258,6 +295,7 @@ export async function switchSuperAdminTenant(
         fullName: adminUser?.full_name ?? claims.fullName,
         role: 'SUPER_ADMIN' as Role,
         entityRefId: adminUser?.entity_ref_id ?? claims.entityRefId ?? null,
+        lastKnownLocation: recordedSession.lastKnownLocation,
       },
     },
   };
@@ -268,27 +306,39 @@ export async function getOperatorProfile(
   claims: AuthSessionClaims,
   platformDb?: DbPort
 ) {
-  const { profile, recentAudit } = await fetchOperatorProfileAndAudit(
+  const { profile, recentAudit, sessionLoginRows } = await fetchOperatorProfileAndAudit(
     db,
     claims.tenantId,
     claims.sub
   );
   if (profile) {
+    const summary = buildOperatorSessionSummary(
+      sessionLoginRows,
+      typeof profile.tenant_name_en === 'string' ? profile.tenant_name_en : undefined
+    );
     return {
       profile,
       claims,
       recentAudit,
+      lastKnownLocation: summary.lastKnownLocation,
+      unusualLoginCount: summary.unusualLoginCount,
+      sessionHistory: summary.sessionHistory,
     };
   }
   if (claims.role === 'SUPER_ADMIN' && platformDb) {
     const fallback = await withPlatform(platformDb, async (tx) => {
-      const [userRow, tenantRow] = await Promise.all([
+      const [userRow, tenantRow, fallbackSessions] = await Promise.all([
         fetchUserByIdInTx(tx, claims.sub),
         findTenantByIdInTx(tx, claims.tenantId),
+        fetchUserSessionLoginRowsInTx(tx, claims.sub, 20),
       ]);
-      return { userRow, tenantRow };
+      return { userRow, tenantRow, fallbackSessions };
     });
     if (fallback.userRow) {
+      const summary = buildOperatorSessionSummary(
+        fallback.fallbackSessions,
+        fallback.tenantRow?.name_en
+      );
       return {
         profile: {
           user_id: fallback.userRow.user_id,
@@ -304,6 +354,9 @@ export async function getOperatorProfile(
         },
         claims,
         recentAudit,
+        lastKnownLocation: summary.lastKnownLocation,
+        unusualLoginCount: summary.unusualLoginCount,
+        sessionHistory: summary.sessionHistory,
       };
     }
   }

@@ -1,5 +1,14 @@
 import React from 'react';
-import { LogOut, CheckCircle2, Sparkles } from 'lucide-react';
+import {
+  LogOut,
+  CheckCircle2,
+  Sparkles,
+  MapPin,
+  Clock,
+  Monitor,
+  ShieldCheck,
+  AlertTriangle,
+} from 'lucide-react';
 import {
   Button,
   Card,
@@ -16,6 +25,13 @@ import {
   type OperatorProfileResponse,
   type SessionUser,
 } from '@web/lib/api.ts';
+import {
+  SESSION_HISTORY_MAX_ENTRIES,
+  annotateSessionHistoryWithRegionCheck,
+  countUnusualRegionSessions,
+  formatAuthMethodLabel,
+  formatSessionTimestamp,
+} from '@shared/contracts/session-history.ts';
 import type { Role, WorkspaceId } from '@shared/contracts/rbac.ts';
 
 export interface OperatorProfileDrawerProps {
@@ -65,6 +81,20 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
 }) => {
   const activeRoleMeta = getRoleDisplayMeta(user?.role ?? 'HARBOUR_ADMIN');
   const activeInitials = formatOperatorInitials(user?.fullName ?? 'Capt. Mathew Thomas');
+  const effectiveLastKnownLocation =
+    user?.lastKnownLocation ?? profileData?.lastKnownLocation ?? undefined;
+  const annotatedSessionHistory = React.useMemo(
+    () =>
+      annotateSessionHistoryWithRegionCheck(
+        profileData?.sessionHistory ?? [],
+        effectiveLastKnownLocation
+      ),
+    [profileData?.sessionHistory, effectiveLastKnownLocation]
+  );
+  const unusualSessionCount = React.useMemo(
+    () => countUnusualRegionSessions(annotatedSessionHistory),
+    [annotatedSessionHistory]
+  );
 
   return (
     <Drawer
@@ -112,11 +142,18 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
 
         <Tabs
           items={[
-            { id: 'identity', label: 'Edit Profile & Authority' },
+            { id: 'identity', label: 'Profile' },
             ...(!import.meta.env.PROD
-              ? [{ id: 'switch', label: 'Switch Persona', badge: 8 }]
+              ? [{ id: 'switch', label: 'Personas', badge: 8 }]
               : []),
-            { id: 'session', label: 'Session & Activity', badge: profileData?.recentAudit.length ?? 0 },
+            {
+              id: 'session',
+              label: 'Session & Activity',
+              badge:
+                profileData?.sessionHistory?.length ??
+                profileData?.recentAudit.length ??
+                0,
+            },
           ]}
           activeId={import.meta.env.PROD && profileTab === 'switch' ? 'identity' : profileTab}
           onChange={(id) => onChangeTab(id as 'identity' | 'switch' | 'session')}
@@ -258,18 +295,167 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
         )}
 
         {profileTab === 'session' && (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
             <div className="p-4 rounded-[var(--radius-card)] bg-[var(--bg-sunken)] border border-[var(--border-hair)] flex flex-col gap-2 text-xs">
               <div className="font-bold uppercase tracking-wider text-[var(--text-secondary)]">
                 Active Session Details
               </div>
-              <div className="font-mono-code text-[var(--text-primary)] grid grid-cols-2 gap-1.5">
+              <div className="font-mono-code text-[var(--text-primary)] grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <span>Operator ID: {user?.userId}</span>
                 <span>Role: {activeRoleMeta.shortBadge}</span>
                 <span>Harbour: {user?.tenantId}</span>
                 <span>Phone: {user?.phoneE164}</span>
+                {effectiveLastKnownLocation && (
+                  <span
+                    className="sm:col-span-2 inline-flex items-center gap-1.5 text-[var(--text-secondary)] pt-1 border-t border-[var(--border-hair)]"
+                    data-testid="session-last-known-location"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-[var(--brand)] shrink-0" aria-hidden="true" />
+                    <span>
+                      Usual Location:{' '}
+                      <strong className="text-[var(--text-primary)]">
+                        {effectiveLastKnownLocation}
+                      </strong>
+                    </span>
+                  </span>
+                )}
               </div>
             </div>
+
+            <section
+              aria-labelledby="user-session-history-heading"
+              data-testid="user-session-history"
+              className="flex flex-col gap-2.5"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h4
+                    id="user-session-history-heading"
+                    className="text-sm font-bold text-[var(--text-primary)] inline-flex items-center gap-1.5"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-[var(--brand)] shrink-0" aria-hidden="true" />
+                    <span>User Session History</span>
+                  </h4>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Last {SESSION_HISTORY_MAX_ENTRIES} recorded login timestamps and locations
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                  {unusualSessionCount > 0 && (
+                    <Badge
+                      tone="danger"
+                      label={`${unusualSessionCount} outside usual region`}
+                    />
+                  )}
+                  {annotatedSessionHistory.length > 0 && (
+                    <Badge
+                      tone="info"
+                      label={`${annotatedSessionHistory.length} / ${SESSION_HISTORY_MAX_ENTRIES}`}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {profileLoading && !profileData ? (
+                <SkeletonList
+                  items={4}
+                  variant="activity"
+                  surface="card"
+                  testId="session-history-skeleton"
+                  label="Loading user session history…"
+                />
+              ) : annotatedSessionHistory.length > 0 ? (
+                <ol
+                  aria-label="Last 10 login sessions"
+                  className="flex flex-col gap-2"
+                >
+                  {annotatedSessionHistory
+                    .slice(0, SESSION_HISTORY_MAX_ENTRIES)
+                    .map((entry) => {
+                      const isUnusual = entry.isUnusualRegion === true;
+                      return (
+                        <li
+                          key={entry.sessionEventId}
+                          data-testid="session-history-row"
+                          data-unusual-region={isUnusual ? 'true' : 'false'}
+                          className={`animate-session-item-in p-3 rounded-[var(--radius-card)] border text-xs flex flex-col gap-1.5 ${
+                            isUnusual
+                              ? 'bg-[var(--warning-bg)] border-[var(--warning)]/60 border-l-4 border-l-[var(--danger)]'
+                              : entry.isCurrent
+                                ? 'bg-[var(--brand-soft)]/60 border-[var(--brand)]/40'
+                                : 'bg-[var(--bg-surface)] border-[var(--border-hair)]'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div
+                              className={`inline-flex items-center gap-1.5 font-semibold min-w-0 ${
+                                isUnusual
+                                  ? 'text-[var(--danger-fg)]'
+                                  : 'text-[var(--text-primary)]'
+                              }`}
+                            >
+                              {isUnusual ? (
+                                <AlertTriangle
+                                  className="w-3.5 h-3.5 text-[var(--danger)] shrink-0"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <MapPin
+                                  className="w-3.5 h-3.5 text-[var(--brand)] shrink-0"
+                                  aria-hidden="true"
+                                />
+                              )}
+                              <span className="truncate">{entry.location}</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                              {isUnusual && (
+                                <Badge tone="danger" label="Unusual Region" />
+                              )}
+                              {entry.isCurrent && <Badge tone="ok" label="Current" />}
+                              <Badge
+                                tone="neutral"
+                                label={formatAuthMethodLabel(entry.authMethod)}
+                              />
+                            </div>
+                          </div>
+
+                          {isUnusual && entry.lastKnownLocation && (
+                            <div
+                              className="text-[11px] font-medium text-[var(--warning)] flex flex-wrap items-center gap-x-1.5 gap-y-0.5"
+                              data-testid="unusual-region-callout"
+                            >
+                              <span>
+                                Outside usual region ({entry.detectedRegion ?? 'External'})
+                              </span>
+                              <span aria-hidden="true">·</span>
+                              <span>Last known: {entry.lastKnownLocation}</span>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] font-mono-code tabular-nums">
+                            <span className="inline-flex items-center gap-1 text-[var(--text-secondary)]">
+                              <Clock className="w-3 h-3 shrink-0" aria-hidden="true" />
+                              <time dateTime={entry.loginAt}>
+                                {formatSessionTimestamp(entry.loginAt)}
+                              </time>
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-[var(--text-muted)]">
+                              <Monitor className="w-3 h-3 shrink-0" aria-hidden="true" />
+                              <span>
+                                {entry.deviceLabel} · {entry.ipAddress}
+                              </span>
+                            </span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                </ol>
+              ) : (
+                <div className="p-3.5 rounded-[var(--radius-card)] bg-[var(--bg-surface)] border border-[var(--border-hair)] text-xs text-[var(--text-muted)]">
+                  No login sessions recorded yet for this operator.
+                </div>
+              )}
+            </section>
 
             <div>
               <h4 className="text-sm font-bold text-[var(--text-primary)] mb-2">
@@ -296,7 +482,7 @@ export const OperatorProfileDrawer: React.FC<OperatorProfileDrawerProps> = ({
                           {a.created_at.replace('T', ' ').slice(0, 19)}
                         </span>
                       </div>
-                      <div className="font-mono-code text-[var(--text-secondary)]">
+                      <div className="font-mono-code text-[var(--text-secondary)] break-words">
                         Target: {a.target_type} ({a.target_id}) · {a.details_json}
                       </div>
                     </div>

@@ -696,6 +696,7 @@ export const App: React.FC = () => {
             fullName: profileRes.profile.full_name,
             role: profileRes.profile.role,
             entityRefId: profileRes.profile.entity_ref_id,
+            lastKnownLocation: profileRes.lastKnownLocation ?? null,
           };
 
           const shouldUseDevDeepLinkInstead =

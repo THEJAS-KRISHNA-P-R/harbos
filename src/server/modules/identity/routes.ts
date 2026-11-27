@@ -33,6 +33,7 @@ import {
   updateOperatorProfile,
   verifyOtpAndIssueSession,
 } from './service.ts';
+import { getAdminSessionHistoryMonitor } from './session-audit.ts';
 
 export function resolveClientIpFromHeaders(req: {
   headers: Record<string, string | string[] | undefined>;
@@ -58,6 +59,20 @@ export function resolveClientIpFromHeaders(req: {
     }
   }
   return req.ip || req.socket?.remoteAddress || '127.0.0.1';
+}
+
+function buildSessionClientMeta(req: {
+  headers: Record<string, string | string[] | undefined>;
+  ip?: string | undefined;
+  socket?: { remoteAddress?: string | undefined } | undefined;
+}) {
+  const uaHeader = req.headers['user-agent'];
+  const userAgent = Array.isArray(uaHeader) ? uaHeader[0] : uaHeader;
+  return {
+    clientIp: resolveClientIpFromHeaders(req),
+    userAgent,
+    headers: req.headers,
+  };
 }
 
 export const identityRoutes = [
@@ -110,7 +125,8 @@ export const identityRoutes = [
       const out = await verifyOtpAndIssueSession(
         ctx.platformDb,
         String(ctx.body.phoneE164 ?? ''),
-        String(ctx.body.otpCode ?? '')
+        String(ctx.body.otpCode ?? ''),
+        buildSessionClientMeta(ctx.req)
       );
       setRefreshTokenCookie(ctx.res, out.rawRefreshToken);
       return out.body;
@@ -174,7 +190,8 @@ export const identityRoutes = [
         ctx.platformDb,
         ctx.db,
         ctx.body.role,
-        ctx.body.tenantId
+        ctx.body.tenantId,
+        buildSessionClientMeta(ctx.req)
       );
       setRefreshTokenCookie(ctx.res, out.rawRefreshToken);
       return out.body;
@@ -193,7 +210,8 @@ export const identityRoutes = [
       const out = await switchSuperAdminTenant(
         ctx.platformDb,
         ctx.auth!,
-        ctx.body.tenantId
+        ctx.body.tenantId,
+        buildSessionClientMeta(ctx.req)
       );
       setRefreshTokenCookie(ctx.res, out.rawRefreshToken);
       return out.body;
@@ -216,6 +234,16 @@ export const identityRoutes = [
     summary: 'Fetch operator profile and personal audit trail',
     tags: ['identity'],
     handler: async (ctx) => getOperatorProfile(ctx.db, ctx.auth!, ctx.platformDb),
+  }),
+
+  route({
+    method: 'GET',
+    path: '/api/v1/auth/session-history',
+    roles: ['HARBOUR_ADMIN', 'ACCOUNTANT', 'SUPER_ADMIN'],
+    summary: 'Fetch operator session history and unusual-region login monitor for admin panels',
+    tags: ['identity'],
+    handler: async (ctx) =>
+      getAdminSessionHistoryMonitor(ctx.db, ctx.auth!, ctx.platformDb),
   }),
 
   route({

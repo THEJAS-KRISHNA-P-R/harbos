@@ -128,6 +128,11 @@ export const ROUTE_RBAC_MATRIX: ReadonlyArray<RoutePolicy> = [
   { method: 'POST', pattern: '/api/v1/auth/tenant-switch', roles: ['SUPER_ADMIN'] },
   { method: 'GET', pattern: '/api/v1/me', roles: ALL_ROLES },
   { method: 'GET', pattern: '/api/v1/auth/profile', roles: ALL_ROLES },
+  {
+    method: 'GET',
+    pattern: '/api/v1/auth/session-history',
+    roles: ['HARBOUR_ADMIN', 'ACCOUNTANT', 'SUPER_ADMIN'],
+  },
   { method: 'POST', pattern: '/api/v1/auth/profile', roles: ALL_ROLES },
   { method: 'POST', pattern: '/api/v1/auth/locale', roles: ALL_ROLES },
   { method: 'POST', pattern: '/api/v1/auth/consent', roles: ALL_ROLES },
